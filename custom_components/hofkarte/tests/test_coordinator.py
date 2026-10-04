@@ -10,7 +10,10 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from custom_components.hofkarte.coordinator import HofKarteUpdateCoordinator
+from custom_components.hofkarte.coordinator import (
+    HofKarteUpdateCoordinator,
+    HofladenVersionConflictError,
+)
 from custom_components.hofkarte.data_provider import (
     DuplicateHofladenIdError,
     HofladenDataProvider,
@@ -409,6 +412,107 @@ async def test_save_hofladen_nicht_unterstuetzt_bei_read_only_provider(
 
     with pytest.raises(NotImplementedError):
         await coordinator.async_save_hofladen({"id": "hof-1", "name": "Hofladen"})
+
+
+# ---------------------------------------------------------------------------
+# async_save_hofladen – Versionierung/Konflikterkennung (Phase 8b)
+# ---------------------------------------------------------------------------
+
+
+async def test_save_hofladen_neu_erhaelt_version_eins(
+    hass: HomeAssistant,
+) -> None:
+    """Ein neu angelegter Hofladen beginnt bei Version 1, unabhängig davon,
+    ob die Aufrufer selbst eine (falsche) Version mitschicken."""
+    provider = StaticTestDataProvider(raw_hoflaeden=[])
+    coordinator = HofKarteUpdateCoordinator(hass, provider)
+    await coordinator.async_config_entry_first_refresh()
+
+    ergebnis = await coordinator.async_save_hofladen(
+        {"id": "hof-neu", "name": "Neuer Hofladen", "version": 99}
+    )
+
+    assert ergebnis.version == 1
+    assert coordinator.data["hof-neu"].version == 1
+
+
+async def test_save_hofladen_aktualisierung_erhoeht_version(
+    hass: HomeAssistant,
+) -> None:
+    """Jede erfolgreiche Aktualisierung erhöht die Version um 1."""
+    provider = StaticTestDataProvider(
+        raw_hoflaeden=[{"id": "hof-1", "name": "Alter Name", "version": 1}]
+    )
+    coordinator = HofKarteUpdateCoordinator(hass, provider)
+    await coordinator.async_config_entry_first_refresh()
+
+    ergebnis = await coordinator.async_save_hofladen(
+        {"id": "hof-1", "name": "Neuer Name", "version": 1}
+    )
+
+    assert ergebnis.version == 2
+    assert coordinator.data["hof-1"].version == 2
+
+
+async def test_save_hofladen_ohne_version_prueft_keinen_konflikt(
+    hass: HomeAssistant,
+) -> None:
+    """Fehlt 'version' im übergebenen Datensatz (ältere Aufrufer, Import),
+    wird kein Konflikt geprüft - die Änderung wird wie bisher übernommen,
+    die Version aber dennoch serverseitig weitergeführt."""
+    provider = StaticTestDataProvider(
+        raw_hoflaeden=[{"id": "hof-1", "name": "Alter Name", "version": 5}]
+    )
+    coordinator = HofKarteUpdateCoordinator(hass, provider)
+    await coordinator.async_config_entry_first_refresh()
+
+    ergebnis = await coordinator.async_save_hofladen(
+        {"id": "hof-1", "name": "Ohne Versionsangabe"}
+    )
+
+    assert ergebnis.name == "Ohne Versionsangabe"
+    assert ergebnis.version == 6
+
+
+async def test_save_hofladen_veraltete_version_wirft_konflikt(
+    hass: HomeAssistant,
+) -> None:
+    """Eine veraltete erwartete Version (ein anderes Gerät hat
+    zwischenzeitlich bereits gespeichert) muss abgelehnt werden, OHNE die
+    aktuell gespeicherten Daten zu verändern."""
+    provider = StaticTestDataProvider(
+        raw_hoflaeden=[{"id": "hof-1", "name": "Serverstand", "version": 3}]
+    )
+    coordinator = HofKarteUpdateCoordinator(hass, provider)
+    await coordinator.async_config_entry_first_refresh()
+
+    with pytest.raises(HofladenVersionConflictError) as exc_info:
+        await coordinator.async_save_hofladen(
+            {"id": "hof-1", "name": "Veralteter Stand", "version": 2}
+        )
+
+    assert exc_info.value.aktueller_hofladen.name == "Serverstand"
+    assert exc_info.value.aktueller_hofladen.version == 3
+    # Die ursprünglichen Daten dürfen unverändert bleiben.
+    assert coordinator.data["hof-1"].name == "Serverstand"
+    assert coordinator.data["hof-1"].version == 3
+
+
+async def test_save_hofladen_unbekannte_id_mit_version_wird_wie_neuanlage_behandelt(
+    hass: HomeAssistant,
+) -> None:
+    """Eine mitgeschickte Version für eine (noch) nicht existierende ID löst
+    keinen Konflikt aus - der Datensatz existiert serverseitig schlicht noch
+    nicht, es gibt also nichts, womit die Version kollidieren könnte."""
+    provider = StaticTestDataProvider(raw_hoflaeden=[])
+    coordinator = HofKarteUpdateCoordinator(hass, provider)
+    await coordinator.async_config_entry_first_refresh()
+
+    ergebnis = await coordinator.async_save_hofladen(
+        {"id": "hof-unbekannt", "name": "Hofladen", "version": 4}
+    )
+
+    assert ergebnis.version == 1
 
 
 # ---------------------------------------------------------------------------

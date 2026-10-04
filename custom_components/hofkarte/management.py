@@ -28,7 +28,7 @@ from .const import (
     DEFAULT_OSM_RADIUS_METER,
     DOMAIN,
 )
-from .coordinator import HofKarteUpdateCoordinator
+from .coordinator import HofKarteUpdateCoordinator, HofladenVersionConflictError
 from .data_provider import HofladenNotFoundError
 from .images import get_main_image_url
 from .models import Hofladen
@@ -238,7 +238,21 @@ def ws_list(
 async def ws_save(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
 ) -> None:
-    """Create or update a Hofladen (delegiert vollständig an den Coordinator)."""
+    """Create or update a Hofladen (delegiert vollständig an den Coordinator).
+
+    Enthält das zu speichernde ``hofladen`` eine ``version`` (wird von
+    Aufrufern, die optimistische Nebenläufigkeitskontrolle unterstützen -
+    aktuell die HofKarte-PWA, siehe Vorgehensplan Phase 8b - mit der
+    zuletzt bekannten Version befüllt), kann der Coordinator einen
+    Versionskonflikt feststellen. In diesem Fall wird **kein** Fehler
+    gesendet (ein Konflikt ist kein technischer Fehler, sondern ein
+    erwartbarer Normalfall), sondern ein Ergebnis mit ``"konflikt": true``
+    und dem aktuellen, serverseitigen Stand unter ``"aktueller_hofladen"``
+    - die aufrufende Oberfläche kann daraus eine Konflikt-Ansicht (zwei
+    Versionen nebeneinander) aufbauen. Bei Erfolg enthält das Ergebnis
+    stattdessen ``"konflikt": false`` und den gespeicherten Hofladen unter
+    ``"hofladen"``, inklusive der neuen, serverseitig vergebenen Version.
+    """
     try:
         coordinator = _get_coordinator(hass)
     except ValueError as err:
@@ -251,6 +265,17 @@ async def ws_save(
 
     try:
         parsed = await coordinator.async_save_hofladen(raw)
+    except HofladenVersionConflictError as err:
+        connection.send_result(
+            msg["id"],
+            {
+                "konflikt": True,
+                "aktueller_hofladen": _serialize_hofladen(
+                    err.aktueller_hofladen, now=dt_util.now()
+                ),
+            },
+        )
+        return
     except HofladenValidationError as err:
         connection.send_error(msg["id"], "invalid_data", str(err))
         return
@@ -259,7 +284,11 @@ async def ws_save(
         return
 
     connection.send_result(
-        msg["id"], {"hofladen": _serialize_hofladen(parsed, now=dt_util.now())}
+        msg["id"],
+        {
+            "konflikt": False,
+            "hofladen": _serialize_hofladen(parsed, now=dt_util.now()),
+        },
     )
 
 

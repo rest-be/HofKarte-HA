@@ -36,6 +36,30 @@ from .parsing import HofladenValidationError, parse_hofladen
 _LOGGER = logging.getLogger(__name__)
 
 
+class HofladenVersionConflictError(Exception):
+    """Die mitgeschickte erwartete Version stimmt nicht mehr.
+
+    Wird von :meth:`HofKarteUpdateCoordinator.async_save_hofladen` geworfen,
+    wenn ein Aufrufer beim Aktualisieren eines bestehenden Hofladens eine
+    ``version`` mitschickt, die nicht (mehr) mit der aktuell gespeicherten
+    Version übereinstimmt - typischerweise, weil ein anderes Gerät die
+    Änderung zwischenzeitlich bereits synchronisiert hat (z. B. zwei
+    Haushaltsmitglieder, die denselben Hofladen offline bearbeitet haben).
+
+    Trägt den aktuellen, serverseitigen Stand (``aktueller_hofladen``), damit
+    Aufrufer (siehe ``management.ws_save``) eine Konflikt-Ansicht mit beiden
+    Versionen anzeigen können, statt die Änderung stillschweigend zu
+    verwerfen oder zu überschreiben.
+    """
+
+    def __init__(self, aktueller_hofladen: Hofladen) -> None:
+        super().__init__(
+            f"Versionskonflikt bei Hofladen '{aktueller_hofladen.id}': "
+            f"aktuelle Version ist {aktueller_hofladen.version}."
+        )
+        self.aktueller_hofladen = aktueller_hofladen
+
+
 class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
     """Koordiniert den Abruf und die Validierung der Hofladen-Daten."""
 
@@ -262,9 +286,9 @@ class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
         zwei Fachbereiche Angebote und Zahlungsarten beschränkt) erlaubt
         diese Funktion das Setzen beliebiger Hofladen-Felder (Name, Adresse,
         Koordinaten, Öffnungszeiten, Bilder, ...). Wird von der
-        grafischen Verwaltungsoberfläche verwendet (siehe
-        ``management.py``), die stets den vollständigen, vom Formular
-        gelieferten Datensatz übergibt.
+        grafischen Verwaltungsoberfläche sowie der HofKarte-PWA verwendet
+        (siehe ``management.py``), die stets den vollständigen, vom
+        Formular bzw. Editor gelieferten Datensatz übergeben.
 
         Existiert die ``id`` bereits, werden die vorhandenen Felder mit
         ``raw_hofladen`` zusammengeführt; existiert sie nicht, wird ein
@@ -272,9 +296,28 @@ class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
         ``parsing.parse_hofladen`` und stösst wie die übrigen
         Schreibfunktionen einen Refresh an.
 
+        **Optimistische Versionierung (Konflikterkennung):** Beim
+        Aktualisieren eines bestehenden Hofladens wird eine in
+        ``raw_hofladen`` enthaltene ``version`` als die zuletzt vom
+        Aufrufer gesehene Version interpretiert. Stimmt sie nicht mit der
+        aktuell gespeicherten Version überein, wird die Änderung
+        **nicht** geschrieben, sondern
+        :class:`HofladenVersionConflictError` geworfen (siehe dort) - das
+        schützt vor stillschweigendem Verlust einer zwischenzeitlichen
+        Änderung eines anderen Geräts (z. B. Offline-Sync, siehe
+        Vorgehensplan Phase 8b). Fehlt ``version`` in ``raw_hofladen``
+        (z. B. bei älteren Aufrufern oder dem Import), wird **kein**
+        Konflikt geprüft - die Änderung wird wie bisher ohne Prüfung
+        übernommen (Abwärtskompatibilität). Die tatsächlich gespeicherte
+        ``version`` wird in jedem Fall serverseitig bestimmt (bei Neuanlage
+        ``1``, sonst ``aktuelle Version + 1``) - ein mitgeschickter Wert
+        wird dafür nicht übernommen, ausser als Vergleichswert für die
+        Konfliktprüfung.
+
         Wirft ``NotImplementedError`` bei einem nicht schreibfähigen
-        Provider und :class:`~custom_components.hofkarte.parsing.HofladenValidationError`
-        bei ungültigen Daten.
+        Provider, :class:`~custom_components.hofkarte.parsing.HofladenValidationError`
+        bei ungültigen Daten und :class:`HofladenVersionConflictError` bei
+        einem Versionskonflikt.
         """
         if not isinstance(self._provider, MutableHofladenDataProvider):
             raise NotImplementedError(
@@ -282,16 +325,37 @@ class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
                 "Schreibzugriffe (Anlegen/Bearbeiten von Hofläden)."
             )
 
-        # Fail-Fast: vor jedem Schreibzugriff vollständig validieren.
-        validierter_hofladen = parse_hofladen(raw_hofladen)
+        hofladen_id = raw_hofladen.get("id")
+        bestehender_hofladen = (
+            self.data.get(hofladen_id) if self.data and hofladen_id else None
+        )
 
-        if self.data and validierter_hofladen.id in self.data:
-            await self._provider.async_update_raw_hofladen(
-                validierter_hofladen.id, raw_hofladen
-            )
-            _LOGGER.debug("Hofladen aktualisiert: %s", validierter_hofladen.id)
+        endgueltiger_raw = dict(raw_hofladen)
+        if bestehender_hofladen is not None:
+            erwartete_version = raw_hofladen.get("version")
+            if (
+                erwartete_version is not None
+                and int(erwartete_version) != bestehender_hofladen.version
+            ):
+                raise HofladenVersionConflictError(bestehender_hofladen)
+            endgueltiger_raw["version"] = bestehender_hofladen.version + 1
         else:
-            await self._provider.async_add_raw_hofladen(raw_hofladen)
+            endgueltiger_raw["version"] = 1
+
+        # Fail-Fast: vor jedem Schreibzugriff vollständig validieren.
+        validierter_hofladen = parse_hofladen(endgueltiger_raw)
+
+        if bestehender_hofladen is not None:
+            await self._provider.async_update_raw_hofladen(
+                validierter_hofladen.id, endgueltiger_raw
+            )
+            _LOGGER.debug(
+                "Hofladen aktualisiert: %s (Version %s)",
+                validierter_hofladen.id,
+                validierter_hofladen.version,
+            )
+        else:
+            await self._provider.async_add_raw_hofladen(endgueltiger_raw)
             _LOGGER.debug("Hofladen angelegt: %s", validierter_hofladen.id)
 
         await self.async_refresh()

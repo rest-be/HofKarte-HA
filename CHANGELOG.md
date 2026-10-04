@@ -38,6 +38,33 @@ unten als historische Entwicklungsdokumentation erhalten.
   entwickelte, unter `rest-be/HofKarte-PWA` gepflegte Progressive Web
   App, die HofKarte als Client dieser Integration nutzt (eigener
   Admin-Benutzer, CORS-Einstellung, HTTPS/DuckDNS).
+- **Parameter `min_bewertung` für `hofkarte.hoflaeden_in_naehe`:**
+  filtert optional auf Hofläden mit mindestens dieser Bewertung (0–5)
+  – ein einfacher „nur Favoriten“-Filter, der das bestehende, geteilte
+  `bewertung`-Feld wiederverwendet statt ein eigenes Favoriten-Feld
+  einzuführen. Die Service-Antwort liefert neu auch die Bewertung pro
+  Treffer. Das Automation-Blueprint „Benachrichtigung bei Hofladen in
+  der Nähe“ bekommt dafür den neuen Eingabeparameter „Mindestbewertung
+  (nur Favoriten)“ sowie die `bewertung`-Vorlagenvariable für die
+  Benachrichtigungs-Aktion. Dazu eine neue Schritt-für-Schritt-
+  Einrichtungsanleitung im README für die Nähe-Benachrichtigung über
+  die Home Assistant Companion App.
+- **Optimistische Versionierung je Hofladen (neues Feld `version`):**
+  jeder Hofladen trägt neu eine fortlaufende Versionsnummer (Start
+  bei 1, wird bei jeder Aktualisierung um 1 erhöht). Grundlage für
+  verlässlichen Offline-Sync mehrerer Geräte (siehe HofKarte-PWA,
+  Vorgehensplan Phase 8b): Schickt ein Aufrufer beim Aktualisieren
+  eines Hofladens über die WebSocket-Action
+  `hofkarte/management/save` eine `version` mit, die nicht mehr mit
+  der aktuell gespeicherten übereinstimmt (ein anderes Gerät hat
+  zwischenzeitlich bereits synchronisiert), wird die Änderung
+  **nicht** stillschweigend überschrieben, sondern als Ergebnis mit
+  `"konflikt": true` und dem aktuellen Serverstand zurückgemeldet.
+  Fehlt `version` (ältere Aufrufer, Import), wird wie bisher ohne
+  Prüfung gespeichert – vollständig abwärtskompatibel. Die
+  mitgelieferte Verwaltungsoberfläche (`hofkarte-panel.js`) nutzt dies
+  automatisch mit, da sie den zuletzt geladenen Hofladen-Datensatz
+  (inkl. `version`) beim Speichern unverändert zurückschickt.
 
 ## [2026.9.2] - 2026-09-30
 

@@ -683,6 +683,47 @@ Coordinator – es gibt keine Mehrfachabfragen pro Entity.
 - Bei einem späteren Fehlversuch bleiben die zuletzt erfolgreich
   abgerufenen Daten erhalten
 
+### Optimistische Versionierung und Konflikterkennung
+
+Jeder Hofladen trägt ein Feld `version` (fortlaufende Ganzzahl, beginnt
+bei 1). Grundlage dafür ist, dass mehrere Geräte denselben Hofladen
+unabhängig voneinander bearbeiten können – insbesondere die
+HofKarte-PWA im Offline-Betrieb (eine Änderung wird dort lokal
+zwischengespeichert und erst beim nächsten Verbindungsaufbau
+synchronisiert, siehe `rest-be/HofKarte-PWA`). Ohne Versionierung
+würde eine verspätet nachgereichte Offline-Änderung eine
+zwischenzeitlich von einem anderen Gerät bereits gespeicherte Änderung
+stillschweigend überschreiben.
+
+Beim Speichern über die WebSocket-Action `hofkarte/management/save`
+(verwendet von der grafischen Verwaltungsoberfläche sowie der PWA)
+gilt:
+
+- Wird ein **neuer** Hofladen angelegt, erhält er `version: 1`.
+- Wird ein **bestehender** Hofladen aktualisiert und der übergebene
+  Datensatz enthält eine `version`, die nicht mehr mit der aktuell
+  gespeicherten übereinstimmt, wird die Änderung **abgelehnt** – die
+  Antwort enthält `"konflikt": true` sowie den aktuellen,
+  serverseitigen Stand unter `"aktueller_hofladen"`, damit die
+  aufrufende Oberfläche eine Konflikt-Ansicht (z. B. „Meine Version
+  übernehmen“ / „Server-Version übernehmen“) anzeigen kann, statt
+  Daten unbemerkt zu verlieren.
+- Stimmt die mitgeschickte `version` überein (oder fehlt sie ganz –
+  z. B. bei älteren Aufrufern oder beim Import, siehe
+  „Bewusst nicht Teil“ unten), wird gespeichert und die Version um 1
+  erhöht; die Antwort enthält dann `"konflikt": false`.
+- Die mitgelieferte Verwaltungsoberfläche (`hofkarte-panel.js`) nimmt
+  daran automatisch teil, ohne eigene Codeänderung: Sie schickt beim
+  Speichern stets den zuletzt geladenen vollständigen Hofladen-
+  Datensatz zurück, inklusive `version`.
+
+**Bewusst nicht Teil dieser Prüfung:** der Import (`ws_import_commit`)
+und jeder andere Aufrufer, der keine `version` mitschickt – dort wird
+wie vor Einführung der Versionierung ohne Konfliktprüfung
+geschrieben (volle Abwärtskompatibilität). Für Bild-Operationen genügt
+weiterhin einfaches Last-Write-Wins (Bilder werden selten zeitgleich
+auf zwei Geräten verändert) – keine Versionierung dafür nötig.
+
 ### Data Provider und Architekturentscheid zur Datenquelle
 
 **Architekturentscheid:** Die vom Benutzer gepflegten Hofläden werden in

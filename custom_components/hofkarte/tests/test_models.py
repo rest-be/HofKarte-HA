@@ -27,6 +27,8 @@ def test_hofladen_minimal_defaults() -> None:
     assert hofladen.angebote == ()
     assert hofladen.zahlungsarten == ()
     assert hofladen.bilder == ()
+    assert hofladen.bewertung == 0
+    assert hofladen.version == 1
 
 
 def test_hofladen_is_immutable() -> None:

@@ -368,6 +368,68 @@ async def test_ws_save_aktualisiert_bestehenden_hofladen(
     assert coordinator.data["hof-1"].name == "Neuer Name"
 
 
+async def test_ws_save_erfolg_enthaelt_konflikt_false_und_neue_version(
+    hass: HomeAssistant,
+) -> None:
+    """Eine erfolgreiche Aktualisierung muss 'konflikt': false sowie die neue,
+    serverseitig erhöhte Version im Ergebnis liefern (Phase 8b)."""
+    coordinator = await _setup_mit_coordinator(hass)
+    await coordinator.async_add_hofladen({"id": "hof-1", "name": "Alter Name"})
+
+    connection = _FakeConnection()
+    ws_save(
+        hass,
+        connection,
+        {
+            "id": 3,
+            "type": "hofkarte/management/save",
+            "hofladen": {"id": "hof-1", "name": "Neuer Name", "version": 1},
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert len(connection.errors) == 0
+    msg_id, data = connection.results[0]
+    assert data["konflikt"] is False
+    assert data["hofladen"]["version"] == 2
+
+
+async def test_ws_save_versionskonflikt_liefert_aktuellen_serverstand(
+    hass: HomeAssistant,
+) -> None:
+    """Eine veraltete 'version' darf keinen Fehler auslösen, sondern muss als
+    Ergebnis mit 'konflikt': true und dem aktuellen Serverstand zurückkommen,
+    damit die aufrufende Oberfläche eine Konflikt-Ansicht zeigen kann."""
+    coordinator = await _setup_mit_coordinator(hass)
+    await coordinator.async_add_hofladen({"id": "hof-1", "name": "Serverstand"})
+    # Ein zweites Gerät hat zwischenzeitlich bereits gespeichert.
+    await coordinator.async_save_hofladen(
+        {"id": "hof-1", "name": "Serverstand (aktualisiert)", "version": 1}
+    )
+
+    connection = _FakeConnection()
+    ws_save(
+        hass,
+        connection,
+        {
+            "id": 3,
+            "type": "hofkarte/management/save",
+            # Noch auf Version 1 - der Server ist inzwischen bei Version 2.
+            "hofladen": {"id": "hof-1", "name": "Veralteter Stand", "version": 1},
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert len(connection.errors) == 0
+    msg_id, data = connection.results[0]
+    assert data["konflikt"] is True
+    assert data["aktueller_hofladen"]["name"] == "Serverstand (aktualisiert)"
+    assert data["aktueller_hofladen"]["version"] == 2
+    # Der gespeicherte Stand darf durch den abgelehnten Versuch nicht
+    # verändert worden sein.
+    assert coordinator.data["hof-1"].name == "Serverstand (aktualisiert)"
+
+
 async def test_ws_save_ungueltige_daten_sendet_fehler(hass: HomeAssistant) -> None:
     """Ungültige Rohdaten (z. B. leerer Name) müssen als Fehler zurückgemeldet
     werden, ohne den Store zu verändern."""

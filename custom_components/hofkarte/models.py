@@ -144,3 +144,14 @@ class Hofladen:
     # eigene Klasse würde hier keinen zusätzlichen Nutzen bringen (siehe
     # ``parsing.py`` für die Begrenzung/Validierung auf 0-5 beim Einlesen).
     bewertung: int = 0
+    # Optimistische Versionierung für nebenläufige Schreibzugriffe mehrerer
+    # Geräte (z. B. zwei Familienmitglieder mit der HofKarte-PWA, einer davon
+    # offline). Beginnt bei 1 und wird von
+    # ``coordinator.HofKarteUpdateCoordinator.async_save_hofladen`` bei jeder
+    # erfolgreichen Aktualisierung um 1 erhöht - niemals direkt von
+    # Aufrufern gesetzt. Ein Client, der einen Hofladen ändern möchte,
+    # schickt die zuletzt bekannte Version mit; weicht diese von der
+    # aktuell gespeicherten ab, wird die Änderung als Versionskonflikt
+    # abgelehnt statt die zwischenzeitliche Änderung stillschweigend zu
+    # überschreiben (siehe ``coordinator.HofladenVersionConflictError``).
+    version: int = 1

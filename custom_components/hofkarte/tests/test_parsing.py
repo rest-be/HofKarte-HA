@@ -429,3 +429,30 @@ def test_parse_bewertung_wird_auf_gueltigen_bereich_begrenzt(
 def test_parse_bewertung_muss_zahl_sein() -> None:
     with pytest.raises(HofladenValidationError):
         parse_hofladen({"id": "hof-23", "name": "Hofladen", "bewertung": "viele"})
+
+
+def test_parse_version_default_ist_eins() -> None:
+    hofladen = parse_hofladen({"id": "hof-24", "name": "Hofladen"})
+
+    assert hofladen.version == 1
+
+
+def test_parse_version_wird_uebernommen() -> None:
+    hofladen = parse_hofladen({"id": "hof-25", "name": "Hofladen", "version": 7})
+
+    assert hofladen.version == 7
+
+
+def test_parse_version_muss_ganze_zahl_sein() -> None:
+    with pytest.raises(HofladenValidationError):
+        parse_hofladen({"id": "hof-26", "name": "Hofladen", "version": "drei"})
+
+
+def test_parse_version_muss_ganze_zahl_sein_kein_float() -> None:
+    with pytest.raises(HofladenValidationError):
+        parse_hofladen({"id": "hof-27", "name": "Hofladen", "version": 1.5})
+
+
+def test_parse_version_muss_mindestens_eins_sein() -> None:
+    with pytest.raises(HofladenValidationError):
+        parse_hofladen({"id": "hof-28", "name": "Hofladen", "version": 0})

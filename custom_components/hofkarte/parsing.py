@@ -106,6 +106,25 @@ def _parse_bewertung(raw: Mapping[str, Any]) -> int:
     return max(_BEWERTUNG_MIN, min(_BEWERTUNG_MAX, int(value)))
 
 
+def _parse_version(raw: Mapping[str, Any]) -> int:
+    """Versionsnummer für optimistische Nebenläufigkeitskontrolle einlesen.
+
+    Anders als ``bewertung`` (reine Komfort-Metainformation) ist die
+    Version sicherheitsrelevant für die Konflikterkennung beim
+    Offline-Sync (siehe ``coordinator.async_save_hofladen``) - ein
+    ungültiger Wert wird daher mit einem harten Fehler abgelehnt statt
+    stillschweigend begrenzt. Fehlt das Feld (z. B. bei Import/Export
+    aus einer Zeit vor Einführung der Versionierung), ergibt sich der
+    Standard ``1``.
+    """
+    value = raw.get("version", 1)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise HofladenValidationError("Feld 'version' muss eine ganze Zahl sein.")
+    if value < 1:
+        raise HofladenValidationError("Feld 'version' muss mindestens 1 sein.")
+    return value
+
+
 def _parse_time(raw_value: Any, context: str, field_name: str) -> time:
     if isinstance(raw_value, time):
         return raw_value
@@ -342,6 +361,7 @@ def parse_hofladen(raw: Mapping[str, Any]) -> Hofladen:
     mobilnummer = _optional_str(raw, "mobilnummer")
     email = _optional_str(raw, "email")
     bewertung = _parse_bewertung(raw)
+    version = _parse_version(raw)
 
     latitude = _optional_float(raw, "latitude", _LATITUDE_MIN, _LATITUDE_MAX)
     longitude = _optional_float(raw, "longitude", _LONGITUDE_MIN, _LONGITUDE_MAX)
@@ -381,4 +401,5 @@ def parse_hofladen(raw: Mapping[str, Any]) -> Hofladen:
         zahlungsarten=zahlungsarten,
         bilder=bilder,
         bewertung=bewertung,
+        version=version,
     )
