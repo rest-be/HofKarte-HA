@@ -41,14 +41,29 @@ blueprint:
       default: true
       selector:
         boolean:
+    mindestbewertung:
+      name: Mindestbewertung (nur Favoriten)
+      description: >-
+        Wenn grösser als 0, wird nur benachrichtigt, wenn der gefundene
+        Hofladen mindestens diese Bewertung hat – einfacher Weg, nur bei
+        Lieblings-Hofläden benachrichtigt zu werden, ohne ein eigenes
+        "Favorit"-Feld zu benötigen. 0 = keine Einschränkung (alle
+        bewerteten wie unbewerteten Hofläden).
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 5
+          step: 1
+          mode: slider
     benachrichtigungs_aktion:
       name: Benachrichtigungs-Aktion
       description: >-
         Die Aktion, die bei einem Treffer ausgeführt wird (z. B. eine
         `notify.mobile_app_<gerät>`-Aktion). Die Variablen
-        `hofladen_name` und `entfernung_meter` stehen darin über
-        Vorlagen zur Verfügung (siehe Beispiel in der Beschreibung dieses
-        Blueprints).
+        `hofladen_name`, `entfernung_meter` und `bewertung` stehen darin
+        über Vorlagen zur Verfügung (siehe Beispiel in der Beschreibung
+        dieses Blueprints).
       selector:
         action:
 
@@ -75,6 +90,7 @@ action:
       longitude: "{{ hk_longitude }}"
       radius_meter: !input radius_meter
       nur_geoeffnet: !input nur_wenn_geoeffnet
+      min_bewertung: !input mindestbewertung
     response_variable: hk_treffer
   - if:
       - condition: template
@@ -84,4 +100,5 @@ action:
           hk_naechster: "{{ hk_treffer.hoflaeden[0] }}"
           hofladen_name: "{{ hk_naechster.name }}"
           entfernung_meter: "{{ hk_naechster.entfernung_meter }}"
+          bewertung: "{{ hk_naechster.bewertung }}"
       - action: !input benachrichtigungs_aktion

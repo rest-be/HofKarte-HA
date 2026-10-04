@@ -49,3 +49,11 @@ hoflaeden_in_naehe:
       example: true
       selector:
         boolean:
+    min_bewertung:
+      example: 4
+      selector:
+        number:
+          min: 0
+          max: 5
+          step: 1
+          mode: box

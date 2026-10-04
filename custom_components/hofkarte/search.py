@@ -103,6 +103,7 @@ def find_hoflaeden_in_naehe(
     longitude: float,
     radius_meter: float,
     nur_geoeffnet: bool | None = None,
+    min_bewertung: int | None = None,
     now: datetime | None = None,
 ) -> list[tuple[Hofladen, float]]:
     """Hofläden innerhalb eines Radius um einen beliebigen Standort.
@@ -121,7 +122,15 @@ def find_hoflaeden_in_naehe(
     Hofläden ohne bekannte Koordinaten werden übersprungen, da für sie
     keine Entfernung berechnet werden kann. ``nur_geoeffnet`` filtert
     analog zu ``find_hoflaeden`` zusätzlich auf aktuell geöffnete
-    Hofläden (dafür ist ``now`` erforderlich).
+    Hofläden (dafür ist ``now`` erforderlich). ``min_bewertung`` filtert
+    zusätzlich auf Hofläden mit einer Bewertung (``Hofladen.bewertung``,
+    ein geteilter Wert 0–5, siehe ``models.py``) von mindestens diesem
+    Wert – gedacht als einfacher "nur Lieblings-Hofläden"-Filter für
+    Benachrichtigungen (es gibt bewusst kein separates Favoriten-Feld,
+    siehe Vorgehensplan, um die bestehende, geteilte Bewertung nicht zu
+    verdoppeln). Ein Hofladen ohne Bewertung (``bewertung == 0``, der
+    Default) erfüllt ein gesetztes ``min_bewertung`` nie, ausser
+    ``min_bewertung`` ist selbst ``0``.
 
     Gibt eine Liste aus Tupeln ``(Hofladen, entfernung_km)`` zurück,
     aufsteigend nach Entfernung sortiert (nächstgelegener Hofladen
@@ -133,6 +142,8 @@ def find_hoflaeden_in_naehe(
         )
     if radius_meter < 0:
         raise ValueError("'radius_meter' darf nicht negativ sein.")
+    if min_bewertung is not None and not (0 <= min_bewertung <= 5):
+        raise ValueError("'min_bewertung' muss zwischen 0 und 5 liegen.")
 
     radius_km = radius_meter / 1000
 
@@ -151,6 +162,9 @@ def find_hoflaeden_in_naehe(
             assert now is not None  # durch die Prüfung oben sichergestellt
             if is_open(hofladen, now) is not True:
                 continue
+
+        if min_bewertung and hofladen.bewertung < min_bewertung:
+            continue
 
         treffer.append((hofladen, entfernung_km))
 

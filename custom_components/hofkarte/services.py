@@ -60,6 +60,9 @@ _SERVICE_HOFLAEDEN_IN_NAEHE_SCHEMA = vol.Schema(
             vol.Coerce(float), vol.Range(min=0)
         ),
         vol.Optional("nur_geoeffnet"): cv.boolean,
+        vol.Optional("min_bewertung"): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=5)
+        ),
     }
 )
 
@@ -103,6 +106,7 @@ def _naehe_treffer_zu_ergebnis_eintrag(
     """
     eintrag = _hofladen_zu_ergebnis_eintrag(hofladen, now)
     eintrag["entfernung_meter"] = round(entfernung_km * 1000)
+    eintrag["bewertung"] = hofladen.bewertung
     return eintrag
 
 
@@ -154,6 +158,7 @@ async def _async_hoflaeden_in_naehe(
         longitude=call.data["longitude"],
         radius_meter=call.data["radius_meter"],
         nur_geoeffnet=nur_geoeffnet,
+        min_bewertung=call.data.get("min_bewertung"),
         now=now if nur_geoeffnet is not None else None,
     )
 

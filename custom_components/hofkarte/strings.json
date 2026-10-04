@@ -71,6 +71,10 @@
         "nur_geoeffnet": {
           "name": "Only currently open",
           "description": "If set, only farm shops that are currently open are returned."
+        },
+        "min_bewertung": {
+          "name": "Minimum rating",
+          "description": "If set, only farm shops with a rating of at least this value are returned (0–5, simple \"favorites only\" filter)."
         }
       }
     }

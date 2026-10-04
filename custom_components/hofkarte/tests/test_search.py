@@ -332,3 +332,46 @@ def test_in_naehe_negativer_radius_wirft_fehler() -> None:
             longitude=_BERN_LON,
             radius_meter=-1,
         )
+
+
+def test_in_naehe_min_bewertung_filtert() -> None:
+    liebling = _hofladen(
+        id="hof-liebling", latitude=46.95, longitude=7.45, bewertung=5
+    )
+    unbewertet = _hofladen(
+        id="hof-unbewertet", latitude=46.95, longitude=7.45, bewertung=0
+    )
+    mittel = _hofladen(id="hof-mittel", latitude=46.95, longitude=7.45, bewertung=3)
+
+    treffer = find_hoflaeden_in_naehe(
+        [liebling, unbewertet, mittel],
+        latitude=_BERN_LAT,
+        longitude=_BERN_LON,
+        radius_meter=2000,
+        min_bewertung=4,
+    )
+
+    assert [hofladen.id for hofladen, _ in treffer] == ["hof-liebling"]
+
+
+def test_in_naehe_min_bewertung_null_schliesst_nichts_aus() -> None:
+    treffer = find_hoflaeden_in_naehe(
+        [_NAHE_BERN],  # Standard-Bewertung 0 (siehe models.Hofladen)
+        latitude=_BERN_LAT,
+        longitude=_BERN_LON,
+        radius_meter=2000,
+        min_bewertung=0,
+    )
+
+    assert [hofladen.id for hofladen, _ in treffer] == ["hof-nahe-bern"]
+
+
+def test_in_naehe_min_bewertung_ausserhalb_bereich_wirft_fehler() -> None:
+    with pytest.raises(ValueError):
+        find_hoflaeden_in_naehe(
+            [_NAHE_BERN],
+            latitude=_BERN_LAT,
+            longitude=_BERN_LON,
+            radius_meter=2000,
+            min_bewertung=6,
+        )

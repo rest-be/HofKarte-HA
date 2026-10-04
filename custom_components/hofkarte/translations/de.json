@@ -71,6 +71,10 @@
         "nur_geoeffnet": {
           "name": "Nur aktuell geöffnet",
           "description": "Wenn gesetzt, werden nur aktuell geöffnete Hofläden zurückgegeben."
+        },
+        "min_bewertung": {
+          "name": "Mindestbewertung",
+          "description": "Wenn gesetzt, werden nur Hofläden mit mindestens dieser Bewertung zurückgegeben (0–5, einfacher \"nur Favoriten\"-Filter)."
         }
       }
     }

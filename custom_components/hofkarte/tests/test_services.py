@@ -392,6 +392,45 @@ async def test_naehe_nur_geoeffnet_filtert(hass: HomeAssistant) -> None:
     assert ergebnis["hoflaeden"][0]["id"] == "hof-immer-offen"
 
 
+async def test_naehe_min_bewertung_filtert(hass: HomeAssistant) -> None:
+    await _setup(hass)
+    coordinator = hass.data[DOMAIN][next(iter(hass.data[DOMAIN]))]
+    await coordinator.async_add_hofladen(
+        {
+            "id": "hof-liebling",
+            "name": "Lieblings-Hofladen",
+            "latitude": 46.95,
+            "longitude": 7.45,
+            "bewertung": 5,
+        }
+    )
+    await coordinator.async_add_hofladen(
+        {
+            "id": "hof-unbewertet",
+            "name": "Unbewerteter Hofladen",
+            "latitude": 46.95,
+            "longitude": 7.45,
+        }
+    )
+
+    ergebnis = await hass.services.async_call(
+        DOMAIN,
+        SERVICE_HOFLAEDEN_IN_NAEHE,
+        {
+            "latitude": _BERN_LAT,
+            "longitude": _BERN_LON,
+            "radius_meter": 2000,
+            "min_bewertung": 4,
+        },
+        blocking=True,
+        return_response=True,
+    )
+
+    assert ergebnis["anzahl_treffer"] == 1
+    assert ergebnis["hoflaeden"][0]["id"] == "hof-liebling"
+    assert ergebnis["hoflaeden"][0]["bewertung"] == 5
+
+
 # ---------------------------------------------------------------------------
 # hoflaeden_in_naehe – Validierung
 # ---------------------------------------------------------------------------
@@ -436,6 +475,26 @@ async def test_naehe_mit_negativem_radius_wird_abgelehnt(
             DOMAIN,
             SERVICE_HOFLAEDEN_IN_NAEHE,
             {"latitude": _BERN_LAT, "longitude": _BERN_LON, "radius_meter": -1},
+            blocking=True,
+            return_response=True,
+        )
+
+
+async def test_naehe_mit_min_bewertung_ausserhalb_bereich_wird_abgelehnt(
+    hass: HomeAssistant,
+) -> None:
+    await _setup(hass)
+
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_HOFLAEDEN_IN_NAEHE,
+            {
+                "latitude": _BERN_LAT,
+                "longitude": _BERN_LON,
+                "radius_meter": 500,
+                "min_bewertung": 6,
+            },
             blocking=True,
             return_response=True,
         )

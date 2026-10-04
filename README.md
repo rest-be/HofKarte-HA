@@ -469,6 +469,7 @@ beliebigen, bei jedem Aufruf mitgegebenen Standort prüft:
 | `longitude`       | Zahl    | ja      | Längengrad des Bezugspunkts                           |
 | `radius_meter`    | Zahl    | ja      | Suchradius in Metern um den Bezugspunkt               |
 | `nur_geoeffnet`   | Bool    | nein    | Nur aktuell geöffnete Hofläden                        |
+| `min_bewertung`   | Zahl (0–5) | nein | Nur Hofläden mit mindestens dieser Bewertung – einfacher „nur Favoriten“-Filter, der das bestehende, geteilte `bewertung`-Feld wiederverwendet statt ein eigenes Favoriten-Feld einzuführen. Ein Hofladen ohne Bewertung (Standardwert 0) erfüllt keinen `min_bewertung`-Wert grösser 0. |
 
 **Rückgabedaten**, aufsteigend nach Entfernung sortiert:
 
@@ -479,6 +480,7 @@ hoflaeden:
     name: Hofladen Müller
     geoeffnet: true
     entfernung_meter: 340
+    bewertung: 5
 ```
 
 Es werden dabei **keine** Standortdaten durch die Integration
@@ -541,6 +543,68 @@ Blueprints → Blueprint importieren*). Es löst bei jeder
 Standortänderung einer `person`- oder `device_tracker`-Entity eine
 frei wählbare Benachrichtigungs-Aktion aus, wenn sich ein Hofladen
 innerhalb des konfigurierten Radius befindet.
+
+### Einrichtungsanleitung: Push-Benachrichtigung bei Hofladen in der Nähe
+
+Dieser Abschnitt beschreibt Schritt für Schritt, wie die
+Nähe-Benachrichtigung aufs Smartphone eingerichtet wird. **Es wird
+keine eigene Push-Infrastruktur benötigt** – die Benachrichtigung
+läuft über die offizielle Home Assistant Companion App, die bereits
+eine zuverlässige, verschlüsselte Push-Zustellung mitbringt. Dieses
+Blueprint dient lediglich dazu, bei Bedarf eine solche Aktion
+auszulösen.
+
+1. **Companion App installieren und verbinden.** Auf dem Smartphone
+   die „Home Assistant“-App aus dem App Store bzw. Play Store
+   installieren und mit der eigenen Home-Assistant-Instanz verbinden
+   (Benutzerkonto, nicht zwingend dasselbe technische Konto wie das
+   für die PWA – siehe Abschnitt „Mobile PWA“ unten). Dabei legt die
+   App automatisch eine `notify.mobile_app_<gerätename>`-Aktion sowie
+   eine `person`-/`device_tracker`-Entity mit dem Standort dieses
+   Geräts an.
+2. **Standortfreigabe aktivieren.** In den App-Einstellungen unter
+   *Einstellungen → Begleit-App → Standort* die Standortfreigabe an
+   Home Assistant erlauben (im Hintergrund, nicht nur bei geöffneter
+   App – sonst wird kein Standortwechsel erkannt, wenn das Smartphone
+   gerade nicht aktiv genutzt wird).
+3. **Blueprint importieren.** In Home Assistant unter *Einstellungen
+   → Automatisierungen & Szenen → Blueprints → Blueprint importieren*
+   die URL
+   `https://github.com/rest-be/HofKarte-HA/blob/develop/blueprints/automation/hofkarte/naehe_benachrichtigung.yaml`
+   eingeben und importieren.
+4. **Automation aus dem Blueprint erstellen.** Unter *Automatisierungen
+   → Automatisierung erstellen → Aus Blueprint* das importierte
+   Blueprint „HofKarte – Benachrichtigung bei Hofladen in der Nähe“
+   auswählen und folgende Eingaben setzen:
+   - **Standort:** die im Schritt 1 angelegte `person`- oder
+     `device_tracker`-Entity des eigenen Smartphones.
+   - **Radius:** z. B. `500` m.
+   - **Nur wenn geöffnet:** aktiviert lassen, wenn nur bei
+     tatsächlich offenen Hofläden benachrichtigt werden soll.
+   - **Mindestbewertung (nur Favoriten):** optional – z. B. `4`, wenn
+     nur bei mit mindestens 4 von 5 Sternen bewerteten
+     Lieblings-Hofläden benachrichtigt werden soll. `0` (Standard)
+     bedeutet keine Einschränkung.
+   - **Benachrichtigungs-Aktion:** die im Schritt 1 angelegte
+     `notify.mobile_app_<gerätename>`-Aktion, z. B. mit folgenden
+     Daten:
+     ```yaml
+     action: notify.mobile_app_mein_smartphone
+     data:
+       title: "Hofladen in der Nähe"
+       message: >-
+         {{ hofladen_name }} ist {{ entfernung_meter }} m entfernt
+         (Bewertung: {{ bewertung }}/5).
+     ```
+     Die Vorlagen-Variablen `hofladen_name`, `entfernung_meter` und
+     `bewertung` stehen hier automatisch zur Verfügung (siehe
+     Blueprint-Beschreibung).
+5. **Automation speichern und testen.** Nach dem Speichern einmal den
+   Standort des Smartphones ändern (oder testweise den Radius
+   grosszügig wählen) und prüfen, ob die Benachrichtigung ankommt.
+   Bei Problemen helfen *Einstellungen → System → Protokolle* sowie
+   die Traces der Automation (*Automatisierungen → … → Traces/Verlauf
+   öffnen*).
 
 ## Mobile PWA
 
