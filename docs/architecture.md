@@ -253,8 +253,9 @@ ausreichend.
   gezeichnetes Koordinatenraster ohne echtes Kartenmaterial) hätte den
   eigentlichen Zweck (Wiedererkennung realer Orte/Strassen) verfehlt.
 - Eine schlanke JavaScript-Kartenbibliothek mit OpenStreetMap-Kacheln,
-  per `<script>`/`<link>` von einem CDN eingebunden – **ohne**
-  Build-Pipeline oder npm-Abhängigkeit im Repository.
+  als unveränderte Distributionsdatei im Repository gebündelt (seit
+  `2026.10.0-dev.6`, Befund F7) – **ohne** Build-Pipeline, npm-
+  Abhängigkeit oder CDN zur Laufzeit.
 
 **Entscheid: [Leaflet](https://leafletjs.com/) `1.9.4` (BSD-2-Clause) +
 OpenStreetMap-Kacheln.** Begründung:
@@ -262,9 +263,12 @@ OpenStreetMap-Kacheln.** Begründung:
 - kein API-Schlüssel und kein Kartendienst-Konto nötig
   (OpenStreetMap-Kacheln sind ohne Registrierung nutzbar) – im
   Unterschied zu den meisten kommerziellen Kartendiensten;
-- keine Build-Pipeline/npm-Abhängigkeit im Repository nötig: reines
-  `<script>`/`<link>` von einem CDN (`cdn.jsdelivr.net`), mit **fest
-  gepinnter** Versionsnummer statt „latest“;
+- keine Build-Pipeline/npm-Abhängigkeit nötig: die **fest gepinnte**
+  Version liegt unverändert unter `static/vendor/leaflet/` und wird von
+  Home Assistant ausgeliefert (`/api/hofkarte/static/vendor/…?v=<Version>`);
+  **kein CDN** – keine Lieferketten-Abhängigkeit zur Laufzeit, kein
+  Verbindungsaufbau zu Dritten ausser den OSM-Kacheln. Herkunft, Lizenz
+  (BSD-2-Clause) und SHA-256-Prüfsummen: `THIRD_PARTY_NOTICES.md`;
 - seit vielen Jahren aktiv gewartet, sehr verbreitet (u. a. in
   zahlreichen Home-Assistant-HACS-Karten bereits im Einsatz), kompakt
   (~40 KB gzip für JS und CSS zusammen).
@@ -276,35 +280,43 @@ Build-Pipeline und nicht in `manifest.json` deklariert (es ist eine
 reine Frontend-/Browser-Abhängigkeit, keine Python-Abhängigkeit der
 Integration selbst).
 
-**Lazy Loading:** `ladeLeaflet()` in `hofkarte-panel.js` lädt das
-`<script>`-Tag (und `karteAnsicht()` das zugehörige `<link>`-Stylesheet)
-**erst beim ersten Öffnen** der Kartenansicht, nicht beim Start des
-Panels – wer die Kartenansicht nie öffnet, löst auch nie eine
-Verbindung zum CDN oder zum OpenStreetMap-Kachel-Server aus (siehe
-Datenschutz-Hinweise im Handbuch). Das zurückgegebene Promise wird
-zwischengespeichert (`leafletLoadPromise`), damit mehrfaches Öffnen der
-Ansicht nicht mehrfach nachlädt; schlägt das Laden fehl (z. B. CDN
-nicht erreichbar), wird es verworfen, damit ein erneuter Versuch beim
-nächsten Öffnen möglich ist, statt dauerhaft fehlzuschlagen.
+**Lazy Loading und Fehlerbehandlung:** `ladeLeaflet()` in
+`hofkarte-panel.js` lädt das lokale `<script>` **erst beim ersten
+Öffnen** der Kartenansicht, nicht beim Start des Panels – wer die
+Kartenansicht nie öffnet, löst auch nie eine Verbindung zum
+OpenStreetMap-Kachel-Server aus (siehe Datenschutz-Hinweise im
+Handbuch). Das Promise wird je Skript zwischengespeichert. Schlägt das
+Laden fehl, wird das fehlerhafte `<script>`-Element wieder entfernt, das
+Promise verworfen und die Meldung per `textContent` angezeigt – **ohne**
+`render()` (Befund F8: sonst würde `render()` → `initKarte()` →
+`ladeLeaflet()` eine Endlosschleife bilden). Ein neuer Versuch erfolgt
+nur über „Erneut versuchen“ bzw. beim ausdrücklichen Wechsel in die
+Kartenansicht. Analog sperrt `_loadFailed` (Befund F9) das automatische
+Laden der Hofladen-Liste bei jeder `hass`-Änderung nach einem
+Fehlschlag; stattdessen gibt es einen Backoff-Timer (2 s, 4 s, … max.
+60 s) und den Button „Erneut versuchen“. Der `_loading`-Schutz bleibt.
 
-**Rendering innerhalb des Shadow-DOM-Custom-Elements:** Leaflets CSS
-muss innerhalb desselben Shadow-DOM-Baums geladen werden wie die Karte
-selbst (Shadow-DOM-Style-Isolation) – das `<link>`-Element steht daher
-direkt im von `karteAnsicht()` erzeugten Markup, nicht im globalen
-Dokument-`<head>`. Da `render()` bei **jeder** Änderung den gesamten
-Shadow-DOM-Inhalt per `innerHTML` ersetzt (bestehendes Architekturmuster
-dieses Panels, siehe unten), würde eine bestehende Leaflet-Karteninstanz
-sonst mit einem bereits aus dem DOM entfernten Container weiterleben
-(offene Event-Listener u. a. auf `window`). `teardownKarte()` entfernt
-die Instanz deshalb **vor** jedem `innerHTML`-Ersatz explizit
-(`map.remove()`); ist die Kartenansicht weiterhin aktiv, baut
-`initKarte()` danach eine neue Instanz in den neu erzeugten Container
-auf. Das bedeutet: Die Karte wird bei jedem Re-Render der Ansicht
-(Wechsel in die Kartenansicht, Ändern des Geöffnet-Filters) neu
-aufgebaut statt aktualisiert – konsistent mit dem bestehenden,
-einfachen Render-Modell des Panels und für die hier relevanten
-Datenmengen (einzelne bis wenige Dutzend Hofläden) ohne spürbaren
-Performance-Nachteil.
+**Clustering:** Ab 200 Markern (`KARTE_CLUSTER_AB`) wird das ebenfalls
+lokal gebündelte `leaflet.markercluster` (MIT) nachgeladen. Begründung
+gegenüber `preferCanvas`: Die Marker sind DOM-basierte `divIcon`s, ein
+Canvas-Renderer greift für sie nicht; Clustering senkt Knotenzahl und
+Zeichenlast tatsächlich. Fehlt die Bibliothek, werden die Marker einzeln
+dargestellt.
+
+**Rendering innerhalb des Shadow-DOM-Custom-Elements (seit
+`2026.10.0-dev.6`, Befund F10):** `<style>` und die Leaflet-
+Stylesheets (`<link>`) stehen **dauerhaft** im Shadow Root, `render()`
+ersetzt nur noch den Inhalt von `<main>`. Die Karte lebt, solange die
+Kartenansicht offen ist: `initKarte()` erzeugt sie **einmal** und hängt
+bei weiteren Renders lediglich ihren Container (`_karteHost`) in den
+neuen Platzhalter um; bei Filter-/Datenänderung wird nur die
+Marker-Ebene getauscht (`aktualisiereMarker()`, mit Signaturvergleich).
+`teardownKarte()` (`map.remove()`) läuft nur beim Verlassen der
+Kartenansicht bzw. in `disconnectedCallback()`. Es gibt genau einen
+`popupopen`-Handler pro Karte. Listen-/Kartenaktionen laufen über eine
+einmalig gebundene Event-Delegation auf `<main>`; der Listenfilter ist
+mit ~150 ms entprellt und ersetzt nur `<tbody>`; Such-/Sortierschlüssel
+werden je Hofladen einmal vorberechnet.
 
 Die Kartengrössenberechnung (`L.map()`) erfolgt, nachdem der Container
 bereits über `innerHTML` ins DOM eingefügt wurde (Layout ist zu diesem

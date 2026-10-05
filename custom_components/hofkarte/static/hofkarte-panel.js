@@ -92,46 +92,65 @@ function appleMapsRoutenUrl(ziel) {
 // Markern wurde daher bewusst Leaflet + OpenStreetMap gewählt – eine
 // dokumentierte, minimal-invasive Ausnahme vom Projektgrundsatz „keine
 // neuen Abhängigkeiten“ (siehe docs/architecture.md):
-// - keine Build-Pipeline/npm-Abhängigkeit im Repository nötig (reines
-//   <script>/<link> von einem CDN, fest gepinnte Version, kein
-//   „latest“);
+// - keine Build-Pipeline/npm-Abhängigkeit nötig: die fest gepinnte Version
+//   liegt als unveränderte Distributionsdatei im Repository
+//   (static/vendor/leaflet, THIRD_PARTY_NOTICES.md) und wird von
+//   Home Assistant selbst ausgeliefert - bewusst KEIN CDN (Befund F7:
+//   keine Lieferketten-Abhängigkeit zur Laufzeit, keine Verbindung zu
+//   Dritten ausser den OSM-Kacheln, Betrieb auch ohne Internetzugang
+//   zum CDN);
 // - kein API-Schlüssel und kein Kartendienst-Konto nötig
 //   (OpenStreetMap-Kacheln sind ohne Registrierung nutzbar);
-// - BSD-2-Clause-Lizenz, seit vielen Jahren aktiv gewartet, sehr
-//   verbreitet (u. a. in zahlreichen Home-Assistant-HACS-Karten bereits
-//   im Einsatz), kompakt (~40 KB gzip für JS und CSS zusammen).
+// - BSD-2-Clause-Lizenz, seit vielen Jahren aktiv gewartet, kompakt.
 // Wird bewusst erst beim ersten Öffnen der Kartenansicht nachgeladen
-// (nicht beim Start des Panels), damit Nutzer:innen, die die
-// Kartenansicht nie öffnen, auch nie eine Verbindung zum
-// CDN/Kachel-Anbieter auslösen (siehe Datenschutz-Hinweise im Handbuch).
+// (nicht beim Start des Panels). Für sehr viele Marker (> KARTE_CLUSTER_AB)
+// wird zusätzlich leaflet.markercluster (MIT, ebenfalls lokal gebündelt)
+// nachgeladen.
 const LEAFLET_VERSION = "1.9.4";
-const LEAFLET_JS_URL = `https://cdn.jsdelivr.net/npm/leaflet@${LEAFLET_VERSION}/dist/leaflet.js`;
-const LEAFLET_CSS_URL = `https://cdn.jsdelivr.net/npm/leaflet@${LEAFLET_VERSION}/dist/leaflet.css`;
+const MARKERCLUSTER_VERSION = "1.5.3";
+const VENDOR_BASIS = "/api/hofkarte/static/vendor";
+const LEAFLET_JS_URL = `${VENDOR_BASIS}/leaflet/leaflet.js?v=${LEAFLET_VERSION}`;
+const LEAFLET_CSS_URL = `${VENDOR_BASIS}/leaflet/leaflet.css?v=${LEAFLET_VERSION}`;
+const MARKERCLUSTER_JS_URL = `${VENDOR_BASIS}/leaflet.markercluster/leaflet.markercluster.js?v=${MARKERCLUSTER_VERSION}`;
+const MARKERCLUSTER_CSS_URLS = [
+  `${VENDOR_BASIS}/leaflet.markercluster/MarkerCluster.css?v=${MARKERCLUSTER_VERSION}`,
+  `${VENDOR_BASIS}/leaflet.markercluster/MarkerCluster.Default.css?v=${MARKERCLUSTER_VERSION}`,
+];
+const KARTE_CLUSTER_AB = 200; // ab dieser Markeranzahl wird geclustert (Befund F10)
 
-let leafletLoadPromise = null;
+const skriptPromises = new Map();
 
-/** Leaflet (globale ``L``-Schnittstelle) einmalig per <script>-Tag von
- * einem CDN nachladen. Mehrfache Aufrufe (z. B. mehrfaches Öffnen der
- * Kartenansicht) liefern dasselbe Promise – kein doppeltes Nachladen.
- * Schlägt das Laden fehl (z. B. CDN nicht erreichbar), wird das
- * Promise verworfen, damit ein erneuter Versuch beim nächsten Öffnen
- * der Kartenansicht möglich ist, statt dauerhaft fehlzuschlagen. */
-function ladeLeaflet() {
-  if (window.L) return Promise.resolve(window.L);
-  if (leafletLoadPromise) return leafletLoadPromise;
-
-  leafletLoadPromise = new Promise((resolve, reject) => {
+/** Ein lokales Skript einmalig per <script>-Tag laden. Mehrfache Aufrufe
+ * liefern dasselbe Promise. Schlägt das Laden fehl, wird das fehlerhafte
+ * <script>-Element wieder entfernt und das Promise verworfen (kein
+ * Wiederverwenden eines kaputten Elements; ein erneuter Versuch ist nur
+ * auf ausdrückliche Anforderung möglich - Befund F8). */
+function ladeSkript(url, bereit, fehlertext) {
+  if (bereit()) return Promise.resolve();
+  if (skriptPromises.has(url)) return skriptPromises.get(url);
+  const p = new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = LEAFLET_JS_URL;
+    script.src = url;
     script.async = true;
-    script.onload = () => (window.L ? resolve(window.L) : reject(new Error("Kartenbibliothek wurde geladen, stellt aber keine gültige Schnittstelle bereit.")));
-    script.onerror = () => reject(new Error("Kartenbibliothek konnte nicht geladen werden (CDN nicht erreichbar?)."));
+    script.onload = () => (bereit() ? resolve() : (script.remove(), reject(new Error(fehlertext))));
+    script.onerror = () => { script.remove(); reject(new Error(fehlertext)); };
     document.head.appendChild(script);
   }).catch((err) => {
-    leafletLoadPromise = null;
+    skriptPromises.delete(url);
     throw err;
   });
-  return leafletLoadPromise;
+  skriptPromises.set(url, p);
+  return p;
+}
+
+/** Leaflet (globale ``L``-Schnittstelle) laden (siehe ladeSkript()). */
+function ladeLeaflet() {
+  return ladeSkript(LEAFLET_JS_URL, () => !!window.L, "Kartenbibliothek konnte nicht geladen werden.").then(() => window.L);
+}
+
+/** leaflet.markercluster laden (setzt Leaflet voraus). */
+function ladeMarkercluster() {
+  return ladeSkript(MARKERCLUSTER_JS_URL, () => !!(window.L && window.L.markerClusterGroup), "Marker-Clustering konnte nicht geladen werden.");
 }
 
 // Eigenes Marker-Icon statt Leaflets Standardbild (Issue #4): Leaflets
@@ -203,6 +222,16 @@ function eigeneUploadImageId(url, eigenerOrigin) {
   if (parsed.search || parsed.hash || parsed.username || parsed.password) return null;
   const treffer = /^\/api\/image\/serve\/([0-9a-f]{32})\/(?:original|\d{1,4}x\d{1,4})$/.exec(parsed.pathname);
   return treffer ? treffer[1] : null;
+}
+
+// Befund F14 (Code Review 2026.9.2): In Kacheln/Listen/Editor werden eigene
+// Uploads als 256x256-Vorschau geladen (Home Assistant erzeugt sie beim
+// ersten Abruf), das Original nur in der Detailansicht. Fremde URLs bleiben
+// unverändert. Rein und ohne DOM.
+const VORSCHAU_GROESSE = 256;
+function uploadVorschauUrl(url, eigenerOrigin, groesse = VORSCHAU_GROESSE) {
+  const id = eigeneUploadImageId(url, eigenerOrigin);
+  return id ? `${eigenerOrigin}/api/image/serve/${id}/${groesse}x${groesse}` : url;
 }
 
 // Befund F12 (Code Review 2026.9.2): Defense in Depth im Panel. Alle Funktionen
@@ -292,8 +321,17 @@ class HofkartePanel extends HTMLElement {
     this.listenFilter = ""; // Freitextfilter in der Listenansicht
     this.karteNurGeoeffnet = false; // Checkbox "nur aktuell geöffnete Hofläden" (Issue #2)
     this.karteFehler = ""; // Fehlermeldung beim Laden der Kartenbibliothek (Issue #2)
-    this._leafletMap = null; // aktive Leaflet-Karteninstanz, ausserhalb des normalen Render-Zyklus verwaltet
+    this._leafletMap = null; // aktive Leaflet-Karteninstanz, ausserhalb des normalen Render-Zyklus verwaltet; lebt, solange die Kartenansicht offen ist (Befund F10)
     this._leafletResizeHandler = null;
+    this._karteHost = null; // dauerhafter Karten-Container (wird bei jedem render() nur in den neuen Platzhalter umgehängt, die Karte selbst bleibt bestehen)
+    this._markerLayer = null; // aktuelle Marker-Ebene; bei Filteränderung wird nur sie getauscht
+    this._markerSignatur = ""; // erkennt, ob sich die dargestellten Marker überhaupt geändert haben
+    this._karteToken = 0; // verwirft Ergebnisse veralteter initKarte()-Läufe
+    this._filterTimer = null; // Debounce für den Listenfilter
+    this._sortSchluessel = new WeakMap(); // vorberechnete Such-/Sortierschlüssel je Hofladen-Objekt (Befund F10)
+    this._loadFailed = false; // Laden schlug fehl: kein erneuter Versuch bei jeder hass-Änderung (Befund F9)
+    this._loadVersuche = 0;
+    this._loadTimer = null; // Backoff-Timer für den automatischen Wiederholversuch
     this.auswahl = new Set(); // ausgewählte Hofladen-IDs für den Export (Issue #5)
     this.importDialog = null; // { eintraege, entscheidungen: Map<bestehende_id, "aktualisieren"|"ueberspringen"> } - nicht null während der Duplikat-Konfliktlösung eines Imports (Issue #5)
     this.webseiteInfoVorschlag = null; // vom Server ermittelte, ggf. aus beiden Quellen zusammengeführte Vorschlagsdaten, bis sie im Bestätigungs-Popup übernommen/verworfen werden (Issue #9/#10). Seit Issue #11 immer das Ergebnis von ermittleAutomatisch() - unabhängig davon, ob es aus der Website, aus OpenStreetMap oder aus beiden Quellen zusammengeführt stammt (siehe mischeAutoVorschlaege()).
@@ -306,16 +344,35 @@ class HofkartePanel extends HTMLElement {
     this._einstellungenGeladen = false; // Verhindert, dass ein bereits von der Nutzerin/dem Nutzer geänderter Sortier-/Radius-Wert durch einen erneuten load() (z. B. nach dem Speichern) überschrieben wird.
     this._wartendesWebseiteErgebnis = null; // Zwischengespeichertes Website-Ergebnis, während die OSM-Trefferauswahl (mehrere Treffer) noch offen ist (Issue #11, siehe ermittleAutomatisch()/waehleOsmOrt()).
     this.attachShadow({ mode: "open" });
+    // Das Stylesheet wird genau einmal angelegt (Befund F10); render()
+    // ersetzt nur noch den Inhalt von <main>.
+    this._styleEl = document.createElement("style");
+    this._styleEl.textContent = this.styles();
+    this._mainEl = document.createElement("main");
+    this.shadowRoot.append(this._styleEl, this._mainEl);
+    this.bindDelegiert();
   }
 
   set hass(value) {
     this._hass = value;
-    if (this.isConnected && !this._loaded) this.load();
+    // Nach einem Fehlschlag (this._loadFailed) wird NICHT bei jeder
+    // Zustandsänderung von Home Assistant neu geladen (Befund F9): ein
+    // neuer Versuch erfolgt über den Backoff-Timer oder den Button.
+    if (this.isConnected && !this._loaded && !this._loadFailed) this.load();
   }
   get hass() { return this._hass; }
 
-  connectedCallback() { this.render(); if (this.hass) this.load(); }
-  disconnectedCallback() { this.teardownKarte(); }
+  connectedCallback() {
+    this._loadFailed = false;
+    this.render();
+    if (this.hass) this.load();
+  }
+  disconnectedCallback() {
+    clearTimeout(this._loadTimer); this._loadTimer = null;
+    clearTimeout(this._filterTimer); this._filterTimer = null;
+    this._karteToken++;
+    this.teardownKarte();
+  }
 
   async call(type, payload = {}) {
     return this.hass.connection.sendMessagePromise({ type, ...payload });
@@ -357,6 +414,9 @@ class HofkartePanel extends HTMLElement {
       const result = await this.call("hofkarte/management/list");
       this.items = result.hoflaeden || [];
       this._loaded = true;
+      this._loadFailed = false;
+      this._loadVersuche = 0;
+      clearTimeout(this._loadTimer); this._loadTimer = null;
       this.message = "";
       this.error = "";
       // Detailansicht mit aktualisierten Daten synchron halten, falls
@@ -368,8 +428,28 @@ class HofkartePanel extends HTMLElement {
       this.render();
     } catch (err) {
       this.error = err?.message || "Die Hofläden konnten nicht geladen werden.";
+      this.planeLadeWiederholung();
       this.render();
     } finally { this._loading = false; }
+  }
+
+  /** Nach einem Ladefehler nicht in einer Schleife neu laden (Befund F9):
+   * ``_loadFailed`` sperrt die Auslösung über ``set hass``; ein einzelner
+   * Wiederholversuch erfolgt mit exponentiellem Backoff (2 s, 4 s, … max.
+   * 60 s) oder sofort über den Button "Erneut versuchen". */
+  planeLadeWiederholung() {
+    this._loadFailed = true;
+    this._loadVersuche += 1;
+    clearTimeout(this._loadTimer);
+    if (!this.isConnected) return;
+    const wartezeit = Math.min(60000, 2000 * 2 ** (this._loadVersuche - 1));
+    this._loadTimer = setTimeout(() => this.ladeErneut(), wartezeit);
+  }
+
+  ladeErneut() {
+    clearTimeout(this._loadTimer); this._loadTimer = null;
+    this._loadFailed = false;
+    if (this.isConnected && this.hass) this.load();
   }
 
   empty() {
@@ -1047,19 +1127,23 @@ class HofkartePanel extends HTMLElement {
 
   // --- Rendering -----------------------------------------------------
 
+  /** Ist gerade die Kartenansicht der Übersicht sichtbar? */
+  istKartenansicht() {
+    return !this.editing && !this.viewing && !this.importDialog && this.uebersichtsAnsicht === "karte" && this.items.length > 0;
+  }
+
   render() {
     if (!this.shadowRoot) return;
-    // Eine bestehende Leaflet-Karteninstanz muss vor dem Ersetzen von
-    // innerHTML explizit entfernt werden (map.remove()) – sie hält
-    // sonst weiterhin Referenzen/Event-Listener (z. B. auf window)
-    // gegen einen bereits aus dem DOM entfernten Container. Wird die
-    // Kartenansicht danach erneut aufgebaut, übernimmt initKarte() das.
-    this.teardownKarte();
-    this.shadowRoot.innerHTML = `<style>${this.styles()}</style><main>${this.currentView()}</main>`;
+    // Die Leaflet-Karte lebt, solange die Kartenansicht offen ist (Befund
+    // F10): sie wird nur beim Verlassen der Kartenansicht abgebaut
+    // (map.remove()), nicht bei jedem Render. Ihr Container (this._karteHost)
+    // wird in initKarte() in den neu erzeugten Platzhalter umgehängt.
+    const inKarte = this.istKartenansicht();
+    if (!inKarte) this.teardownKarte();
+    // <style> existiert dauerhaft (Konstruktor) - hier wird nur <main> ersetzt.
+    this._mainEl.innerHTML = this.currentView();
     this.bind();
-    if (!this.editing && !this.viewing && this.uebersichtsAnsicht === "karte" && this.items.length) {
-      this.initKarte();
-    }
+    if (inKarte) this.initKarte();
     // Barrierefreiheit (Issue #9, 5.2): Fokus beim Öffnen des
     // Bestätigungs-Popups auf den Dialog selbst setzen, damit
     // Tastatur-/Screenreader-Nutzung (inkl. der Escape-Taste, siehe
@@ -1073,9 +1157,12 @@ class HofkartePanel extends HTMLElement {
     }
   }
 
-  /** Aktive Leaflet-Karteninstanz und den zugehörigen Resize-Handler
-   * sauber entfernen (siehe render()/disconnectedCallback()). */
+  /** Aktive Leaflet-Karteninstanz, Marker-Ebene, Container und den
+   * Resize-Handler sauber entfernen (siehe render()/disconnectedCallback()).
+   * Wird nur beim Verlassen der Kartenansicht bzw. beim Entfernen des
+   * Panels aufgerufen. */
   teardownKarte() {
+    this._karteToken++; // laufende initKarte()-/aktualisiereMarker()-Läufe werden verworfen
     if (this._leafletResizeHandler) {
       window.removeEventListener("resize", this._leafletResizeHandler);
       this._leafletResizeHandler = null;
@@ -1084,77 +1171,173 @@ class HofkartePanel extends HTMLElement {
       this._leafletMap.remove();
       this._leafletMap = null;
     }
+    this._karteHost?.remove();
+    this._karteHost = null;
+    this._markerLayer = null;
+    this._markerSignatur = "";
+    this._markerIcons = null;
   }
 
-  /** Leaflet-Karte in den zuvor von karteAnsicht() gerenderten Container
-   * einhängen. Wird bei jedem Render der Kartenansicht neu aufgebaut, da
-   * render() den gesamten Shadow-DOM-Inhalt ersetzt (siehe teardownKarte(),
-   * das die vorherige Instanz zuvor bereits entfernt hat). Popups nutzen
-   * bewusst direkte Leaflet-Events statt der generischen bind()-Delegation
-   * (Marker/Popups liegen ausserhalb des von render() erzeugten Markups). */
-  async initKarte() {
-    const container = this.shadowRoot.querySelector("[data-karte-container]");
-    if (!container) return; // z. B. "keine Koordinaten"-Meldung statt Karte
+  /** Stylesheets der lokal gebündelten Bibliotheken einmalig dauerhaft in
+   * den Shadow-DOM einhängen (ausserhalb von <main>, daher von render()
+   * nicht betroffen - kein erneutes Einfügen/Laden pro Render). */
+  sorgeFuerKarteCss(mitCluster) {
+    this._karteCss = this._karteCss || new Set();
+    const urls = [LEAFLET_CSS_URL, ...(mitCluster ? MARKERCLUSTER_CSS_URLS : [])];
+    for (const url of urls) {
+      if (this._karteCss.has(url)) continue;
+      this._karteCss.add(url);
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = url;
+      this.shadowRoot.append(link);
+    }
+  }
 
+  /** Fehlermeldung der Kartenansicht anzeigen, OHNE render() aufzurufen
+   * (Befund F8: ein Render würde initKarte() erneut auslösen und so bei
+   * dauerhaft nicht ladbarer Bibliothek eine Endlosschleife erzeugen).
+   * Der Text wird per textContent gesetzt. Ein neuer Ladeversuch erfolgt
+   * nur ausdrücklich über "Erneut versuchen" (siehe bindDelegiert()). */
+  zeigeKarteFehler(text) {
+    this.karteFehler = text || "Kartenbibliothek konnte nicht geladen werden.";
+    const box = this._mainEl.querySelector("[data-karte-fehler]");
+    if (box) {
+      const t = box.querySelector("[data-karte-fehler-text]");
+      if (t) t.textContent = this.karteFehler;
+      box.hidden = false;
+    }
+  }
+
+  /** Leaflet-Karte in den zuvor von karteAnsicht() gerenderten Platzhalter
+   * einhängen. Die Karte wird nur EINMAL pro Öffnen der Kartenansicht
+   * erzeugt (Befund F10); bei weiteren Renders wird lediglich ihr
+   * Container umgehängt und die Marker-Ebene bei Bedarf getauscht.
+   * Ein einmal fehlgeschlagenes Laden der Bibliothek löst keinen
+   * automatischen Neuversuch aus (Befund F8). */
+  async initKarte() {
+    const slot = this._mainEl.querySelector("[data-karte-container]");
+    if (!slot) { this.teardownKarte(); return; } // z. B. "keine Koordinaten"-Meldung statt Karte
+
+    if (this._leafletMap && this._karteHost) {
+      slot.replaceWith(this._karteHost);
+      this._leafletMap.invalidateSize();
+      this.aktualisiereMarker();
+      return;
+    }
+    if (this.karteFehler) return; // kein automatischer Neuversuch (F8)
+
+    const token = ++this._karteToken;
     let L;
     try {
       L = await ladeLeaflet();
     } catch (err) {
-      this.karteFehler = err?.message || "Kartenbibliothek konnte nicht geladen werden.";
-      this.render();
+      if (token === this._karteToken) this.zeigeKarteFehler(err?.message);
       return;
     }
-
-    // Zwischenzeitlich könnte die Ansicht gewechselt oder neu gerendert
-    // worden sein, während die Bibliothek geladen wurde – dann diesen
-    // (veralteten) Container nicht mehr verwenden.
-    if (!this.shadowRoot.contains(container) || this.uebersichtsAnsicht !== "karte" || this.editing || this.viewing) return;
+    // Zwischenzeitlich könnte die Ansicht gewechselt, das Panel entfernt
+    // oder neu gerendert worden sein, während die Bibliothek geladen wurde.
+    if (token !== this._karteToken || !this.isConnected || !this.istKartenansicht()) return;
+    const aktuellerSlot = this._mainEl.querySelector("[data-karte-container]");
+    if (!aktuellerSlot) return;
     this.karteFehler = "";
+    this.sorgeFuerKarteCss(false);
 
-    const alleMitKoordinaten = this.items.filter((item) => isValidWgs84(item.latitude, item.longitude));
-    const markerItems = this.karteNurGeoeffnet ? alleMitKoordinaten.filter((item) => item.geoeffnet === true) : alleMitKoordinaten;
+    const host = document.createElement("div");
+    host.className = "karte-container";
+    host.setAttribute("data-karte-container", "");
+    aktuellerSlot.replaceWith(host);
+    this._karteHost = host;
 
-    const map = L.map(container, { scrollWheelZoom: true });
+    const map = L.map(host, { scrollWheelZoom: true });
     this._leafletMap = map;
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>-Mitwirkende',
     }).addTo(map);
 
-    // Je Status ein eigenes Icon (statt pro Marker neu erzeugt) - drei
-    // mögliche Werte (true/false/null bzw. undefined), daher reicht ein
-    // einfacher Cache über genau diese drei Fälle.
-    const markerIcons = {
+    // Je Status ein eigenes Icon (statt pro Marker neu erzeugt).
+    this._markerIcons = {
       offen: erzeugeKarteMarkerIcon(L, true),
       geschlossen: erzeugeKarteMarkerIcon(L, false),
       unbekannt: erzeugeKarteMarkerIcon(L, null),
     };
-    const markerIconFuer = (geoeffnet) => geoeffnet === true ? markerIcons.offen : geoeffnet === false ? markerIcons.geschlossen : markerIcons.unbekannt;
-    for (const item of markerItems) {
-      const marker = L.marker([item.latitude, item.longitude], { icon: markerIconFuer(item.geoeffnet) }).addTo(map);
-      marker.bindPopup(`<div class="karte-popup"><strong>${this.esc(item.name)}</strong><br><button type="button" class="link-button" data-karte-view>Zur Detailansicht</button></div>`);
-      marker.on("popupopen", (e) => {
-        e.popup.getElement()?.querySelector("[data-karte-view]")?.addEventListener("click", () => this.view(item));
+    // EIN gemeinsamer Popup-Handler für alle Marker (statt eines
+    // Listeners je Marker). Das Popup-Element entsteht bei jedem Öffnen
+    // neu, der Klick-Listener daran wird mit ihm verworfen.
+    map.on("popupopen", (e) => {
+      const knopf = e.popup.getElement()?.querySelector("[data-karte-view]");
+      knopf?.addEventListener("click", () => {
+        const item = this.items.find((x) => x.id === knopf.dataset.id);
+        if (item) this.view(item);
       });
+    });
+
+    this._leafletResizeHandler = () => map.invalidateSize();
+    window.addEventListener("resize", this._leafletResizeHandler);
+    // Absicherung für die erstmalige Grössenberechnung (z. B. bei einer
+    // noch laufenden Sidebar-/Layout-Animation im selben Moment).
+    setTimeout(() => this._leafletMap === map && map.invalidateSize(), 0);
+
+    await this.aktualisiereMarker();
+  }
+
+  /** Marker-Ebene der Karte aktualisieren: Nur die Ebene wird getauscht,
+   * die Karte selbst bleibt bestehen. Ab KARTE_CLUSTER_AB Markern wird das
+   * lokal gebündelte leaflet.markercluster verwendet (Begründung: die
+   * Marker sind DOM-basierte DivIcons - ein Canvas-Renderer wie
+   * ``preferCanvas`` greift für sie nicht; Clustering reduziert die Zahl
+   * der DOM-Knoten und die Zeichenlast dagegen wirksam). */
+  async aktualisiereMarker() {
+    const map = this._leafletMap;
+    const L = window.L;
+    if (!map || !L) return;
+    const alleMitKoordinaten = this.items.filter((item) => isValidWgs84(item.latitude, item.longitude));
+    const markerItems = this.karteNurGeoeffnet ? alleMitKoordinaten.filter((item) => item.geoeffnet === true) : alleMitKoordinaten;
+    const signatur = `${this.karteNurGeoeffnet ? 1 : 0}|` + markerItems.map((i) => `${i.id}:${i.latitude},${i.longitude}:${i.geoeffnet}:${i.name}`).join(";");
+    if (signatur === this._markerSignatur) return;
+
+    const token = this._karteToken;
+    let cluster = false;
+    if (markerItems.length > KARTE_CLUSTER_AB) {
+      try {
+        await ladeMarkercluster();
+        cluster = !!L.markerClusterGroup;
+        this.sorgeFuerKarteCss(true);
+      } catch (err) {
+        console.warn("Marker-Clustering nicht verfügbar, Marker werden einzeln dargestellt:", err);
+      }
+      if (token !== this._karteToken || this._leafletMap !== map) return;
     }
+
+    const icons = this._markerIcons;
+    const iconFuer = (geoeffnet) => geoeffnet === true ? icons.offen : geoeffnet === false ? icons.geschlossen : icons.unbekannt;
+    const marker = markerItems.map((item) => {
+      const m = L.marker([item.latitude, item.longitude], { icon: iconFuer(item.geoeffnet) });
+      // Popup-Inhalt erst beim Öffnen erzeugen (Funktion statt String).
+      m.bindPopup(() => `<div class="karte-popup"><strong>${this.esc(item.name)}</strong><br><button type="button" class="link-button" data-karte-view data-id="${this.escAttr(item.id)}">Zur Detailansicht</button></div>`);
+      return m;
+    });
+    const ebene = cluster ? L.markerClusterGroup({ chunkedLoading: true, showCoverageOnHover: false }) : L.layerGroup();
+    if (cluster) ebene.addLayers(marker); else marker.forEach((m) => ebene.addLayer(m));
+    if (this._markerLayer) map.removeLayer(this._markerLayer);
+    ebene.addTo(map);
+    this._markerLayer = ebene;
+    this._markerSignatur = signatur;
 
     if (markerItems.length === 1) {
       map.setView([markerItems[0].latitude, markerItems[0].longitude], 14);
     } else if (markerItems.length > 1) {
       map.fitBounds(markerItems.map((item) => [item.latitude, item.longitude]), { padding: [24, 24] });
-    } else {
+    } else if (alleMitKoordinaten.length) {
       // Der Geöffnet-Filter ergibt keine Treffer, es gibt aber
       // grundsätzlich Hofläden mit Koordinaten – sinnvollen Ausschnitt
       // über alle vorhandenen Koordinaten zeigen statt einer
       // Default-Weltkarte.
       map.fitBounds(alleMitKoordinaten.map((item) => [item.latitude, item.longitude]), { padding: [24, 24] });
     }
-
-    this._leafletResizeHandler = () => map.invalidateSize();
-    window.addEventListener("resize", this._leafletResizeHandler);
-    // Absicherung für die erstmalige Grössenberechnung (z. B. bei einer
-    // noch laufenden Sidebar-/Layout-Animation im selben Moment).
-    setTimeout(() => map.invalidateSize(), 0);
+    const leer = this._mainEl.querySelector("[data-karte-leer]");
+    if (leer) leer.hidden = markerItems.length > 0;
   }
 
   currentView() {
@@ -1250,6 +1433,7 @@ class HofkartePanel extends HTMLElement {
       .special input[type=time]{max-width:140px}
       .special{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;align-items:end;margin:8px 0}
       @media(max-width:700px){.special{grid-template-columns:1fr 1fr}}
+      [hidden]{display:none!important}
       .notice{padding:10px;margin:12px 0;border-radius:8px;background:var(--info-color,#2196f3);color:white}
       .notice.error{background:var(--error-color,#db4437)}
       .muted{color:var(--secondary-text-color)}
@@ -1324,7 +1508,7 @@ class HofkartePanel extends HTMLElement {
     // fehlt dafür ein sinnvoller Anwendungsfall.
     const exportImportLeiste = this.items.length && this.uebersichtsAnsicht !== "karte"
       ? `<div class="export-import-row">
-          <span class="muted">${this.auswahl.size} ausgewählt</span>
+          <span class="muted" data-auswahl-anzahl>${this.auswahl.size} ausgewählt</span>
           <button type="button" class="secondary" data-auswahl-alle>Alle auswählen</button>
           <button type="button" class="secondary" data-auswahl-keine>Auswahl aufheben</button>
           <button type="button" class="secondary" data-export ${this.auswahl.size ? "" : "disabled"}>⬇️ Export</button>
@@ -1333,7 +1517,7 @@ class HofkartePanel extends HTMLElement {
         </div>`
       : "";
 
-    return `<div class="top"><div><h1>HofKarte</h1><div class="muted">Hofläden verwalten</div></div><button data-new>+ Neuer Hofladen</button></div>${this.message ? `<div class="notice">${this.esc(this.message)}</div>` : ""}${this.error ? `<div class="notice error">${this.esc(this.error)}</div>` : ""}${this.items.length ? umschalter : ""}${exportImportLeiste}${inhalt}`;
+    return `<div class="top"><div><h1>HofKarte</h1><div class="muted">Hofläden verwalten</div></div><button data-new>+ Neuer Hofladen</button></div>${this.message ? `<div class="notice">${this.esc(this.message)}</div>` : ""}${this.error ? `<div class="notice error">${this.esc(this.error)}${this._loadFailed ? ` <button type="button" class="secondary" data-erneut-laden>Erneut versuchen</button>` : ""}</div>` : ""}${this.items.length ? umschalter : ""}${exportImportLeiste}${inhalt}`;
   }
 
   listGrid() {
@@ -1342,17 +1526,24 @@ class HofkartePanel extends HTMLElement {
 
   /** Bild nur rendern, wenn die URL die Sicherheitsprüfung besteht (F12);
    * sonst ein Platzhalter mit Hinweis. Externe Bilder ohne Referrer. */
-  bildHtml(url, alt) {
+  bildHtml(url, alt, vorschau = false) {
     if (!istSichereBildUrl(url, window.location.origin)) {
       return `<div class="tile-image tile-image-placeholder" role="img" aria-label="Bild nicht anzeigbar" title="Die Adresse dieses Bildes ist nicht zulässig (z. B. internes Ziel) und wird nicht geladen.">⚠️</div>`;
     }
-    return `<img src="${this.escAttr(url)}" alt="${this.escAttr(alt)}" loading="lazy" referrerpolicy="no-referrer">`;
+    // Befund F14: Vorschau (256x256) statt Original ausserhalb der
+    // Detailansicht; data-original dient dem Rückfall, falls die Vorschau
+    // nicht ausgeliefert wird (siehe bindDelegiert()).
+    const src = vorschau ? uploadVorschauUrl(url, window.location.origin) : url;
+    const original = src !== url ? ` data-original="${this.escAttr(url)}"` : "";
+    return `<img src="${this.escAttr(src)}"${original} alt="${this.escAttr(alt)}" loading="lazy" decoding="async" referrerpolicy="no-referrer">`;
   }
 
   listCard(item) {
     const adresse = [item.adresse, item.plz, item.ort, item.land].filter(Boolean).join(", ");
+    const vorschauSrc = item.hauptbild_url ? uploadVorschauUrl(item.hauptbild_url, window.location.origin) : "";
+    const originalAttr = vorschauSrc && vorschauSrc !== item.hauptbild_url ? ` data-original="${this.escAttr(item.hauptbild_url)}"` : "";
     const bildHtml = item.hauptbild_url && istSichereBildUrl(item.hauptbild_url, window.location.origin)
-      ? `<img class="tile-image" src="${this.escAttr(item.hauptbild_url)}" alt="${this.escAttr(item.name)}" loading="lazy" referrerpolicy="no-referrer">`
+      ? `<img class="tile-image" src="${this.escAttr(vorschauSrc)}"${originalAttr} alt="${this.escAttr(item.name)}" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
       : `<div class="tile-image tile-image-placeholder" aria-hidden="true">🏬</div>`;
 
     return `<section class="card tile-card">
@@ -1373,21 +1564,40 @@ class HofkartePanel extends HTMLElement {
 
   /** Sortierte, gefilterte Zeilen für die Listenansicht (rein
    * clientseitig – kein neuer Backend-Endpunkt nötig, siehe Issue #1). */
+  /** Vorberechnete Such-/Sortierschlüssel je Hofladen-Objekt (Befund F10):
+   * Kleinschreibung und Adressstring werden einmal pro Objekt berechnet
+   * statt bei jedem Tastendruck/Vergleich. Die Objekte werden bei jedem
+   * Laden neu geliefert, der WeakMap-Eintrag verfällt mit ihnen. */
+  sortSchluessel(item) {
+    let k = this._sortSchluessel.get(item);
+    if (!k) {
+      const adresse = [item.adresse, item.plz, item.ort, item.land].filter(Boolean).join(", ").toLowerCase();
+      k = {
+        name: String(item.name || "").toLowerCase(),
+        adresse,
+        geoeffnet: item.geoeffnet === true ? 2 : item.geoeffnet === false ? 1 : 0,
+        bewertung: Number(item.bewertung) || 0,
+      };
+      this._sortSchluessel.set(item, k);
+    }
+    return k;
+  }
+
+  /** Sortierte, gefilterte Zeilen für die Listenansicht (rein
+   * clientseitig – kein neuer Backend-Endpunkt nötig, siehe Issue #1). */
   sortierteGefilterteItems() {
     const filterText = this.listenFilter.trim().toLowerCase();
     let ergebnis = !filterText ? this.items : this.items.filter(item => {
-      const adresse = [item.adresse, item.plz, item.ort, item.land].filter(Boolean).join(", ");
-      return item.name.toLowerCase().includes(filterText) || adresse.toLowerCase().includes(filterText);
+      const k = this.sortSchluessel(item);
+      return k.name.includes(filterText) || k.adresse.includes(filterText);
     });
 
     if (this.listenSortSpalte) {
       const spalte = this.listenSortSpalte;
       const richtung = this.listenSortRichtung === "asc" ? 1 : -1;
       const wert = (item) => {
-        if (spalte === "adresse") return [item.adresse, item.plz, item.ort, item.land].filter(Boolean).join(", ").toLowerCase();
-        if (spalte === "geoeffnet") return item.geoeffnet === true ? 2 : item.geoeffnet === false ? 1 : 0;
-        if (spalte === "bewertung") return Number(item.bewertung) || 0;
-        return String(item[spalte] || "").toLowerCase();
+        const k = this.sortSchluessel(item);
+        return spalte in k ? k[spalte] : String(item[spalte] || "").toLowerCase();
       };
       ergebnis = [...ergebnis].sort((a, b) => {
         const wa = wert(a), wb = wert(b);
@@ -1395,6 +1605,40 @@ class HofkartePanel extends HTMLElement {
       });
     }
     return ergebnis;
+  }
+
+  /** Tabellenzeilen der Listenansicht (auch für das Teil-Update beim
+   * Filtern, siehe aktualisiereListe()). */
+  listenZeilenHtml(zeilen) {
+    if (!zeilen.length) return `<tr><td colspan="6" class="muted">Keine Treffer für diesen Filter.</td></tr>`;
+    return zeilen.map(item => {
+      const adresse = [item.adresse, item.plz, item.ort, item.land].filter(Boolean).join(", ");
+      return `<tr>
+                <td><input type="checkbox" data-auswahl="${this.escAttr(item.id)}" ${this.auswahl.has(item.id) ? "checked" : ""} aria-label="${this.escAttr(item.name)} auswählen"></td>
+                <td><button type="button" class="link-button" data-view="${this.escAttr(item.id)}">${this.esc(item.name)}</button></td>
+                <td>${this.esc(adresse) || '<span class="muted">–</span>'}</td>
+                <td>${this.geoeffnetBadge(item.geoeffnet)}</td>
+                <td>${item.bewertung ? "★".repeat(item.bewertung) : '<span class="muted">–</span>'}</td>
+                <td>${this.routingAuswahl(item)}</td>
+              </tr>`;
+    }).join("");
+  }
+
+  /** Teil-Update der Listenansicht: nur <tbody> wird ersetzt (Befund F10),
+   * Filterfeld, Kopfzeile und Fokus bleiben unberührt. */
+  aktualisiereListe() {
+    const body = this._mainEl.querySelector("[data-list-body]");
+    if (body) body.innerHTML = this.listenZeilenHtml(this.sortierteGefilterteItems());
+  }
+
+  /** Teil-Update der Auswahl-Anzeige (Zähler, Export-Knopf, Checkboxen)
+   * ohne vollständigen Render (Befund F10). */
+  aktualisiereAuswahlAnzeige() {
+    const zaehler = this._mainEl.querySelector("[data-auswahl-anzahl]");
+    if (zaehler) zaehler.textContent = `${this.auswahl.size} ausgewählt`;
+    const export_ = this._mainEl.querySelector("[data-export]");
+    if (export_) export_.disabled = this.auswahl.size === 0;
+    this._mainEl.querySelectorAll("[data-auswahl]").forEach((cb) => { cb.checked = this.auswahl.has(cb.dataset.auswahl); });
   }
 
   listTable() {
@@ -1416,18 +1660,8 @@ class HofkartePanel extends HTMLElement {
               <th>Route</th>
             </tr>
           </thead>
-          <tbody>
-            ${zeilen.length ? zeilen.map(item => {
-              const adresse = [item.adresse, item.plz, item.ort, item.land].filter(Boolean).join(", ");
-              return `<tr>
-                <td><input type="checkbox" data-auswahl="${this.escAttr(item.id)}" ${this.auswahl.has(item.id) ? "checked" : ""} aria-label="${this.escAttr(item.name)} auswählen"></td>
-                <td><button type="button" class="link-button" data-view="${this.escAttr(item.id)}">${this.esc(item.name)}</button></td>
-                <td>${this.esc(adresse) || '<span class="muted">–</span>'}</td>
-                <td>${this.geoeffnetBadge(item.geoeffnet)}</td>
-                <td>${item.bewertung ? "★".repeat(item.bewertung) : '<span class="muted">–</span>'}</td>
-                <td>${this.routingAuswahl(item)}</td>
-              </tr>`;
-            }).join("") : `<tr><td colspan="6" class="muted">Keine Treffer für diesen Filter.</td></tr>`}
+          <tbody data-list-body>
+            ${this.listenZeilenHtml(zeilen)}
           </tbody>
         </table>
       </div>`;
@@ -1446,13 +1680,15 @@ class HofkartePanel extends HTMLElement {
 
     const gefiltert = this.karteNurGeoeffnet ? alleMitKoordinaten.filter((item) => item.geoeffnet === true) : alleMitKoordinaten;
 
-    return `<link rel="stylesheet" href="${LEAFLET_CSS_URL}">
-      <div class="karte-filter-row">
+    // Das Leaflet-Stylesheet liegt dauerhaft ausserhalb von <main> (siehe
+    // sorgeFuerKarteCss()). Der Platzhalter [data-karte-container] wird in
+    // initKarte() durch den dauerhaften Karten-Container ersetzt.
+    return `<div class="karte-filter-row">
         <label><input type="checkbox" data-karte-nur-geoeffnet ${this.karteNurGeoeffnet ? "checked" : ""}> Nur aktuell geöffnete Hofläden anzeigen</label>
       </div>
-      ${this.karteFehler ? `<div class="notice error">${this.esc(this.karteFehler)}</div>` : ""}
+      <div class="notice error" data-karte-fehler ${this.karteFehler ? "" : "hidden"}><span data-karte-fehler-text>${this.esc(this.karteFehler)}</span> <button type="button" class="secondary" data-karte-erneut>Erneut versuchen</button></div>
       <div class="karte-container" data-karte-container></div>
-      ${!gefiltert.length ? `<p class="muted" style="margin-top:8px">Kein Hofladen entspricht aktuell diesem Filter.</p>` : ""}`;
+      <p class="muted" data-karte-leer style="margin-top:8px" ${gefiltert.length ? "hidden" : ""}>Kein Hofladen entspricht aktuell diesem Filter.</p>`;
   }
 
   // --- Export/Import (Issue #5) ------------------------------------------
@@ -2036,7 +2272,7 @@ class HofkartePanel extends HTMLElement {
   bilderListe(bilder) {
     if (!bilder.length) return `<p class="muted">Noch keine Bilder hinterlegt.</p>`;
     return bilder.map((bild, i) => `<div class="bild-row" data-bild-index="${i}">
-      ${this.bildHtml(bild.url, "")}
+      ${this.bildHtml(bild.url, "", true)}
       <div class="bild-row-fields">
         <input type="text" data-bild-beschreibung placeholder="Beschreibung (optional)" value="${this.escAttr(bild.beschreibung || "")}">
         <div class="bild-row-meta muted">${i === 0 ? "Hauptbild · " : ""}${bild.hochgeladen ? "hochgeladen" : "externe Adresse"}</div>
@@ -2151,14 +2387,24 @@ class HofkartePanel extends HTMLElement {
 
   // --- Ereignisbindung -----------------------------------------------
 
-  bind() {
-    this.shadowRoot.querySelector("[data-new]")?.addEventListener("click", () => this.start());
-    this.shadowRoot.querySelectorAll("[data-ansicht]").forEach(b =>
-      b.addEventListener("click", () => { this.uebersichtsAnsicht = b.dataset.ansicht; this.render(); })
-    );
-    this.shadowRoot.querySelectorAll("[data-sort]").forEach(b =>
-      b.addEventListener("click", () => {
-        const spalte = b.dataset.sort;
+  /** Einmalig im Konstruktor gebundene Event-Delegation auf <main>
+   * (Befund F10): <main> bleibt über alle Renders bestehen, es entstehen
+   * daher keine Listener pro Kachel/Zeile/Render mehr. */
+  bindDelegiert() {
+    const main = this._mainEl;
+    main.addEventListener("click", (e) => {
+      const ziel = e.target instanceof Element ? e.target : null;
+      if (!ziel) return;
+      const a = ziel.closest("[data-ansicht]");
+      if (a) {
+        this.uebersichtsAnsicht = a.dataset.ansicht;
+        if (this.uebersichtsAnsicht === "karte") this.karteFehler = ""; // ausdrückliches Öffnen = neuer Ladeversuch
+        this.render();
+        return;
+      }
+      const sortierung = ziel.closest("[data-sort]");
+      if (sortierung) {
+        const spalte = sortierung.dataset.sort;
         if (this.listenSortSpalte === spalte) {
           this.listenSortRichtung = this.listenSortRichtung === "asc" ? "desc" : "asc";
         } else {
@@ -2166,25 +2412,67 @@ class HofkartePanel extends HTMLElement {
           this.listenSortRichtung = "asc";
         }
         this.render();
-      })
-    );
-    this.shadowRoot.querySelector("[data-karte-nur-geoeffnet]")?.addEventListener("change", (e) => {
-      this.karteNurGeoeffnet = e.target.checked;
-      this.render();
+        return;
+      }
+      const ansehen = ziel.closest("[data-view]");
+      if (ansehen) { this.view(this.items.find(x => x.id === ansehen.dataset.view)); return; }
+      const bearbeiten = ziel.closest("[data-edit]");
+      if (bearbeiten) { this.start(this.items.find(x => x.id === bearbeiten.dataset.edit)); return; }
+      const loeschen = ziel.closest("[data-delete]");
+      if (loeschen) { this.remove(loeschen.dataset.delete); return; }
+      if (ziel.closest("[data-erneut-laden]")) { this.ladeErneut(); return; }
+      if (ziel.closest("[data-karte-erneut]")) { this.karteFehler = ""; this.render(); }
     });
+    main.addEventListener("change", (e) => {
+      const ziel = e.target instanceof Element ? e.target : null;
+      if (!ziel) return;
+      if (ziel.matches("[data-auswahl]")) {
+        const id = ziel.dataset.auswahl;
+        if (ziel.checked) this.auswahl.add(id); else this.auswahl.delete(id);
+        this.aktualisiereAuswahlAnzeige();
+      } else if (ziel.matches("[data-karte-nur-geoeffnet]")) {
+        this.karteNurGeoeffnet = ziel.checked;
+        this.aktualisiereMarker(); // nur die Marker-Ebene tauschen, kein Render
+      }
+    });
+    main.addEventListener("input", (e) => {
+      const ziel = e.target instanceof Element ? e.target : null;
+      if (!ziel || !ziel.matches("[data-listen-filter]")) return;
+      // Debounce (~150 ms) + Teil-Update nur der Tabellenzeilen: das
+      // Eingabefeld bleibt bestehen, Fokus/Cursor gehen nicht verloren.
+      const wert = ziel.value;
+      clearTimeout(this._filterTimer);
+      this._filterTimer = setTimeout(() => {
+        this._filterTimer = null;
+        this.listenFilter = wert;
+        this.aktualisiereListe();
+      }, 150);
+    });
+    // Rückfall auf das Original, falls eine 256x256-Vorschau nicht
+    // ausgeliefert wird (Befund F14). Fehler-Ereignisse bubbeln nicht,
+    // daher in der Capture-Phase.
+    main.addEventListener("error", (e) => {
+      const img = e.target;
+      if (img instanceof HTMLImageElement && img.dataset.original && img.src !== img.dataset.original) {
+        img.src = img.dataset.original;
+      }
+    }, true);
+  }
+
+  bind() {
+    this.shadowRoot.querySelector("[data-new]")?.addEventListener("click", () => this.start());
+    // Listen-/Karten-Aktionen (Ansichtswechsel, Sortierung, Details,
+    // Bearbeiten, Löschen, Auswahl, Filter, Karten-Filter, "Erneut
+    // versuchen") laufen über die einmalig gebundene Event-Delegation auf
+    // <main> (siehe bindDelegiert(), Befund F10) - hier nicht je Element.
     // --- Export/Import (Issue #5) ---
-    this.shadowRoot.querySelectorAll("[data-auswahl]").forEach((cb) => cb.addEventListener("change", (e) => {
-      const id = cb.dataset.auswahl;
-      if (e.target.checked) this.auswahl.add(id); else this.auswahl.delete(id);
-      this.render();
-    }));
     this.shadowRoot.querySelector("[data-auswahl-alle]")?.addEventListener("click", () => {
       this.items.forEach((item) => this.auswahl.add(item.id));
-      this.render();
+      this.aktualisiereAuswahlAnzeige();
     });
     this.shadowRoot.querySelector("[data-auswahl-keine]")?.addEventListener("click", () => {
       this.auswahl.clear();
-      this.render();
+      this.aktualisiereAuswahlAnzeige();
     });
     this.shadowRoot.querySelector("[data-export]")?.addEventListener("click", () => this.exportAuswahl());
     this.shadowRoot.querySelector("[data-import-start]")?.addEventListener("click", () => {
@@ -2212,20 +2500,8 @@ class HofkartePanel extends HTMLElement {
     });
     this.shadowRoot.querySelector("[data-import-abschliessen]")?.addEventListener("click", () => this.schliesseImportAb());
 
-    this.shadowRoot.querySelector("[data-listen-filter]")?.addEventListener("input", (e) => {
-      this.listenFilter = e.target.value;
-      this.render();
-      // Fokus geht beim Re-Render verloren (innerHTML wird neu aufgebaut) -
-      // direkt danach wiederherstellen, damit Weitertippen ohne erneuten
-      // Klick möglich ist.
-      const neuesFeld = this.shadowRoot.querySelector("[data-listen-filter]");
-      if (neuesFeld) { neuesFeld.focus(); neuesFeld.selectionStart = neuesFeld.selectionEnd = neuesFeld.value.length; }
-    });
-    this.shadowRoot.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => this.start(this.items.find(x => x.id === b.dataset.edit))));
     this.shadowRoot.querySelector("[data-edit-from-detail]")?.addEventListener("click", (e) => this.start(this.items.find(x => x.id === e.target.dataset.editFromDetail)));
-    this.shadowRoot.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => this.view(this.items.find(x => x.id === b.dataset.view))));
     this.shadowRoot.querySelector("[data-back]")?.addEventListener("click", () => this.closeView());
-    this.shadowRoot.querySelectorAll("[data-delete]").forEach(b => b.addEventListener("click", () => this.remove(b.dataset.delete)));
     this.shadowRoot.querySelector("[data-cancel]")?.addEventListener("click", () => this.cancel());
     this.shadowRoot.querySelector("form")?.addEventListener("submit", e => { e.preventDefault(); this.save(); });
 

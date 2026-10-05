@@ -78,7 +78,7 @@ def test_externe_bilder_haben_referrerpolicy_no_referrer() -> None:
 
 def test_bilder_werden_nur_ueber_die_pruefung_gerendert() -> None:
     quelle = _quelle()
-    assert "bildHtml(url, alt)" in quelle
+    assert "bildHtml(url, alt, vorschau = false)" in quelle
     assert "istSichereBildUrl(url, window.location.origin)" in quelle
     assert "this.bildHtml(b.url" in quelle and "this.bildHtml(bild.url" in quelle
 

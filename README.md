@@ -240,12 +240,16 @@ Standort zeigt. Die Marker sind analog zur Statusfarbgebung in
 Kacheln-/Listenansicht nach Öffnungsstatus eingefärbt (grün geöffnet,
 grau geschlossen, sonst die bisherige Standardfarbe bei unbekanntem
 Status). Umgesetzt mit [Leaflet](https://leafletjs.com/) `1.9.4`
-und OpenStreetMap-Kartenkacheln, per `<script>`/`<link>` mit fest
-gepinnter Version von einem CDN nachgeladen – bewusst erst beim ersten
-Öffnen dieser Ansicht, keine Build-Pipeline, kein API-Schlüssel nötig.
-Das ist eine bewusste, im Architekturdokument begründete Ausnahme vom
-Projektgrundsatz „keine neuen Abhängigkeiten“ (siehe
-`docs/architecture.md`). Der Klick auf eine Stecknadel führt über ein
+und OpenStreetMap-Kartenkacheln. Leaflet (und, ab 200 Markern,
+`leaflet.markercluster` `1.5.3`) liegt **unverändert im Repository**
+(`static/vendor/`, Lizenzen und Prüfsummen in `THIRD_PARTY_NOTICES.md`)
+und wird von Home Assistant selbst ausgeliefert – **kein CDN**. Es wird
+bewusst erst beim ersten Öffnen dieser Ansicht geladen, keine
+Build-Pipeline, kein API-Schlüssel nötig. Lässt sich die Bibliothek nicht
+laden, erscheint eine Meldung mit „Erneut versuchen“ (keine automatische
+Wiederholungsschleife). Das ist eine bewusste, im Architekturdokument
+begründete Ausnahme vom Projektgrundsatz „keine neuen Abhängigkeiten“
+(siehe `docs/architecture.md`). Der Klick auf eine Stecknadel führt über ein
 Popup mit Button „Zur Detailansicht“ zur selben Detailansicht wie in
 Kacheln/Liste.
 
@@ -882,8 +886,8 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
 - **Keine Cloud, kein externer Dienst:** HofKarte kommuniziert nicht mit
   externen Servern – mit vier Ausnahmen: dem Laden von Hofladen-Bildern
   über die vom Benutzer hinterlegten Bild-URLs (siehe „Bilder“), dem
-  Laden der Kartenbibliothek Leaflet und der Kartenkacheln von
-  OpenStreetMap, sobald die Übersichtsansicht „🗺️ Karte“ tatsächlich
+  Laden der Kartenkacheln von OpenStreetMap (die Kartenbibliothek
+  Leaflet selbst liegt lokal im Repository, kein CDN), sobald die Übersichtsansicht „🗺️ Karte“ tatsächlich
   geöffnet wird (siehe „Eingebettete Kartenansicht“ oben) – dabei werden
   nur Kachel-/Ausschnittkoordinaten übertragen, keine Hofladen- oder
   Standortdaten im Klartext – dem Abruf über die Funktion

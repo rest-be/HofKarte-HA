@@ -59,8 +59,8 @@ def test_panel_js_marker_erzeugung_uebergibt_icon_option() -> None:
     statt eines einzigen, für alle Marker gleichen ``markerIcon``."""
     quelltext = _lade_panel_js()
     treffer = re.search(
-        r"const marker = L\.marker\(\[item\.latitude, item\.longitude\],\s*"
-        r"\{\s*icon:\s*markerIconFuer\(item\.geoeffnet\)\s*\}\)\.addTo\(map\);",
+        r"const m = L\.marker\(\[item\.latitude, item\.longitude\],\s*"
+        r"\{\s*icon:\s*iconFuer\(item\.geoeffnet\)\s*\}\);",
         quelltext,
     )
     assert treffer, (
@@ -108,4 +108,8 @@ def test_panel_js_laedt_leaflet_css_weiterhin_im_shadow_dom() -> None:
     Steuerelemente (Zoom-Buttons etc.) nicht entfernen - nur die
     Marker-Icon-Darstellung wird durch das eigene SVG ersetzt."""
     quelltext = _lade_panel_js()
-    assert '<link rel="stylesheet" href="${LEAFLET_CSS_URL}">' in quelltext
+    # Seit Block C (F10) steht das <link> dauerhaft im Shadow Root
+    # (sorgeFuerKarteCss()) statt in jedem Render der Kartenansicht.
+    assert 'link.rel = "stylesheet";' in quelltext
+    assert "this.shadowRoot.append(link)" in quelltext
+    assert "[LEAFLET_CSS_URL," in quelltext

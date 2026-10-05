@@ -13,6 +13,52 @@ Entwicklung, vor der ersten offiziellen Veröffentlichung, einer an
 Semantic Versioning angelehnten, fortlaufenden Nummerierung und sind
 unten als historische Entwicklungsdokumentation erhalten.
 
+## [2026.10.0-dev.6] - Entwicklungsversion (develop)
+
+Kein produktiver Release. Setzt Block C der Code-Review-Befunde zu
+`2026.9.2` um (F7, F8, F9, F10, F14 – Panel-Teil).
+
+### Sicherheit
+
+- **F7 – Leaflet lokal gebündelt, kein CDN mehr:** Leaflet `1.9.4`
+  (BSD-2-Clause) und `leaflet.markercluster` `1.5.3` (MIT) liegen
+  unverändert unter `static/vendor/` und werden von Home Assistant
+  ausgeliefert (`/api/hofkarte/static/vendor/…?v=<Version>`). Neu:
+  `THIRD_PARTY_NOTICES.md` (Lizenzen, Herkunft, SHA-256); SECURITY.md,
+  README und Architekturdokument angepasst.
+
+### Behoben
+
+- **F8 – Kein Render-Loop bei Leaflet-Ladefehler:** Der Fehlerpfad von
+  `initKarte()` ruft nicht mehr `render()` auf (vorher: Fehler → Render →
+  `initKarte()` → erneuter Ladeversuch → …). Meldung per `textContent`,
+  fehlgeschlagenes `<script>` wird entfernt, erneuter Versuch nur über
+  „Erneut versuchen“ bzw. ausdrücklichen Wechsel in die Kartenansicht.
+- **F9 – Keine Dauer-Neuladung nach Ladefehler:** `_loadFailed` verhindert
+  das Neuladen bei jeder `hass`-Änderung; stattdessen Backoff (2 s … max.
+  60 s) und Button „Erneut versuchen“. `_loading`-Schutz bleibt.
+
+### Geändert (Performance, F10/F14)
+
+- `<style>` und Leaflet-CSS werden einmalig angelegt; `render()` ersetzt
+  nur `<main>`.
+- Event-Delegation auf `<main>` statt Listener je Kachel/Zeile/Render.
+- Listenfilter entprellt (150 ms) mit Teil-Update von `<tbody>`;
+  Auswahl aktualisiert nur Zähler/Export-Knopf/Checkboxen.
+- Such-/Sortierschlüssel je Hofladen einmal vorberechnet.
+- Karte wird einmal erzeugt; bei Filter-/Datenänderung nur die
+  Marker-Ebene getauscht; Abbau nur beim Verlassen der Kartenansicht;
+  ein gemeinsamer Popup-Handler; `isConnected`-Prüfung nach dem Laden.
+- Clustering ab 200 Markern (`leaflet.markercluster`).
+- **F14 (Panel):** Kacheln und Editor laden eigene Uploads als
+  256×256-Vorschau (Original nur in der Detailansicht, Rückfall auf das
+  Original bei Fehler), `decoding="async"`.
+- Messung (jsdom, 500 synthetische Hofläden): Listener-Registrierungen
+  bei 5 Filtereingaben 4494 → 0, bei 5 Auswahl-Klicks 4350 → 0, beim
+  Öffnen der Liste 1014 → 6; neue DOM-Knoten bei 5 schnellen
+  Filtereingaben 29 303 → 5 636 (ein Teil-Update); Kartenansicht beim
+  Öffnen 2544 → 50 DOM-Knoten (geclustert).
+
 ## [2026.10.0-dev.5] - Entwicklungsversion (develop)
 
 Kein produktiver Release. Setzt Block B der Code-Review-Befunde zu

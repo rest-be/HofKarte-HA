@@ -167,6 +167,22 @@ Sicherheitsmassnahmen:
   externe Bilder mit `referrerpolicy="no-referrer"`), `mailto:`-Links nur
   für validierte Adressen, Import-Datei höchstens 2 MB.
 
+### Gebündelte Frontend-Bibliotheken (Befund F7, ab 2026.10.0-dev.6)
+
+Die Kartenansicht nutzt Leaflet `1.9.4` (BSD-2-Clause) und bei mehr als
+200 Markern `leaflet.markercluster` `1.5.3` (MIT). Beide liegen
+**unverändert im Repository** (`custom_components/hofkarte/static/vendor/`)
+und werden von Home Assistant selbst ausgeliefert – es wird **kein
+Skript und kein Stylesheet mehr von einem CDN** geladen. Damit entfällt
+das Lieferkettenrisiko eines nachträglich veränderten CDN-Inhalts (im
+Panel läuft Code mit den Rechten der angemeldeten Home-Assistant-Sitzung).
+Herkunft, Lizenzen und SHA-256-Prüfsummen stehen in
+`THIRD_PARTY_NOTICES.md`; ein Test gleicht die Prüfsummen mit den Dateien
+ab. Die einzige verbleibende Verbindung zu Dritten in der Kartenansicht
+sind die OpenStreetMap-Kacheln (siehe Datenschutz-Hinweise). Das Panel
+meldet einen Ladefehler der Bibliothek ohne automatische
+Wiederholungsschleife (Befund F8).
+
 ### Funktion „Ort in der Nähe suchen“ (`osm_info.py`, Issue #10, erweitert in Issue #11)
 
 Diese Funktion führt die **zweite eigene ausgehende Netzwerkanfrage im
@@ -174,7 +190,7 @@ Backend-Code von HofKarte** ein – diesmal an die OpenStreetMap-Overpass-
 API, einen von HofKarte nicht kontrollierten, aber freien, kostenlosen,
 kontofreien OpenStreetMap-Community-Dienst (kein kommerzieller
 Cloud-Dienst, kein LLM/KI-Dienst, kein „Scraping-as-a-Service“). Anders
-als die rein clientseitig vom Browser geladenen Leaflet/OpenStreetMap-
+als die rein clientseitig vom Browser geladenen OpenStreetMap-
 Kartenkacheln (Issue #2) überträgt diese Funktion **serverseitig
 konkrete Koordinaten eines bestimmten Hofladens** an den externen Dienst
 – ausschliesslich auf ausdrücklichen Klick auf „📍 Ort in der Nähe
