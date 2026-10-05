@@ -31,7 +31,12 @@ from .data_provider import (
     MutableHofladenDataProvider,
 )
 from .models import Hofladen
-from .parsing import HofladenValidationError, parse_hofladen
+from .instanz_origin import ermittle_eigene_origins
+from .parsing import (
+    HofladenValidationError,
+    bilder_mit_serverseitigem_flag,
+    parse_hofladen,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -127,6 +132,27 @@ class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
         """Ob der aktuell verwendete Data Provider Schreibzugriffe unterstützt."""
         return isinstance(self._provider, MutableHofladenDataProvider)
 
+    def parse_roh(
+        self, raw: Any, eigene_origins: frozenset[str] | None = None
+    ) -> Hofladen:
+        """``parsing.parse_hofladen`` mit den Origins dieser HA-Instanz.
+
+        Einzige Stelle, über die Rohdaten in das Modell überführt werden
+        (Befund F1): Das ``hochgeladen``-Flag der Bilder wird dabei aus der
+        URL und der Instanz-Origin abgeleitet, nie aus den Rohdaten
+        übernommen - auch nicht beim Lesen bestehender Store-Daten.
+        """
+        if eigene_origins is None:
+            eigene_origins = ermittle_eigene_origins(self.hass)
+        return parse_hofladen(raw, eigene_origins=eigene_origins)
+
+    @staticmethod
+    def _mit_serverseitigem_flag(raw: dict[str, Any], hofladen: Hofladen) -> dict[str, Any]:
+        """Kopie von ``raw``, deren Bilder das abgeleitete Flag tragen (F1),
+        damit nie ein behauptetes Flag in Store/Export gelangt."""
+        bilder = bilder_mit_serverseitigem_flag(raw, hofladen)
+        return raw if bilder is None else {**raw, "bilder": bilder}
+
     async def _async_update_data(self) -> dict[str, Hofladen]:
         """Rohdaten abrufen, validieren und als Hofladen-Mapping liefern.
 
@@ -153,9 +179,11 @@ class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
             ) from err
 
         hoflaeden: dict[str, Hofladen] = {}
+        # Origins einmal je Aktualisierung ermitteln (nicht je Hofladen).
+        eigene_origins = ermittle_eigene_origins(self.hass)
         for index, raw in enumerate(raw_hoflaeden):
             try:
-                hofladen = parse_hofladen(raw)
+                hofladen = self.parse_roh(raw, eigene_origins)
             except HofladenValidationError as err:
                 _LOGGER.warning(
                     "Ungültiger Hofladen-Datensatz #%s wird übersprungen: %s",
@@ -187,7 +215,8 @@ class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
         """
         # Fail-Fast: fachliche Validierung vor jedem Schreibzugriff auf
         # die Datenquelle, damit dort nie ungültige Datensätze landen.
-        hofladen = parse_hofladen(raw_hofladen)
+        hofladen = self.parse_roh(raw_hofladen)
+        raw_hofladen = self._mit_serverseitigem_flag(raw_hofladen, hofladen)
 
         if not isinstance(self._provider, MutableHofladenDataProvider):
             raise NotImplementedError(
@@ -264,12 +293,12 @@ class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
 
         if not updates:
             # Nichts zu ändern: aktuellen, bereits validen Stand liefern.
-            return parse_hofladen(aktueller_raw)
+            return self.parse_roh(aktueller_raw)
 
         # Fail-Fast: den vollständigen, zusammengeführten Datensatz
         # validieren, bevor der Provider überhaupt geschrieben wird.
         zusammengefuehrter_raw = {**aktueller_raw, **updates}
-        validierter_hofladen = parse_hofladen(zusammengefuehrter_raw)
+        validierter_hofladen = self.parse_roh(zusammengefuehrter_raw)
 
         await self._provider.async_update_raw_hofladen(hofladen_id, updates)
         await self.async_refresh()
@@ -343,7 +372,10 @@ class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
             endgueltiger_raw["version"] = 1
 
         # Fail-Fast: vor jedem Schreibzugriff vollständig validieren.
-        validierter_hofladen = parse_hofladen(endgueltiger_raw)
+        validierter_hofladen = self.parse_roh(endgueltiger_raw)
+        endgueltiger_raw = self._mit_serverseitigem_flag(
+            endgueltiger_raw, validierter_hofladen
+        )
 
         if bestehender_hofladen is not None:
             await self._provider.async_update_raw_hofladen(

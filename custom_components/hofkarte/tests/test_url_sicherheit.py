@@ -6,8 +6,12 @@ Homepage"), das denselben Prüfkern ein zweites Mal benötigt (siehe
 Prüfung ist rein syntaktisch.
 """
 
+import pytest
+
 from custom_components.hofkarte.url_sicherheit import (
+    ist_eigene_upload_url,
     ist_sichere_externe_url,
+    normalisiere_origin,
     ist_unsicheres_ip_literal,
 )
 
@@ -61,3 +65,67 @@ def test_ist_unsicheres_ip_literal_liefert_false_fuer_domainnamen() -> None:
 
 def test_ist_unsicheres_ip_literal_erkennt_private_adresse() -> None:
     assert ist_unsicheres_ip_literal("192.168.0.1") is True
+
+
+# --- F1 (Code Review 2026.9.2): Herkunft eigener Uploads --------------------
+
+_ORIGIN = "http://192.168.1.50:8123"
+_ID = "0123456789abcdef0123456789abcdef"
+
+
+@pytest.mark.parametrize(
+    ("url", "erwartet"),
+    [
+        ("HTTP://Beispiel.CH:80/x", "http://beispiel.ch"),
+        ("https://beispiel.ch:443/", "https://beispiel.ch"),
+        ("https://beispiel.ch:8443/", "https://beispiel.ch:8443"),
+        ("http://[::1]:8123/", "http://[::1]:8123"),
+        ("ftp://beispiel.ch/", None),
+        ("http://user:pw@beispiel.ch/", None),
+        ("http://beispiel.ch:abc/", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_normalisiere_origin(url: str | None, erwartet: str | None) -> None:
+    assert normalisiere_origin(url) == erwartet
+
+
+@pytest.mark.parametrize("variante", ["original", "256x256", "1920x1080"])
+def test_eigener_upload_wird_erkannt(variante: str) -> None:
+    assert ist_eigene_upload_url(f"{_ORIGIN}/api/image/serve/{_ID}/{variante}", [_ORIGIN])
+
+
+def test_eigener_upload_mit_standardport_und_gross_klein_schreibung() -> None:
+    assert ist_eigene_upload_url(
+        f"HTTPS://HA.Beispiel.CH:443/api/image/serve/{_ID}/original",
+        ["https://ha.beispiel.ch"],
+    )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://192.168.1.20/relay/0?turn=on",  # fremdes Ziel
+        f"http://192.168.1.20:8123/api/image/serve/{_ID}/original",  # falscher Host
+        f"https://192.168.1.50:8123/api/image/serve/{_ID}/original",  # falsches Schema
+        f"{_ORIGIN}/api/image/serve/{_ID}/original?x=1",  # Query
+        f"{_ORIGIN}/api/image/serve/{_ID}/original#frag",  # Fragment
+        f"{_ORIGIN}/api/image/serve/{_ID[:-1]}/original",  # ID zu kurz
+        f"{_ORIGIN}/api/image/serve/{_ID.upper()}/original",  # keine Hex-Kleinschreibung
+        f"{_ORIGIN}/api/image/serve/{_ID}/original/../../x",  # Pfad-Trick
+        f"{_ORIGIN}/api/image/serve/{_ID}/other",  # unbekannte Variante
+        f"{_ORIGIN}/x/api/image/serve/{_ID}/original",  # Präfix
+        f"/api/image/serve/{_ID}/original",  # relativ
+        f"http://user:pw@192.168.1.50:8123/api/image/serve/{_ID}/original",
+        "",
+        None,
+    ],
+)
+def test_fremde_oder_manipulierte_urls_sind_kein_eigener_upload(url: str | None) -> None:
+    assert not ist_eigene_upload_url(url, [_ORIGIN])
+
+
+def test_ohne_bekannte_origins_ist_nichts_ein_eigener_upload() -> None:
+    assert not ist_eigene_upload_url(f"{_ORIGIN}/api/image/serve/{_ID}/original", [])
+    assert not ist_eigene_upload_url(f"{_ORIGIN}/api/image/serve/{_ID}/original", ["ungültig"])

@@ -115,6 +115,7 @@ für die genauen, dokumentierten Grenzen dieses Ansatzes.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -139,6 +140,37 @@ _LESE_CHUNK_BYTES = 65536
 _MAX_REDIRECTS = 3
 _ERLAUBTE_CONTENT_TYPES = ("text/html", "application/xhtml+xml")
 _WEITERLEITUNGS_STATUS = (301, 302, 303, 307, 308)
+
+# --- Laufzeitbegrenzung der Text-Heuristiken (Befund F2, Code Review 2026.9.2) --
+#
+# Der sichtbare Seitentext stammt von einer **nicht vertrauenswürdigen**
+# Website. Die Fallback-Regexe unten liefen früher ungebremst und
+# synchron in der Home-Assistant-Event-Loop; mit gezielt gebauten Seiten
+# (z. B. ein einziges, 100 000 Zeichen langes „Wort“) wuchs die Laufzeit
+# quadratisch (Review-Messung: Adress-Regex ≈ 52 s bei 40 000 Zeichen)
+# und fror HA ein. Daher gilt mehrstufig:
+#
+# 1. Eingabe begrenzen (``_begrenze_text``): Gesamttext und Zeilenlänge.
+# 2. Muster selbst begrenzen: jede Wiederholung hat eine Obergrenze und
+#    beginnt nur an einer Wortgrenze (Lookbehind) - dadurch wird jede
+#    Textposition höchstens konstant oft als Trefferstart versucht.
+# 3. Die gesamte Extraktion läuft im Executor, abgesichert durch ein
+#    Zeitlimit (``EXTRAKTION_TIMEOUT_SEKUNDEN``), damit selbst ein
+#    unerwartet teures Muster die Event-Loop nicht blockiert.
+#
+# Die Grenzen sind grosszügig gewählt: Echte Impressum-/Kontaktzeilen sind
+# weit kürzer, die Trefferqualität ändert sich dadurch nicht.
+MAX_SICHTBARER_TEXT_ZEICHEN = 200_000
+# Eine Zeile mit mehr Zeichen ist kein Adress-/Öffnungszeiten-/Kontakteintrag
+# (sondern z. B. minifizierter Inline-Code oder ein Datenblock) und wird
+# vor den Heuristiken verworfen.
+MAX_ZEILE_ZEICHEN = 500
+EXTRAKTION_TIMEOUT_SEKUNDEN = 10
+# Obergrenzen der Musterbausteine (siehe Muster unten).
+_MAX_WORT_ZEICHEN = 60  # Strassen-/Ortswort
+_MAX_EMAIL_LOCAL = 64  # RFC 5321: Local-Part höchstens 64 Zeichen
+_MAX_EMAIL_DOMAIN = 255  # RFC 1035: Domain höchstens 255 Zeichen
+_MAX_LEERRAUM = 10  # aufeinanderfolgende Leerzeichen/Tabs in einem Muster
 
 _WOCHENTAGE_SCHEMA_ORG = {
     "monday": 1,
@@ -183,14 +215,15 @@ _WOCHENTAG_ALTERNATIVEN = "|".join(_WOCHENTAG_TEXT.keys())
 # völlig unabhängige Uhrzeit aus dem nächsten fälschlich kombiniert
 # werden). Dokumentierte Folge: eine über mehrere Zeilen verteilte Angabe
 # (z. B. Wochentag und Uhrzeit in getrennten Absätzen) wird nicht erkannt.
+_LZ = rf"[ \t]{{0,{_MAX_LEERRAUM}}}"  # begrenzter Leerraum (F2)
 _OEFFNUNGSZEIT_TEXT_MUSTER = re.compile(
     rf"(?P<von_tag>{_WOCHENTAG_ALTERNATIVEN})\b"
-    rf"(?:[ \t]*(?:bis|-|–|—)[ \t]*(?P<bis_tag>{_WOCHENTAG_ALTERNATIVEN})\b)?"
-    r"[ \t]*:?[ \t]*"
+    rf"(?:{_LZ}(?:bis|-|–|—){_LZ}(?P<bis_tag>{_WOCHENTAG_ALTERNATIVEN})\b)?"
+    rf"{_LZ}:?{_LZ}"
     r"(?P<beginn_h>\d{1,2})(?:[:.](?P<beginn_m>\d{2}))?"
-    r"[ \t]*(?:-|–|—|bis)[ \t]*"
+    rf"{_LZ}(?:-|–|—|bis){_LZ}"
     r"(?P<ende_h>\d{1,2})(?:[:.](?P<ende_m>\d{2}))?"
-    r"[ \t]*(?:uhr)?",
+    rf"{_LZ}(?:uhr)?",
     re.IGNORECASE,
 )
 
@@ -222,12 +255,19 @@ _STRASSEN_ENDUNGEN = (
 # eigenen Zeile, PLZ/Ort in der nächsten - auf Impressum-Seiten durchaus
 # üblich) wird dadurch bewusst **nicht** erkannt, statt fälschlich mit dem
 # nächsten, inhaltlich unabhängigen Absatz kombiniert zu werden.
+# Befund F2: Jedes Wort ist auf ``_MAX_WORT_ZEICHEN`` begrenzt und beginnt
+# nur an einer Wortgrenze (Lookbehind ``_WORT_START``). Zuvor war das erste
+# Wort unbegrenzt und konnte an jeder Position eines langen Wortes neu
+# beginnen - quadratische Laufzeit.
+_WORTZEICHEN = r"\wÀ-ÖØ-öø-ÿ.\-"
+_WORT_START = rf"(?<![{_WORTZEICHEN}])"
+_GROSSWORT = rf"[A-ZÄÖÜ][{_WORTZEICHEN}]{{0,{_MAX_WORT_ZEICHEN}}}"
 _ADRESSE_TEXT_MUSTER = re.compile(
-    r"(?P<strasse>[A-ZÄÖÜ][\wÀ-ÖØ-öø-ÿ.\-]*(?:[ \t]+[A-ZÄÖÜ][\wÀ-ÖØ-öø-ÿ.\-]*){0,2})"
-    r"[ \t]+(?P<hausnummer>\d{1,4}[a-zA-Z]?)"
-    r"[ \t]*,?[ \t]*"
+    rf"{_WORT_START}(?P<strasse>{_GROSSWORT}(?:[ \t]{{1,{_MAX_LEERRAUM}}}{_GROSSWORT}){{0,2}})"
+    rf"[ \t]{{1,{_MAX_LEERRAUM}}}(?P<hausnummer>\d{{1,4}}[a-zA-Z]?)"
+    rf"{_LZ},?{_LZ}"
     r"(?P<plz>\d{4})"
-    r"[ \t]+(?P<ort>[A-ZÄÖÜ][\wÀ-ÖØ-öø-ÿ.\-]+(?:[ \t]+[A-ZÄÖÜ][\wÀ-ÖØ-öø-ÿ.\-]+){0,2})",
+    rf"[ \t]{{1,{_MAX_LEERRAUM}}}(?P<ort>{_GROSSWORT}(?:[ \t]{{1,{_MAX_LEERRAUM}}}{_GROSSWORT}){{0,2}})",
     re.IGNORECASE,
 )
 
@@ -239,8 +279,15 @@ _ADRESSE_TEXT_MUSTER = re.compile(
 # Kontaktadressen ist das ausreichend ("lieber nichts als falsch": eine
 # exotische, technisch zwar gültige aber untypische Adresse wird im
 # Zweifel nicht erkannt, statt eine falsche Interpretation zu riskieren).
+#
+# Befund F2: Local-Part (<= 64) und Domain (<= 255) sind begrenzt, ein Treffer
+# beginnt nur dort, wo das davorstehende Zeichen kein Local-Part-Zeichen ist
+# (Lookbehind) - zuvor wurde bei langen Zeichenfolgen ohne "@" an jeder
+# Position erneut bis zum Ende gescannt (quadratisch). Die TLD ist auf 24
+# Zeichen begrenzt (längste real vergebene TLDs: 24).
 _EMAIL_TEXT_MUSTER = re.compile(
-    r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"
+    rf"(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]{{1,{_MAX_EMAIL_LOCAL}}}"
+    rf"@[A-Za-z0-9.\-]{{1,{_MAX_EMAIL_DOMAIN}}}\.[A-Za-z]{{2,24}}"
 )
 
 # Erkennt im DACH-Raum übliche Telefonnummern-Schreibweisen, z. B.
@@ -254,6 +301,23 @@ _EMAIL_TEXT_MUSTER = re.compile(
 _TELEFON_TEXT_MUSTER = re.compile(
     r"(?<![\d/])(\+\d{2}|0)[ \t]?\d{2}[ \t/\-]?\d{3}[ \t/\-]?\d{2}[ \t/\-]?\d{2}(?!\d)"
 )
+
+
+def _begrenze_text(text: str) -> str:
+    """Begrenzt den Eingabetext der Text-Heuristiken (Befund F2).
+
+    Kappt den Gesamttext auf ``MAX_SICHTBARER_TEXT_ZEICHEN`` und verwirft
+    Zeilen mit mehr als ``MAX_ZEILE_ZEICHEN`` Zeichen (keine plausiblen
+    Adress-/Öffnungszeiten-/Kontaktzeilen). Schützt unabhängig von den
+    (ebenfalls begrenzten) Mustern vor übergrossen Eingaben.
+    """
+    if len(text) > MAX_SICHTBARER_TEXT_ZEICHEN:
+        text = text[:MAX_SICHTBARER_TEXT_ZEICHEN]
+    if "\n" not in text:
+        return text if len(text) <= MAX_ZEILE_ZEICHEN else ""
+    return "\n".join(
+        zeile for zeile in text.split("\n") if len(zeile) <= MAX_ZEILE_ZEICHEN
+    )
 
 
 def _hat_strassen_endung(wort: str) -> bool:
@@ -425,18 +489,26 @@ class _SeitenParser(HTMLParser):
 def _flatten_json_ld(wert: Any) -> list[dict[str, Any]]:
     """Baut eine flache Liste von JSON-LD-Objekten auf – löst dabei
     Listen sowie das schema.org-``@graph``-Konstrukt auf (mehrere
-    Entitäten in einem einzigen ``<script>``-Block)."""
-    if isinstance(wert, list):
-        ergebnis: list[dict[str, Any]] = []
-        for eintrag in wert:
-            ergebnis.extend(_flatten_json_ld(eintrag))
-        return ergebnis
-    if isinstance(wert, dict):
-        graph = wert.get("@graph")
-        if isinstance(graph, list):
-            return _flatten_json_ld(graph)
-        return [wert]
-    return []
+    Entitäten in einem einzigen ``<script>``-Block).
+
+    Iterativ statt rekursiv (Befund F13): Eine bösartig tief verschachtelte
+    Liste (``[[[[…]]]]``) soll nie zu einem ``RecursionError`` führen. Die
+    Reihenfolge der Objekte entspricht der bisherigen rekursiven
+    Tiefensuche (von links nach rechts).
+    """
+    ergebnis: list[dict[str, Any]] = []
+    stapel: list[Any] = [wert]
+    while stapel:
+        aktuell = stapel.pop()
+        if isinstance(aktuell, list):
+            stapel.extend(reversed(aktuell))
+        elif isinstance(aktuell, dict):
+            graph = aktuell.get("@graph")
+            if isinstance(graph, list):
+                stapel.extend(reversed(graph))
+            else:
+                ergebnis.append(aktuell)
+    return ergebnis
 
 
 def _iter_json_ld_objekte(bloecke: list[str]) -> list[dict[str, Any]]:
@@ -444,7 +516,10 @@ def _iter_json_ld_objekte(bloecke: list[str]) -> list[dict[str, Any]]:
     for roh in bloecke:
         try:
             geparst = json.loads(roh)
-        except (json.JSONDecodeError, ValueError):
+        except (ValueError, RecursionError):
+            # json.JSONDecodeError ist eine ValueError. RecursionError
+            # (Befund F13): ``json.loads`` kann bei extrem tiefer
+            # Verschachtelung (z. B. 200 000 x "[") daran scheitern.
             continue
         objekte.extend(_flatten_json_ld(geparst))
     return objekte
@@ -559,8 +634,14 @@ def _extrahiere_kontakt_aus_text(
     im Kopf- und Fussbereich der Seite, zählen dabei nicht als
     Widerspruch). Beide Felder werden unabhängig voneinander ausgewertet.
     """
+    text = _begrenze_text(text)
     telefon_treffer = {m.group(0).strip() for m in _TELEFON_TEXT_MUSTER.finditer(text)}
-    email_treffer = {m.group(0).strip() for m in _EMAIL_TEXT_MUSTER.finditer(text)}
+    # E-Mail-Suche nur, wenn überhaupt ein "@" vorkommt (F2).
+    email_treffer = (
+        {m.group(0).strip() for m in _EMAIL_TEXT_MUSTER.finditer(text)}
+        if "@" in text
+        else set()
+    )
 
     telefon = next(iter(telefon_treffer)) if len(telefon_treffer) == 1 else None
     email = next(iter(email_treffer)) if len(email_treffer) == 1 else None
@@ -659,7 +740,7 @@ def _extrahiere_oeffnungszeiten_aus_text(text: str) -> tuple[dict[str, Any], ...
     ein falsches Ergebnis geliefert.
     """
     kandidaten: dict[int, set[tuple[str, str]]] = {}
-    for treffer in _OEFFNUNGSZEIT_TEXT_MUSTER.finditer(text):
+    for treffer in _OEFFNUNGSZEIT_TEXT_MUSTER.finditer(_begrenze_text(text)):
         von_tag = _WOCHENTAG_TEXT.get(treffer.group("von_tag").lower())
         bis_tag_roh = treffer.group("bis_tag")
         bis_tag = _WOCHENTAG_TEXT.get(bis_tag_roh.lower()) if bis_tag_roh else None
@@ -713,7 +794,7 @@ def _extrahiere_adresse_aus_text(
     statt einen unsicheren Vorschlag zu liefern.
     """
     eindeutige = set()
-    for m in _ADRESSE_TEXT_MUSTER.finditer(text):
+    for m in _ADRESSE_TEXT_MUSTER.finditer(_begrenze_text(text)):
         strasse_worte = m.group("strasse").split()
         if not strasse_worte or not _hat_strassen_endung(strasse_worte[-1]):
             continue  # kein erkanntes Strassenmuster -> kein Kandidat
@@ -779,12 +860,14 @@ def _extrahiere_aus_html(html_text: str) -> WebseiteInfo:
     # Adresse wird bewusst nur als Ganzes ergänzt (nicht feldweise) - eine
     # aus JSON-LD bereits teilweise vorhandene, zuverlässigere Adresse soll
     # nicht mit unsicheren Text-Treffern vermischt werden.
+    # Der sichtbare Text wird nur einmal aufgebaut und (Befund F2) begrenzt.
+    sichtbarer_text = _begrenze_text(parser.sichtbarer_text())
+
     if adresse is None and plz is None and ort is None:
-        sichtbarer_text = parser.sichtbarer_text()
         adresse, plz, ort = _extrahiere_adresse_aus_text(sichtbarer_text)
 
     if not oeffnungszeiten:
-        oeffnungszeiten = _extrahiere_oeffnungszeiten_aus_text(parser.sichtbarer_text())
+        oeffnungszeiten = _extrahiere_oeffnungszeiten_aus_text(sichtbarer_text)
 
     # Mobilnummer/E-Mail per Text-Heuristik nur ergänzen, wenn JSON-LD das
     # jeweilige Feld nicht geliefert hat - je Feld unabhängig, analog zu
@@ -793,7 +876,7 @@ def _extrahiere_aus_html(html_text: str) -> WebseiteInfo:
     # gegenseitige Konsistenzbeziehung sind).
     if mobilnummer is None or email is None:
         text_mobilnummer, text_email = _extrahiere_kontakt_aus_text(
-            parser.sichtbarer_text()
+            sichtbarer_text
         )
         if mobilnummer is None:
             mobilnummer = text_mobilnummer
@@ -929,7 +1012,19 @@ async def async_ermittle_webseite_info(hass: HomeAssistant, url: str | None) -> 
     session = async_get_clientsession(hass)
     html_text = await _hole_html(session, url)
 
-    info = _extrahiere_aus_html(html_text)
+    # Befund F2: Die Auswertung (HTML-Parser + Regex-Heuristiken) ist
+    # CPU-gebunden und läuft deshalb im Executor statt in der Event-Loop;
+    # das Zeitlimit stellt sicher, dass auch ein unerwartet teures Muster
+    # den Aufrufer nicht dauerhaft blockiert.
+    try:
+        async with asyncio.timeout(EXTRAKTION_TIMEOUT_SEKUNDEN):
+            info = await hass.async_add_executor_job(
+                _extrahiere_aus_html, html_text
+            )
+    except TimeoutError as err:
+        raise WebseiteNichtErreichbarError(
+            "Die Auswertung der Website hat zu lange gedauert."
+        ) from err
     if info.ist_leer():
         raise WebseiteInformationenNichtGefundenError(
             "Auf der Website konnten keine verwertbaren Informationen "

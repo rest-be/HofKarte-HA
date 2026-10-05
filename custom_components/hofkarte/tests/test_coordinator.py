@@ -621,3 +621,68 @@ async def test_provider_unterstuetzt_schreibzugriffe_false_fuer_read_only(
     coordinator = HofKarteUpdateCoordinator(hass, provider)
 
     assert coordinator.provider_unterstuetzt_schreibzugriffe is False
+
+
+# ---------------------------------------------------------------------------
+# F1 (Code Review 2026.9.2): hochgeladen-Flag wird serverseitig abgeleitet
+# ---------------------------------------------------------------------------
+
+_F1_ORIGIN = "http://192.168.1.50:8123"
+_F1_UPLOAD = f"{_F1_ORIGIN}/api/image/serve/0123456789abcdef0123456789abcdef/original"
+_F1_FREMD = "http://192.168.1.20/relay/0?turn=on"
+
+
+async def test_save_persistiert_nie_ein_behauptetes_hochgeladen_flag(
+    hass: HomeAssistant,
+) -> None:
+    """Der Store darf auch nach ``ws_save``/Import kein vom Client
+    behauptetes Flag enthalten (sonst würde es beim Export weitergetragen)."""
+    hass.config.internal_url = _F1_ORIGIN
+    provider = StaticTestDataProvider(raw_hoflaeden=[])
+    coordinator = HofKarteUpdateCoordinator(hass, provider)
+    await coordinator.async_config_entry_first_refresh()
+
+    await coordinator.async_save_hofladen(
+        {
+            "id": "hof-1",
+            "name": "Hof",
+            "bilder": [
+                {"url": _F1_FREMD, "hochgeladen": True},
+                {"url": _F1_UPLOAD, "hochgeladen": False},
+            ],
+        }
+    )
+
+    gespeichert = {r["id"]: r for r in await provider.async_fetch_raw_hoflaeden()}
+    flags = [b["hochgeladen"] for b in gespeichert["hof-1"]["bilder"]]
+    assert flags == [False, True]
+    modell = coordinator.data["hof-1"]
+    assert [b.hochgeladen for b in modell.bilder] == [False, True]
+
+
+async def test_lesen_bestandsdaten_mit_manipuliertem_flag_verliert_es(
+    hass: HomeAssistant,
+) -> None:
+    """Bestehende Store-Daten mit manipuliertem Flag verlieren es beim
+    Einlesen, ohne dass der Store umgeschrieben werden muss; ein gültiger
+    eigener Upload bleibt unverändert gültig."""
+    hass.config.internal_url = _F1_ORIGIN
+    provider = _FakeProvider(
+        raw_hoflaeden=[
+            {
+                "id": "hof-1",
+                "name": "Hof",
+                "bilder": [
+                    {"url": _F1_FREMD, "hochgeladen": True},
+                    {"url": _F1_UPLOAD, "hochgeladen": True},
+                ],
+            }
+        ]
+    )
+    coordinator = HofKarteUpdateCoordinator(hass, provider)
+
+    await coordinator.async_config_entry_first_refresh()
+
+    bilder = coordinator.data["hof-1"].bilder
+    assert [b.hochgeladen for b in bilder] == [False, True]
+    assert provider.raw_hoflaeden[0]["bilder"][0]["hochgeladen"] is True  # Store unverändert

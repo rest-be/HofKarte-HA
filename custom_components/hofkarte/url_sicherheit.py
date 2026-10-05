@@ -25,11 +25,28 @@ DNS-Auflösung als blockierendem Aufruf) – zusätzlich zur hier geprüften
 URL-Syntax begrenzt ``webseite_info.py`` aber auch Antwortgrösse,
 Content-Type und Zeitüberschreitung des eigentlichen HTTP-Abrufs, da es
 (anders als ``images.py``) den Antwortinhalt selbst verarbeitet.
+
+## Herkunft eigener Uploads (Befund F1, Code Review 2026.9.2)
+
+``Bild.hochgeladen`` befreit eine Bild-URL von der private-IP-Prüfung (siehe
+``images.py``). Dieses Flag darf daher **nie** aus Client- oder Importdaten
+übernommen werden: Ein manipulierter Datensatz
+(``{"url": "http://192.168.1.20/relay/0?turn=on", "hochgeladen": true}``)
+würde Home Assistant sonst zu einem Abruf beliebiger interner Ziele
+(SSRF) bewegen. Stattdessen wird es serverseitig **abgeleitet**:
+``ist_eigene_upload_url`` ist nur dann wahr, wenn die URL exakt dem Muster
+des eigenen Uploads (Home Assistants ``image_upload``:
+``/api/image/serve/<32 Hex-Zeichen>/<original|BxH>``) entspricht **und**
+ihr Origin (Schema, Host, Port) zu dieser Home-Assistant-Instanz gehört.
+Die Origin-Menge ermittelt ``instanz_origin.py`` (hass-abhängig); die
+Muster-/Origin-Prüfung selbst ist rein und ohne Home Assistant testbar.
 """
 
 from __future__ import annotations
 
 import ipaddress
+import re
+from collections.abc import Iterable
 from urllib.parse import urlparse
 
 UNSICHERE_HOSTNAMEN = frozenset({"localhost"})
@@ -101,3 +118,66 @@ def ist_sichere_externe_url(url: str | None) -> bool:
         return False
 
     return True
+
+
+# Pfad eines über Home Assistants ``image_upload`` erzeugten Bildes: die ID ist
+# eine UUID4 in Hex-Schreibweise (32 Zeichen), gefolgt von ``original`` oder
+# einer Grössenangabe (``<Breite>x<Höhe>``). Bewusst exakt (``fullmatch``), ohne
+# Query/Fragment: Alles andere ist kein von HofKarte erzeugter Upload.
+_UPLOAD_PFAD_MUSTER = re.compile(r"/api/image/serve/[0-9a-f]{32}/(?:original|\d{1,4}x\d{1,4})")
+
+_STANDARD_PORTS = {"http": 80, "https": 443}
+
+
+def normalisiere_origin(url: str | None) -> str | None:
+    """Origin (``schema://host[:port]``) einer http(s)-URL normalisieren.
+
+    Schema und Host werden kleingeschrieben, Standardports (80/443) entfallen.
+    Liefert ``None`` bei ungültigen URLs, anderen Schemata, fehlendem Host
+    oder eingebetteten Zugangsdaten (Fail-Fast: im Zweifel keine Origin).
+    """
+    if not url or not isinstance(url, str):
+        return None
+    try:
+        parsed = urlparse(url.strip())
+        port = parsed.port
+    except ValueError:
+        return None
+    if parsed.scheme not in ("http", "https") or parsed.username or parsed.password:
+        return None
+    hostname = parsed.hostname
+    if not hostname:
+        return None
+    host = f"[{hostname}]" if ":" in hostname else hostname
+    if port is None or port == _STANDARD_PORTS[parsed.scheme]:
+        return f"{parsed.scheme}://{host}"
+    return f"{parsed.scheme}://{host}:{port}"
+
+
+def ist_eigene_upload_url(url: str | None, eigene_origins: Iterable[str]) -> bool:
+    """Ob ``url`` ein von dieser Home-Assistant-Instanz erzeugter Upload ist.
+
+    Wahr nur, wenn (1) der Pfad exakt dem Upload-Muster entspricht (keine
+    Query, kein Fragment, keine Parameter) und (2) die normalisierte Origin
+    in ``eigene_origins`` enthalten ist (siehe ``instanz_origin.py``). Ohne
+    bekannte Origins ist die Antwort stets ``False`` (fail-closed).
+
+    Relative URLs gelten bewusst **nicht** als eigener Upload: Home
+    Assistants Bild-Abruf (``ImageEntity``) benötigt eine absolute
+    http(s)-URL, und das Panel speichert stets die absolute URL
+    (``window.location.origin`` + Pfad).
+    """
+    if not url or not isinstance(url, str):
+        return False
+    origins = {o for o in (normalisiere_origin(x) for x in eigene_origins) if o}
+    if not origins:
+        return False
+    try:
+        parsed = urlparse(url.strip())
+    except ValueError:
+        return False
+    if parsed.query or parsed.fragment or parsed.params:
+        return False
+    if not _UPLOAD_PFAD_MUSTER.fullmatch(parsed.path):
+        return False
+    return normalisiere_origin(url) in origins

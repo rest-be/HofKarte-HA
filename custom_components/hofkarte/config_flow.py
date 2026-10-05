@@ -27,6 +27,11 @@ from homeassistant.config_entries import (
 )
 from homeassistant.core import callback
 from homeassistant.const import CONF_NAME
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 
 from .const import (
     CONF_LISTEN_SORT_RICHTUNG,
@@ -93,8 +98,13 @@ class HofKarteConfigFlow(ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> HofKarteOptionsFlow:
-        """Options Flow für diese Config Entry bereitstellen."""
-        return HofKarteOptionsFlow(config_entry)
+        """Options Flow für diese Config Entry bereitstellen.
+
+        Der Options Flow wird bewusst **ohne** Argument erzeugt (Befund F3
+        des Code Reviews zu 2026.9.2): ``config_entry`` stellt Home
+        Assistant selbst bereit (siehe ``HofKarteOptionsFlow``).
+        """
+        return HofKarteOptionsFlow()
 
 
 class HofKarteOptionsFlow(OptionsFlow):
@@ -106,17 +116,23 @@ class HofKarteOptionsFlow(OptionsFlow):
     diesen einen Schritt (``init``) - die Anzahl der Felder rechtfertigt
     keinen mehrstufigen Flow.
 
-    ``self.config_entry`` wird hier (wie bei Home-Assistant-Integrationen
-    dieser Art historisch üblich) explizit im Konstruktor gesetzt statt
-    sich auf eine von Home Assistant automatisch bereitgestellte Basis-
-    Implementierung zu verlassen - das hält die Kompatibilität mit der in
-    diesem Projekt aktuell eingesetzten Home-Assistant-Version explizit
-    nachvollziehbar, statt sich auf eine bestimmte, sich über Versionen
-    hinweg wandelnde Basisklassen-Eigenheit zu verlassen.
-    """
+    ``self.config_entry`` wird **nicht** selbst gesetzt, sondern von
+    Home Assistant über die Basisklasse bereitgestellt (Befund F3 des Code
+    Reviews zu 2026.9.2): Die Property existiert seit Home Assistant
+    2024.11; seit 2025.12 besitzt sie keinen Setter mehr, eine explizite
+    Zuweisung (``self.config_entry = config_entry``) im Konstruktor würde
+    dort mit einem ``AttributeError`` scheitern und den Einstellungen-
+    Dialog unbenutzbar machen. ``hacs.json`` verlangt bereits Home
+    Assistant ≥ 2025.1.0 - eine Anhebung der Mindestversion ist daher
+    nicht nötig. Aus demselben Grund gibt es bewusst keinen eigenen
+    ``__init__``.
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        self.config_entry = config_entry
+    Die beiden Auswahlfelder verwenden einen ``SelectSelector`` mit
+    Übersetzungsschlüssel (``selector.<schlüssel>.options.<wert>`` in
+    ``strings.json``/``translations``), damit Nutzer:innen lesbare
+    Bezeichnungen statt der technischen Werte (``geoeffnet``, ``desc``)
+    sehen.
+    """
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -134,13 +150,25 @@ class HofKarteOptionsFlow(OptionsFlow):
                     default=optionen.get(
                         CONF_LISTEN_SORT_SPALTE, DEFAULT_LISTEN_SORT_SPALTE
                     ),
-                ): vol.In(LISTEN_SORT_SPALTEN),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=list(LISTEN_SORT_SPALTEN),
+                        mode=SelectSelectorMode.DROPDOWN,
+                        translation_key=CONF_LISTEN_SORT_SPALTE,
+                    )
+                ),
                 vol.Required(
                     CONF_LISTEN_SORT_RICHTUNG,
                     default=optionen.get(
                         CONF_LISTEN_SORT_RICHTUNG, DEFAULT_LISTEN_SORT_RICHTUNG
                     ),
-                ): vol.In(LISTEN_SORT_RICHTUNGEN),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=list(LISTEN_SORT_RICHTUNGEN),
+                        mode=SelectSelectorMode.DROPDOWN,
+                        translation_key=CONF_LISTEN_SORT_RICHTUNG,
+                    )
+                ),
                 vol.Required(
                     CONF_OSM_RADIUS_METER,
                     default=optionen.get(

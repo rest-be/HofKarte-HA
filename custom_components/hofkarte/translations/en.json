@@ -78,5 +78,21 @@
         }
       }
     }
+  },
+  "selector": {
+    "listen_sort_spalte": {
+      "options": {
+        "name": "Name",
+        "adresse": "Address",
+        "geoeffnet": "Open now",
+        "bewertung": "Rating"
+      }
+    },
+    "listen_sort_richtung": {
+      "options": {
+        "asc": "Ascending",
+        "desc": "Descending"
+      }
+    }
   }
 }

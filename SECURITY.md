@@ -74,11 +74,25 @@ offenen Sicherheitslücken:
 - Über den geführten Bilder-Upload erzeugte Bilder (`Bild.hochgeladen =
   True`) sind von der Ablehnung privater/interner IP-Adressen bewusst
   ausgenommen, da ihre URL zwangsläufig auf die eigene
-  Home-Assistant-Instanz zeigt. Die Vertrauensbasis ist hier die
-  Herkunft (über Home Assistants offiziellen `image_upload`-Mechanismus
-  erzeugt), nicht der Adressbereich; Schema- und
-  Zugangsdaten-Prüfung gelten unverändert auch für hochgeladene Bilder.
-  Siehe `docs/architecture.md`, Abschnitt „Geführter Bilder-Upload“.
+  Home-Assistant-Instanz zeigt. Das Flag wird dabei **ausschliesslich
+  serverseitig abgeleitet** (ab `2026.10.0-dev.4`, Befund F1 des Code
+  Reviews zu 2026.9.2): Es gilt nur für URLs im exakten Muster des
+  eigenen Uploads (`/api/image/serve/<32 Hex-Zeichen>/original|BxH`, ohne
+  Query/Fragment) **und** auf einer Origin dieser Home-Assistant-Instanz
+  (interne, externe, Cloud- bzw. automatisch erkannte lokale URL). Ein
+  in Importdateien, `ws_save`-Anfragen oder Store-Daten behauptetes
+  `hochgeladen: true` wird ignoriert und weder gespeichert noch
+  exportiert; Schema- und Zugangsdaten-Prüfung gelten unverändert. Wird
+  Home Assistant über einen nicht als interne/externe URL
+  konfigurierten Hostnamen aufgerufen, gilt ein dort hochgeladenes Bild
+  mit privater IP als normale externe URL und wird abgelehnt – dann
+  die interne/externe URL unter *Einstellungen → System → Netzwerk*
+  konfigurieren. Siehe `docs/architecture.md`, Abschnitt „Geführter
+  Bilder-Upload“.
+- Die Text-Heuristiken der Website-Auswertung (Adresse, Öffnungszeiten,
+  Telefon, E-Mail) sind laufzeitbegrenzt (Befund F2): Eingabelänge und
+  Zeilenlänge sind gekappt, alle Muster haben Obergrenzen, und die
+  Auswertung läuft im Executor mit Zeitlimit statt in der Event-Loop.
 - Der Bilder-Upload selbst nutzt ausschliesslich Home Assistants eigene
   `image_upload`-Komponente (kein eigener Upload-Endpunkt); Format-
   (JPEG/PNG/GIF) und Grössenprüfung (max. 10 MB) erfolgen serverseitig

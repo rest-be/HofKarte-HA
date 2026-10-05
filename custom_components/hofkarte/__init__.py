@@ -16,6 +16,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.start import async_at_started
 
 from .const import DOMAIN
 from .coordinator import HofKarteUpdateCoordinator
@@ -75,6 +76,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             lambda: async_sync_devices(hass, entry, coordinator.data)
         )
     )
+
+    if not hass.is_running:
+        # Befund F1: ``hochgeladen`` wird aus der Origin dieser Instanz
+        # abgeleitet. Vor dem Start von Home Assistant ist die automatisch
+        # erkannte lokale Adresse (``get_url``) evtl. noch nicht bekannt -
+        # nach dem Start werden die Daten daher einmal neu eingelesen.
+        async def _nach_start(_hass: HomeAssistant) -> None:
+            await coordinator.async_request_refresh()
+
+        entry.async_on_unload(async_at_started(hass, _nach_start))
 
     await async_register_frontend(hass)
     entry.async_on_unload(lambda: async_remove_frontend(hass))

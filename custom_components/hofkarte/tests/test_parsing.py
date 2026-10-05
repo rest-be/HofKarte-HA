@@ -348,21 +348,49 @@ def test_parse_bild_hochgeladen_flag_default_false() -> None:
     assert hofladen.bilder[0].hochgeladen is False
 
 
-def test_parse_bild_hochgeladen_flag_wird_uebernommen() -> None:
-    raw = {
-        "id": "hof-17",
-        "name": "Hofladen",
-        "bilder": [
-            {
-                "url": "http://192.168.1.50:8123/api/image/serve/abc/original",
-                "hochgeladen": True,
-            }
-        ],
-    }
+_EIGENE_ORIGIN = "http://192.168.1.50:8123"
+_UPLOAD_ID = "0123456789abcdef0123456789abcdef"
 
-    hofladen = parse_hofladen(raw)
 
-    assert hofladen.bilder[0].hochgeladen is True
+def _bild_raw(url: str, **extra: object) -> dict:
+    return {"id": "hof-17", "name": "Hofladen", "bilder": [{"url": url, **extra}]}
+
+
+def test_parse_bild_hochgeladen_wird_fuer_eigenen_upload_abgeleitet() -> None:
+    """F1: Das Flag entsteht serverseitig aus Pfadmuster + Origin der
+    eigenen Instanz - unabhängig davon, was die Rohdaten behaupten."""
+    url = f"{_EIGENE_ORIGIN}/api/image/serve/{_UPLOAD_ID}/original"
+
+    mit_flag = parse_hofladen(
+        _bild_raw(url, hochgeladen=True), eigene_origins=[_EIGENE_ORIGIN]
+    )
+    ohne_flag = parse_hofladen(_bild_raw(url), eigene_origins=[_EIGENE_ORIGIN])
+
+    assert mit_flag.bilder[0].hochgeladen is True
+    assert ohne_flag.bilder[0].hochgeladen is True
+
+
+def test_parse_bild_hochgeladen_wird_nicht_aus_rohdaten_uebernommen() -> None:
+    """F1 (Regression): ``http://192.168.1.20/relay/0?turn=on`` mit
+    ``hochgeladen: true`` hätte vor der Korrektur die private-IP-Prüfung
+    umgangen (SSRF)."""
+    hofladen = parse_hofladen(
+        _bild_raw("http://192.168.1.20/relay/0?turn=on", hochgeladen=True),
+        eigene_origins=[_EIGENE_ORIGIN],
+    )
+
+    assert hofladen.bilder[0].hochgeladen is False
+
+
+def test_parse_bild_hochgeladen_falscher_host_oder_ohne_origins_ist_false() -> None:
+    url = f"http://192.168.1.20/api/image/serve/{_UPLOAD_ID}/original"
+
+    assert parse_hofladen(
+        _bild_raw(url, hochgeladen=True), eigene_origins=[_EIGENE_ORIGIN]
+    ).bilder[0].hochgeladen is False
+    # Ohne bekannte Origins: fail-closed.
+    eigene = f"{_EIGENE_ORIGIN}/api/image/serve/{_UPLOAD_ID}/original"
+    assert parse_hofladen(_bild_raw(eigene, hochgeladen=True)).bilder[0].hochgeladen is False
 
 
 def test_parse_bild_hochgeladen_muss_bool_sein() -> None:

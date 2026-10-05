@@ -762,12 +762,14 @@ HTTP-Anfragen:
   `CONF_OSM_RADIUS_METER`, alle in `const.py` definiert) – dauerhaft in
   der Config Entry gespeicherte Vorgabewerte für die Übersicht bzw. für
   „Angaben automatisch ermitteln“, analog zur globalen
-  „Einstellungen“-Maske der parallel gepflegten iOS-App. Anders als bei
-  Home-Assistant-Integrationen, die sich auf eine automatisch von
-  `OptionsFlow` bereitgestellte Basis-Implementierung verlassen, setzt
-  `HofKarteOptionsFlow.__init__` `self.config_entry` bewusst explizit,
-  um unabhängig von einer sich über Home-Assistant-Versionen wandelnden
-  Basisklassen-Eigenheit zu bleiben. Die Verwaltungsoberfläche liest
+  „Einstellungen“-Maske der parallel gepflegten iOS-App. Seit
+  `2026.10.0-dev.4` (Befund F3) hat `HofKarteOptionsFlow` **keinen**
+  eigenen Konstruktor mehr: `self.config_entry` stellt Home Assistant
+  selbst bereit (Property seit 2024.11, ab 2025.12 ohne Setter – eine
+  explizite Zuweisung würde dort einen `AttributeError` auslösen). Die
+  beiden Auswahlfelder sind `SelectSelector`-Dropdowns mit
+  übersetzten Optionsbezeichnungen (`selector.<schlüssel>.options.<wert>`
+  in `strings.json`/`translations`). Die Verwaltungsoberfläche liest
   diese Werte beim Laden über den neuen, administratorpflichtigen
   WebSocket-Befehl `hofkarte/management/settings` und verwendet sie als
   Vorgabewerte statt wie bisher rein pro Formularsitzung flüchtiger

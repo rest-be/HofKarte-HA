@@ -10,6 +10,7 @@ import pytest
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import Unauthorized
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.hofkarte.const import (
@@ -22,7 +23,11 @@ from custom_components.hofkarte.const import (
     DOMAIN,
 )
 from custom_components.hofkarte.coordinator import HofKarteUpdateCoordinator
-from custom_components.hofkarte.data_provider import HofladenDataProvider
+from custom_components.hofkarte.data_provider import (
+    DuplicateHofladenIdError,
+    HofladenDataProvider,
+    HofladenNotFoundError,
+)
 from custom_components.hofkarte.management import (
     _finde_duplikat,
     _get_coordinator,
@@ -1590,3 +1595,72 @@ def test_ws_settings_ohne_eingerichtete_integration_sendet_fehler(
     assert msg_id == 72
     assert code == "not_ready"
 
+
+
+# ---------------------------------------------------------------------------
+# F13 (Code Review 2026.9.2): ws_save meldet Datenbankfehler sauber
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("fehler", "erwarteter_code"),
+    [
+        (DuplicateHofladenIdError("ID bereits vergeben"), "duplicate_id"),
+        (HofladenNotFoundError("Hofladen nicht gefunden"), "not_found"),
+    ],
+)
+async def test_ws_save_meldet_duplicate_id_und_not_found_als_ws_fehler(
+    hass: HomeAssistant, fehler: Exception, erwarteter_code: str
+) -> None:
+    coordinator = await _setup_mit_coordinator(hass)
+    connection = _FakeConnection()
+
+    with patch.object(coordinator, "async_save_hofladen", side_effect=fehler):
+        ws_save(
+            hass,
+            connection,
+            {
+                "id": 21,
+                "type": "hofkarte/management/save",
+                "hofladen": {"id": "hof-1", "name": "Hof"},
+            },
+        )
+        await hass.async_block_till_done()
+
+    assert connection.results == []
+    assert [(i, c) for i, c, _m in connection.errors] == [(21, erwarteter_code)]
+
+
+async def test_import_commit_persistiert_kein_manipuliertes_hochgeladen_flag(
+    hass: HomeAssistant,
+) -> None:
+    """F1: Import-Roundtrip mit manipuliertem Flag - weder Modell noch Store
+    enthalten danach ``hochgeladen: true`` für das fremde Ziel."""
+    coordinator = await _setup_mit_coordinator(hass)
+    connection = _FakeConnection()
+
+    ws_import_commit(
+        hass,
+        connection,
+        {
+            "id": 22,
+            "type": "hofkarte/management/import_commit",
+            "eintraege": [
+                {
+                    "aktion": "neu",
+                    "hofladen": {
+                        "name": "Import",
+                        "bilder": [
+                            {"url": "http://192.168.1.20/relay/0?turn=on", "hochgeladen": True}
+                        ],
+                    },
+                }
+            ],
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert connection.errors == []
+    hofladen = next(iter(coordinator.data.values()))
+    assert hofladen.bilder[0].hochgeladen is False
+    assert _serialize_hofladen(hofladen, now=dt_util.now())["hauptbild_url"] is None

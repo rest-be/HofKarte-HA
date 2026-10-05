@@ -78,5 +78,21 @@
         }
       }
     }
+  },
+  "selector": {
+    "listen_sort_spalte": {
+      "options": {
+        "name": "Name",
+        "adresse": "Adresse",
+        "geoeffnet": "Aktuell geöffnet",
+        "bewertung": "Bewertung"
+      }
+    },
+    "listen_sort_richtung": {
+      "options": {
+        "asc": "Aufsteigend",
+        "desc": "Absteigend"
+      }
+    }
   }
 }

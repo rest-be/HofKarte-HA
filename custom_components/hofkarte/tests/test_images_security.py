@@ -120,3 +120,34 @@ def test_get_main_image_url_beruecksichtigt_hochgeladen_flag_pro_bild() -> None:
 
     assert hauptbild == "http://192.168.1.50:8123/api/image/serve/abc/original"
     assert weitere == []  # das zweite, nicht hochgeladene Bild bleibt unsicher
+
+
+def test_manipuliertes_hochgeladen_flag_umgeht_die_private_ip_pruefung_nicht() -> None:
+    """F1 (Regression, Ende-zu-Ende ohne Home Assistant): Rohdaten mit
+    ``hochgeladen: true`` auf ein internes Ziel ergeben kein Hauptbild."""
+    from custom_components.hofkarte.parsing import parse_hofladen
+
+    hofladen = parse_hofladen(
+        {
+            "id": "h1",
+            "name": "Hof",
+            "bilder": [
+                {"url": "http://192.168.1.20/relay/0?turn=on", "hochgeladen": True}
+            ],
+        },
+        eigene_origins=["http://192.168.1.50:8123"],
+    )
+
+    assert images.get_main_image_url(hofladen.bilder) is None
+
+
+def test_eigener_upload_bleibt_trotz_privater_ip_ein_gueltiges_hauptbild() -> None:
+    from custom_components.hofkarte.parsing import parse_hofladen
+
+    url = "http://192.168.1.50:8123/api/image/serve/0123456789abcdef0123456789abcdef/original"
+    hofladen = parse_hofladen(
+        {"id": "h1", "name": "Hof", "bilder": [{"url": url}]},
+        eigene_origins=["http://192.168.1.50:8123"],
+    )
+
+    assert images.get_main_image_url(hofladen.bilder) == url

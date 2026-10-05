@@ -571,3 +571,198 @@ async def test_zu_viele_weiterleitungen_werden_abgelehnt(
 
     with pytest.raises(WebseiteNichtErreichbarError):
         await async_ermittle_webseite_info(hass, "https://beispiel.example")
+
+
+# ---------------------------------------------------------------------------
+# F2 (Code Review 2026.9.2): Laufzeitbegrenzung der Text-Heuristiken
+# ---------------------------------------------------------------------------
+#
+# Vor der Korrektur wuchs die Laufzeit der Adress- und E-Mail-Regex bei
+# langen, nicht trennbaren Zeichenfolgen quadratisch (≈ 13 s bei 20 000
+# Zeichen, Review-Messung ≈ 52 s bei 40 000). Diese Tests haben harte
+# Zeitgrenzen und wären vor der Korrektur rot gewesen.
+
+import json as _json  # noqa: E402
+import time  # noqa: E402
+
+from custom_components.hofkarte import webseite_info as _wi  # noqa: E402
+
+_ZEITGRENZE_SEKUNDEN = 0.2
+
+_BOESARTIGE_EINGABEN = {
+    "a_x100000": "a" * 100_000,
+    "A_x100000": "A" * 100_000,
+    "Aa_x40000": "Aa " * 40_000,
+    "a@_x50000": "a@" * 50_000,
+    "1_x100000": "1" * 100_000,
+    "Mo_plus_Leerzeichen": "Mo" + " " * 100_000 + "x",
+    "x@_a._x50000": "x@" + "a." * 50_000,
+}
+
+_TEXT_HEURISTIKEN = {
+    "adresse": _wi._extrahiere_adresse_aus_text,
+    "oeffnungszeiten": _wi._extrahiere_oeffnungszeiten_aus_text,
+    "kontakt": _wi._extrahiere_kontakt_aus_text,
+}
+
+
+def _gemessen(funktion: Any, text: str) -> float:
+    start = time.perf_counter()
+    funktion(text)
+    return time.perf_counter() - start
+
+
+@pytest.mark.parametrize("heuristik", sorted(_TEXT_HEURISTIKEN))
+@pytest.mark.parametrize("name", sorted(_BOESARTIGE_EINGABEN))
+def test_text_heuristiken_sind_bei_boesartiger_eingabe_schnell(
+    heuristik: str, name: str
+) -> None:
+    dauer = _gemessen(_TEXT_HEURISTIKEN[heuristik], _BOESARTIGE_EINGABEN[name])
+
+    assert dauer < _ZEITGRENZE_SEKUNDEN, f"{heuristik}/{name}: {dauer:.3f}s"
+
+
+@pytest.mark.parametrize(
+    "muster_name",
+    [
+        "_ADRESSE_TEXT_MUSTER",
+        "_EMAIL_TEXT_MUSTER",
+        "_OEFFNUNGSZEIT_TEXT_MUSTER",
+        "_TELEFON_TEXT_MUSTER",
+    ],
+)
+@pytest.mark.parametrize("name", sorted(_BOESARTIGE_EINGABEN))
+def test_muster_selbst_sind_ohne_vorfilter_schnell(
+    muster_name: str, name: str
+) -> None:
+    """Die Muster müssen **auch ohne** den Vorfilter ``_begrenze_text``
+    begrenzt sein (Defense in Depth): direkt gegen die Roh-Eingabe."""
+    muster = getattr(_wi, muster_name)
+
+    dauer = _gemessen(
+        lambda t: list(muster.finditer(t)), _BOESARTIGE_EINGABEN[name]
+    )
+
+    assert dauer < _ZEITGRENZE_SEKUNDEN, f"{muster_name}/{name}: {dauer:.3f}s"
+
+
+def test_begrenze_text_verwirft_zu_lange_zeilen_und_kappt_gesamttext() -> None:
+    lang = "x" * (_wi.MAX_ZEILE_ZEICHEN + 1)
+
+    assert _wi._begrenze_text(f"kurz\n{lang}\nauch kurz") == "kurz\nauch kurz"
+    assert _wi._begrenze_text(lang) == ""
+    gross = "a\n" * _wi.MAX_SICHTBARER_TEXT_ZEICHEN
+    assert len(_wi._begrenze_text(gross)) <= _wi.MAX_SICHTBARER_TEXT_ZEICHEN
+
+
+def test_normale_erkennung_bleibt_nach_begrenzung_unveraendert() -> None:
+    text = (
+        "Hofladen Muster\nMusterweg 12, 3000 Bern\n"
+        "Mo-Fr 08:00-18:00 Uhr\nTel. 079 123 45 67\nhof@beispiel.ch"
+    )
+
+    assert _wi._extrahiere_adresse_aus_text(text) == (
+        "Musterweg 12",
+        "3000",
+        "Bern",
+    )
+    assert _wi._extrahiere_oeffnungszeiten_aus_text(text)[0] == {
+        "wochentag": 1,
+        "beginn": "08:00",
+        "ende": "18:00",
+    }
+    assert _wi._extrahiere_kontakt_aus_text(text) == (
+        "079 123 45 67",
+        "hof@beispiel.ch",
+    )
+
+
+def test_email_ohne_at_wird_gar_nicht_erst_gesucht(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Spion:
+        def finditer(self, _text: str) -> Any:
+            raise AssertionError("E-Mail-Regex darf ohne '@' nicht laufen")
+
+    monkeypatch.setattr(_wi, "_EMAIL_TEXT_MUSTER", _Spion())
+
+    assert _wi._extrahiere_kontakt_aus_text("Tel 079 123 45 67") == (
+        "079 123 45 67",
+        None,
+    )
+
+
+def test_extraktion_ganzer_boesartiger_seite_ist_schnell() -> None:
+    html = "<html><body><p>" + "a" * 300_000 + "</p></body></html>"
+
+    start = time.perf_counter()
+    _extrahiere_aus_html(html)
+
+    assert time.perf_counter() - start < 1.0
+
+
+async def test_extraktion_laeuft_im_executor_nicht_in_der_event_loop(
+    hass: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    aufrufe: list[str] = []
+    original = hass.async_add_executor_job
+
+    def _spion(funktion: Any, *args: Any) -> Any:
+        aufrufe.append(funktion.__name__)
+        return original(funktion, *args)
+
+    monkeypatch.setattr(hass, "async_add_executor_job", _spion)
+    session = _FakeSession(
+        [_FakeResponse(body=_json_ld_seite('{"@type":"Store","name":"X"}').encode())]
+    )
+    _patch_session(monkeypatch, session)
+
+    await async_ermittle_webseite_info(hass, "https://beispiel.ch")
+
+    assert aufrufe == ["_extrahiere_aus_html"]
+
+
+async def test_extraktion_ueberschreitet_zeitlimit_wird_sauber_gemeldet(
+    hass: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(_wi, "EXTRAKTION_TIMEOUT_SEKUNDEN", 0.05)
+
+    async def _haengt(_funktion: Any, *_args: Any) -> Any:
+        await asyncio.sleep(5)
+
+    monkeypatch.setattr(hass, "async_add_executor_job", _haengt)
+    session = _FakeSession([_FakeResponse(body=b"<html></html>")])
+    _patch_session(monkeypatch, session)
+
+    with pytest.raises(WebseiteNichtErreichbarError, match="zu lange"):
+        await async_ermittle_webseite_info(hass, "https://beispiel.ch")
+
+
+# ---------------------------------------------------------------------------
+# F13 (Code Review 2026.9.2): Robustheit gegen tief verschachteltes JSON-LD
+# ---------------------------------------------------------------------------
+
+
+def test_tief_verschachteltes_json_ld_fuehrt_nicht_zum_absturz() -> None:
+    """``json.loads`` löst bei 200 000 x "[" einen ``RecursionError`` aus
+    (kein ``ValueError``) - vor der Korrektur ein unbehandelter Absturz."""
+    html = _json_ld_seite("[" * 200_000)
+
+    info = _extrahiere_aus_html(html)
+
+    assert info.ist_leer() or info.name is not None  # kein Absturz
+
+
+def test_flatten_json_ld_ist_iterativ_und_erhaelt_reihenfolge() -> None:
+    tief: Any = {"name": "tief"}
+    for _ in range(50_000):
+        tief = [tief]
+
+    assert _wi._flatten_json_ld(tief) == [{"name": "tief"}]
+    assert _wi._flatten_json_ld(
+        [{"name": "a"}, {"@graph": [{"name": "b"}, [{"name": "c"}]]}, {"name": "d"}]
+    ) == [{"name": "a"}, {"name": "b"}, {"name": "c"}, {"name": "d"}]
+    assert _wi._flatten_json_ld("kein json-ld") == []
+    assert _wi._iter_json_ld_objekte(["[" * 200_000, _json.dumps({"name": "ok"})]) == [
+        {"name": "ok"}
+    ]

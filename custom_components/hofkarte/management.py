@@ -29,7 +29,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import HofKarteUpdateCoordinator, HofladenVersionConflictError
-from .data_provider import HofladenNotFoundError
+from .data_provider import DuplicateHofladenIdError, HofladenNotFoundError
 from .images import get_main_image_url
 from .models import Hofladen
 from .opening_hours import is_open
@@ -41,7 +41,7 @@ from .osm_info import (
     OsmUngueltigeKoordinatenError,
     async_ermittle_osm_orte,
 )
-from .parsing import HofladenValidationError, parse_hofladen
+from .parsing import HofladenValidationError
 from .webseite_info import (
     WebseiteInformationenNichtGefundenError,
     WebseiteNichtErreichbarError,
@@ -279,6 +279,14 @@ async def ws_save(
     except HofladenValidationError as err:
         connection.send_error(msg["id"], "invalid_data", str(err))
         return
+    except DuplicateHofladenIdError as err:
+        # Befund F13: z. B. gleichzeitiges Anlegen derselben ID.
+        connection.send_error(msg["id"], "duplicate_id", str(err))
+        return
+    except HofladenNotFoundError as err:
+        # Befund F13: Hofladen wurde zwischenzeitlich gelöscht.
+        connection.send_error(msg["id"], "not_found", str(err))
+        return
     except NotImplementedError as err:
         connection.send_error(msg["id"], "not_supported", str(err))
         return
@@ -352,7 +360,7 @@ def ws_import_preview(
     geparste: list[Hofladen] = []
     for index, raw in enumerate(rohdaten):
         try:
-            geparste.append(parse_hofladen(raw))
+            geparste.append(coordinator.parse_roh(raw))
         except HofladenValidationError as err:
             connection.send_error(
                 msg["id"], "invalid_data", f"Datensatz #{index + 1}: {err}"
@@ -448,7 +456,7 @@ async def ws_import_commit(
             raw["id"] = f"hofladen-{uuid4().hex}"
 
         try:
-            parse_hofladen(raw)
+            coordinator.parse_roh(raw)
         except HofladenValidationError as err:
             connection.send_error(
                 msg["id"], "invalid_data", f"{context}: {err}"

@@ -13,6 +13,49 @@ Entwicklung, vor der ersten offiziellen Veröffentlichung, einer an
 Semantic Versioning angelehnten, fortlaufenden Nummerierung und sind
 unten als historische Entwicklungsdokumentation erhalten.
 
+## [2026.10.0-dev.4] - Entwicklungsversion (develop)
+
+Kein produktiver Release. Setzt Block A der Code-Review-Befunde zu
+`2026.9.2` um (F3, F1, F2, F13). Die in `[Unreleased]` unten
+beschriebenen Änderungen (`dev.1`–`dev.3`) bleiben unverändert gültig.
+
+### Sicherheit
+
+- **F1 – `Bild.hochgeladen` wird serverseitig abgeleitet:** Das Flag, das
+  die private-IP-Prüfung für Bild-URLs aussetzt, wurde bisher ungeprüft
+  aus Client-/Importdaten übernommen; ein manipulierter Datensatz
+  (`{"url": "http://192.168.1.20/relay/0?turn=on", "hochgeladen": true}`)
+  umging damit den SSRF-Schutz. Es gilt jetzt nur noch für URLs im
+  exakten Muster des eigenen Uploads (`/api/image/serve/<32 Hex>/…`) auf
+  einer Origin dieser Home-Assistant-Instanz (neu:
+  `url_sicherheit.ist_eigene_upload_url`, `instanz_origin.py`).
+  Durchgesetzt in `parse_hofladen` (damit in `ws_save`, Import und beim
+  Lesen bestehender Store-Daten); gespeicherte und exportierte Daten
+  tragen nie ein behauptetes Flag. Das Panel löscht hochgeladene Bilder
+  (`image/delete`) nur noch für URLs des eigenen Origins
+  (`eigeneUploadImageId`). Nach dem Start von Home Assistant werden die
+  Daten einmal neu eingelesen, damit die automatisch erkannte lokale
+  Adresse berücksichtigt ist.
+- **F2 – Quadratische Regex-Laufzeit behoben:** Adress- und
+  E-Mail-Heuristik der Website-Auswertung konnten die Event-Loop blockieren
+  (Messung: ≈ 13 s bei 20 000 Zeichen). Muster begrenzt (Wort-, Local-Part-,
+  Domain-Längen, Wortgrenzen-Lookbehind), Eingabe gekappt
+  (`MAX_SICHTBARER_TEXT_ZEICHEN`, `MAX_ZEILE_ZEICHEN`), E-Mail-Suche nur bei
+  `@`, Auswertung im Executor mit Zeitlimit
+  (`EXTRAKTION_TIMEOUT_SEKUNDEN`).
+
+### Behoben
+
+- **F3 – Options Flow:** Expliziter Konstruktor mit
+  `self.config_entry = …` entfernt (ab Home Assistant 2025.12 ohne Setter,
+  die Einstellungen-Maske wäre dort nicht mehr öffnbar). Die
+  Auswahlfelder nutzen jetzt `SelectSelector` mit übersetzten Labels.
+  Keine Anhebung der Mindestversion nötig (`hacs.json` ≥ 2025.1.0).
+- **F13 – Robustheit:** `RecursionError` bei tief verschachteltem JSON-LD
+  abgefangen, `_flatten_json_ld` iterativ; `ws_save` meldet
+  `DuplicateHofladenIdError`/`HofladenNotFoundError` als `duplicate_id`
+  bzw. `not_found` statt unbehandelt.
+
 ## [Unreleased]
 
 ### Hinzugefügt

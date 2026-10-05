@@ -130,3 +130,24 @@ def test_services_yaml_ist_gueltiges_yaml() -> None:
         daten = yaml.safe_load(datei)
 
     assert "hoflaeden_suchen" in daten
+
+
+def test_options_selector_uebersetzungen_decken_alle_auswahlwerte_ab() -> None:
+    """F3: Die ``SelectSelector``-Dropdowns des Options Flows beziehen ihre
+    Bezeichnungen aus ``selector.<schlüssel>.options.<wert>`` - fehlt ein
+    Wert, zeigt Home Assistant nur den rohen technischen Wert."""
+    from custom_components.hofkarte.const import (
+        CONF_LISTEN_SORT_RICHTUNG,
+        CONF_LISTEN_SORT_SPALTE,
+        LISTEN_SORT_RICHTUNGEN,
+        LISTEN_SORT_SPALTEN,
+    )
+
+    erwartet = {
+        CONF_LISTEN_SORT_SPALTE: set(LISTEN_SORT_SPALTEN),
+        CONF_LISTEN_SORT_RICHTUNG: set(LISTEN_SORT_RICHTUNGEN),
+    }
+    for pfad in ("strings.json", "translations/de.json", "translations/en.json"):
+        selector = _load_json(pfad)["selector"]
+        for schluessel, werte in erwartet.items():
+            assert set(selector[schluessel]["options"]) == werte, pfad

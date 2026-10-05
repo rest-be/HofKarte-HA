@@ -21,7 +21,7 @@ das die Mitternacht überschreitet (z. B. 22:00–02:00) – siehe
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import date, time
 from typing import Any
 
@@ -33,6 +33,7 @@ from .models import (
     Sonderoeffnungszeit,
     Zahlungsart,
 )
+from .url_sicherheit import ist_eigene_upload_url
 
 _LATITUDE_MIN = -90.0
 _LATITUDE_MAX = 90.0
@@ -299,7 +300,9 @@ def _migriere_kategorien_und_produkte_zu_angeboten(
     return angebote
 
 
-def _parse_bild(raw: Any, index: int) -> Bild:
+def _parse_bild(
+    raw: Any, index: int, eigene_origins: Iterable[str] = ()
+) -> Bild:
     context = f"Bild #{index}"
     if not isinstance(raw, Mapping):
         raise HofladenValidationError(f"{context}: muss ein Mapping (dict) sein.")
@@ -314,14 +317,22 @@ def _parse_bild(raw: Any, index: int) -> Bild:
             f"{context}: 'beschreibung' muss eine Zeichenkette sein."
         )
 
-    hochgeladen = raw.get("hochgeladen", False)
-    if not isinstance(hochgeladen, bool):
+    # Befund F1 (Code Review 2026.9.2): Das Flag wird **nicht** aus den
+    # Rohdaten übernommen, sondern serverseitig aus der URL abgeleitet (nur
+    # eigener Upload-Pfad + Origin dieser HA-Instanz, siehe
+    # ``url_sicherheit.ist_eigene_upload_url``). Ein mitgeschicktes
+    # ``hochgeladen`` wird nur noch auf den Typ geprüft (Format-
+    # Kompatibilität), sein Wert aber ignoriert - sonst könnte ein
+    # manipulierter Datensatz die private-IP-Prüfung (SSRF) umgehen.
+    hochgeladen_roh = raw.get("hochgeladen", False)
+    if not isinstance(hochgeladen_roh, bool):
         raise HofladenValidationError(f"{context}: 'hochgeladen' muss ein Bool sein.")
+    bild_url = url.strip()
 
     return Bild(
-        url=url.strip(),
+        url=bild_url,
         beschreibung=(beschreibung.strip() if beschreibung else None) or None,
-        hochgeladen=hochgeladen,
+        hochgeladen=ist_eigene_upload_url(bild_url, eigene_origins),
     )
 
 
@@ -332,8 +343,35 @@ def _parse_list(raw: Mapping[str, Any], field_name: str, parse_item: Any) -> tup
     return tuple(parse_item(item, i) for i, item in enumerate(items))
 
 
-def parse_hofladen(raw: Mapping[str, Any]) -> Hofladen:
+def bilder_mit_serverseitigem_flag(
+    raw: Mapping[str, Any], hofladen: Hofladen
+) -> list[Any] | None:
+    """Die Bilder-Rohdaten mit dem **serverseitig abgeleiteten**
+    ``hochgeladen``-Flag liefern (Befund F1).
+
+    ``hofladen`` muss das Ergebnis von ``parse_hofladen(raw, ...)`` sein.
+    Damit wird auch im Store/Export nie ein vom Client behauptetes Flag
+    persistiert. ``None``, falls ``raw`` keine Bilder enthält (dann ist
+    nichts zu ersetzen).
+    """
+    bilder_raw = raw.get("bilder")
+    if not bilder_raw:
+        return None
+    return [
+        {**dict(eintrag), "hochgeladen": bild.hochgeladen}
+        for eintrag, bild in zip(bilder_raw, hofladen.bilder, strict=True)
+    ]
+
+
+def parse_hofladen(
+    raw: Mapping[str, Any], *, eigene_origins: Iterable[str] = ()
+) -> Hofladen:
     """Rohdaten eines Hofladens in das interne, typisierte Modell überführen.
+
+    ``eigene_origins`` sind die Origins dieser Home-Assistant-Instanz (siehe
+    ``instanz_origin.ermittle_eigene_origins``); nur Bild-URLs im Muster des
+    eigenen Uploads auf einer dieser Origins erhalten ``Bild.hochgeladen``
+    (Befund F1). Ohne Angabe ist das Flag immer ``False`` (fail-closed).
 
     Erwartet ein Mapping mit mindestens den Pflichtfeldern ``id`` und
     ``name``. Alle übrigen Felder sind optional und werden bei Fehlen
@@ -379,7 +417,11 @@ def parse_hofladen(raw: Mapping[str, Any]) -> Hofladen:
         "zahlungsarten",
         lambda item, i: _parse_lookup(item, i, "Zahlungsart", Zahlungsart),
     )
-    bilder = _parse_list(raw, "bilder", _parse_bild)
+    bilder = _parse_list(
+        raw,
+        "bilder",
+        lambda item, i: _parse_bild(item, i, eigene_origins),
+    )
 
     return Hofladen(
         id=hofladen_id,

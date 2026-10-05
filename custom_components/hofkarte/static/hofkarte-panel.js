@@ -185,6 +185,26 @@ const WEEKDAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Sa
 // Testsuite): "24 Stunden geöffnet" wird als einzelnes Intervall
 // 00:00-23:59 gespeichert. Kein neues Datenmodell-Feld nötig.
 const FULL_DAY = { beginn: "00:00", ende: "23:59" };
+// Befund F1 (Code Review 2026.9.2): Eine Bild-ID wird nur aus einer URL des
+// **eigenen Origins** im exakten Muster des eigenen Uploads
+// (/api/image/serve/<32 Hex>/original|BxH) gewonnen. Sonst könnte ein
+// manipulierter Datensatz (fremde URL mit gleichem Pfad) das Löschen
+// beliebiger Home-Assistant-Bild-IDs über "image/delete" auslösen.
+// Rein und ohne DOM, damit sie isoliert testbar ist.
+function eigeneUploadImageId(url, eigenerOrigin) {
+  if (typeof url !== "string" || !eigenerOrigin) return null;
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch (err) {
+    return null;
+  }
+  if (parsed.origin !== eigenerOrigin) return null;
+  if (parsed.search || parsed.hash || parsed.username || parsed.password) return null;
+  const treffer = /^\/api\/image\/serve\/([0-9a-f]{32})\/(?:original|\d{1,4}x\d{1,4})$/.exec(parsed.pathname);
+  return treffer ? treffer[1] : null;
+}
+
 function isFullDay(row) { return row.beginn === FULL_DAY.beginn && row.ende === FULL_DAY.ende; }
 
 class HofkartePanel extends HTMLElement {
@@ -389,8 +409,7 @@ class HofkartePanel extends HTMLElement {
   static UPLOAD_ERLAUBTE_TYPEN = ["image/jpeg", "image/png", "image/gif"];
 
   extractImageId(url) {
-    const treffer = /\/api\/image\/serve\/([^/]+)\//.exec(url || "");
-    return treffer ? treffer[1] : null;
+    return eigeneUploadImageId(url, window.location.origin);
   }
 
   setUploadStatus(text, kind = "") {

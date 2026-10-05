@@ -8,6 +8,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from homeassistant.helpers.selector import SelectSelector
+
 from custom_components.hofkarte.const import (
     CONF_LISTEN_SORT_RICHTUNG,
     CONF_LISTEN_SORT_SPALTE,
@@ -151,3 +153,62 @@ async def test_options_flow_rejects_radius_out_of_range(hass: HomeAssistant) -> 
                 CONF_OSM_RADIUS_METER: 5,
             },
         )
+
+
+# --- F3 (Code Review 2026.9.2): Options Flow ohne eigenen Konstruktor ---------
+
+
+def test_options_flow_hat_keinen_eigenen_konstruktor() -> None:
+    """``config_entry`` hat ab Home Assistant 2025.12 keinen Setter mehr.
+
+    Eine Zuweisung im Konstruktor würde dort mit ``AttributeError``
+    scheitern. Statischer Test, damit der Fehler nicht versehentlich
+    wieder eingeführt wird (auch ohne passende Home-Assistant-Version).
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    from custom_components.hofkarte.config_flow import HofKarteOptionsFlow
+
+    assert "__init__" not in vars(HofKarteOptionsFlow)
+    # Per AST (nicht per Textsuche): Docstrings dürfen die Zuweisung erwähnen.
+    baum = ast.parse(textwrap.dedent(inspect.getsource(HofKarteOptionsFlow)))
+    zuweisungen = [
+        knoten
+        for knoten in ast.walk(baum)
+        if isinstance(knoten, ast.Attribute)
+        and knoten.attr == "config_entry"
+        and isinstance(knoten.ctx, ast.Store)
+    ]
+    assert zuweisungen == []
+
+
+def test_async_get_options_flow_liefert_flow_ohne_argument() -> None:
+    from custom_components.hofkarte.config_flow import (
+        HofKarteConfigFlow,
+        HofKarteOptionsFlow,
+    )
+
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_NAME: DEFAULT_NAME})
+
+    flow = HofKarteConfigFlow.async_get_options_flow(entry)
+
+    assert isinstance(flow, HofKarteOptionsFlow)
+
+
+async def test_options_flow_nutzt_select_selector_mit_uebersetzungsschluessel(
+    hass: HomeAssistant,
+) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN, title=DEFAULT_NAME, data={CONF_NAME: DEFAULT_NAME}
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    schema = result["data_schema"].schema
+    selektoren = {str(key): wert for key, wert in schema.items()}
+    for feld in (CONF_LISTEN_SORT_SPALTE, CONF_LISTEN_SORT_RICHTUNG):
+        assert isinstance(selektoren[feld], SelectSelector)
+        assert selektoren[feld].config["translation_key"] == feld
