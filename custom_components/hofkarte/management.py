@@ -27,6 +27,7 @@ from .const import (
     DEFAULT_LISTEN_SORT_SPALTE,
     DEFAULT_OSM_RADIUS_METER,
     DOMAIN,
+    MAX_IMPORT_EINTRAEGE,
 )
 from .coordinator import HofKarteUpdateCoordinator, HofladenVersionConflictError
 from .data_provider import DuplicateHofladenIdError, HofladenNotFoundError
@@ -357,6 +358,15 @@ def ws_import_preview(
         )
         return
 
+    if len(rohdaten) > MAX_IMPORT_EINTRAEGE:
+        connection.send_error(
+            msg["id"],
+            "invalid_data",
+            f"Die Import-Datei enthält zu viele Hofläden "
+            f"(höchstens {MAX_IMPORT_EINTRAEGE} je Import erlaubt).",
+        )
+        return
+
     geparste: list[Hofladen] = []
     for index, raw in enumerate(rohdaten):
         try:
@@ -422,6 +432,15 @@ async def ws_import_commit(
     if not eintraege:
         connection.send_error(
             msg["id"], "invalid_data", "Es wurden keine Einträge zum Import übergeben."
+        )
+        return
+
+    if len(eintraege) > MAX_IMPORT_EINTRAEGE:
+        connection.send_error(
+            msg["id"],
+            "invalid_data",
+            f"Es wurden zu viele Einträge übergeben "
+            f"(höchstens {MAX_IMPORT_EINTRAEGE} je Import erlaubt).",
         )
         return
 

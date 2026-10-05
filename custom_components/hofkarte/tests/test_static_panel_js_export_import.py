@@ -42,7 +42,9 @@ def test_panel_js_checkboxen_in_kacheln_und_liste_vorhanden() -> None:
     Kachel- als auch die Tabellenzeile müssen eine Auswahl-Checkbox
     rendern (data-auswahl)."""
     quelltext = _lade_panel_js()
-    treffer = re.findall(r'data-auswahl="\$\{item\.id\}"', quelltext)
+    treffer = re.findall(
+        r'data-auswahl="\$\{this\.escAttr\(item\.id\)\}"', quelltext
+    )
     assert len(treffer) >= 2, (
         "Erwartet je eine 'data-auswahl'-Checkbox in listCard() (Kacheln) "
         "und listTable() (Liste)."

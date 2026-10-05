@@ -66,10 +66,11 @@ offenen Sicherheitslücken:
 
 - Die Bild-URL-Prüfung (`custom_components/hofkarte/images.py`) ist rein
   syntaktisch (Schema, Zugangsdaten, literale private/interne
-  IP-Adressen) und führt **keine DNS-Auflösung** durch, um den
-  Home-Assistant-Event-Loop nicht zu blockieren. Ein Domainname, der
-  erst zur Abrufzeit auf eine private Adresse auflöst (DNS-Rebinding),
-  wird dadurch nicht erkannt. Siehe README, Abschnitt „Bekannte
+  IP-Adressen, seit `2026.10.0-dev.5` gehärtet) und führt **keine
+  DNS-Auflösung** durch, um den Home-Assistant-Event-Loop nicht zu
+  blockieren. Ein Domainname, der erst zur Abrufzeit auf eine private
+  Adresse auflöst (DNS-Rebinding), wird dadurch nicht erkannt (der
+  Website-Abruf ist dagegen geschützt, siehe unten). Siehe README, Abschnitt „Bekannte
   Einschränkungen“.
 - Über den geführten Bilder-Upload erzeugte Bilder (`Bild.hochgeladen =
   True`) sind von der Ablehnung privater/interner IP-Adressen bewusst
@@ -142,10 +143,29 @@ Sicherheitsmassnahmen:
   Vorschlag im Bearbeitungsformular – es wird dabei nichts automatisch
   gespeichert; das eigentliche Speichern erfolgt unverändert über den
   bestehenden, administratorpflichtigen `ws_save`-Befehl.
-- **Bekannte, bewusste Einschränkung (wie bei `images.py`):** Es findet
-  **keine DNS-Auflösung** zur Prüfung statt – ein Domainname, der erst
-  beim tatsächlichen Verbindungsaufbau auf eine private Adresse
-  auflöst (DNS-Rebinding), wird nicht erkannt.
+- **DNS-Rebinding-Schutz (ab `2026.10.0-dev.5`, Befund F4):** Der
+  Website-Abruf löst jeden Hostnamen (Erstanfrage und jeden
+  Weiterleitungssprung) asynchron auf, prüft **alle** A/AAAA-Einträge auf
+  öffentliche Erreichbarkeit (`is_global`; gemischte Antworten werden
+  abgelehnt) und verbindet sich mit genau den geprüften Adressen. Dafür
+  nutzt der Abruf je Anfrage eine eigene, kurzlebige `aiohttp`-Session
+  mit eigenem Resolver (statt der geteilten Home-Assistant-Session).
+  Zusätzlich wird die URL-Syntax gehärtet (normalisierter Hostname,
+  unübliche IPv4-Schreibweisen wie `127.1`/`2130706433`/`0x7f000001`,
+  interne Hostnamen wie `*.local`/`*.lan`/Einzel-Label).
+- **Grenze der Bild-URL-Prüfung:** Für `image_url` (synchrone
+  Entity-Property) findet weiterhin keine Auflösung statt; die
+  Prüfung ist dort rein syntaktisch (siehe oben).
+- **Eingabelimits (Befund F11):** Längen-/Mengenlimits für alle
+  Hofladen-Felder, strikte ID-Regel (`[A-Za-z0-9_-]{1,64}`), einfache
+  Format-Prüfung für E-Mail/Telefon und höchstens 500 Datensätze je
+  Import (Konstanten in `const.py`). Bestehende Datensätze, die die
+  Regeln verletzen (z. B. eine ID mit Leerzeichen), werden beim
+  Einlesen übersprungen und im Log gewarnt.
+- **Panel-Defense-in-Depth (Befund F12):** Datenwerte in HTML-Attributen
+  werden escaped, Bilder nur bei sicherer URL geladen (sonst Platzhalter,
+  externe Bilder mit `referrerpolicy="no-referrer"`), `mailto:`-Links nur
+  für validierte Adressen, Import-Datei höchstens 2 MB.
 
 ### Funktion „Ort in der Nähe suchen“ (`osm_info.py`, Issue #10, erweitert in Issue #11)
 

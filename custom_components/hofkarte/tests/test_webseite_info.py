@@ -427,9 +427,16 @@ class _FakeSession:
 
 
 def _patch_session(monkeypatch: pytest.MonkeyPatch, session: Any) -> None:
+    """Ersetzt die (seit F4 je Abruf erzeugte) sichere Session durch ``session``."""
+    import contextlib
+
+    @contextlib.asynccontextmanager
+    async def _fake_sichere_session() -> Any:
+        yield session
+
     monkeypatch.setattr(
-        "custom_components.hofkarte.webseite_info.async_get_clientsession",
-        lambda hass: session,
+        "custom_components.hofkarte.webseite_info._sichere_session",
+        _fake_sichere_session,
     )
 
 
@@ -766,3 +773,95 @@ def test_flatten_json_ld_ist_iterativ_und_erhaelt_reihenfolge() -> None:
     assert _wi._iter_json_ld_objekte(["[" * 200_000, _json.dumps({"name": "ok"})]) == [
         {"name": "ok"}
     ]
+
+
+# ---------------------------------------------------------------------------
+# F4 (Code Review 2026.9.2): DNS-Prüfung mit Bindung an die geprüfte IP
+# ---------------------------------------------------------------------------
+
+
+def _aufgeloest(*adressen: str) -> list[dict[str, Any]]:
+    return [
+        {"hostname": "h", "host": a, "port": 443, "family": 2, "proto": 0, "flags": 0}
+        for a in adressen
+    ]
+
+
+async def _loese(resolver: Any, host: str, *adressen: str) -> list[dict[str, Any]]:
+    async def _intern(_host: str, _port: int = 0, _family: int = 0) -> Any:
+        return _aufgeloest(*adressen)
+
+    resolver._intern.resolve = _intern
+    return await resolver.resolve(host, 443, 0)
+
+
+async def test_aufloeser_laesst_oeffentliche_adresse_durch_und_liefert_sie_unveraendert() -> None:
+    resolver = _wi._OeffentlichAufloeser()
+
+    treffer = await _loese(resolver, "beispiel.ch", "93.184.216.34", "2606:2800:220:1::1")
+
+    assert [t["host"] for t in treffer] == ["93.184.216.34", "2606:2800:220:1::1"]
+
+
+@pytest.mark.parametrize(
+    "adressen",
+    [
+        ("127.0.0.1",),  # z. B. 127.0.0.1.nip.io
+        ("192.168.1.20",),
+        ("100.64.0.1",),  # CGNAT
+        ("93.184.216.34", "10.0.0.5"),  # gemischte Antwort
+        ("::ffff:127.0.0.1",),
+        ("::1",),
+        (),  # leere Antwort
+    ],
+)
+async def test_aufloeser_lehnt_nicht_oeffentliche_oder_gemischte_antworten_ab(
+    adressen: tuple[str, ...],
+) -> None:
+    resolver = _wi._OeffentlichAufloeser()
+
+    with pytest.raises(_wi._NichtOeffentlichError):
+        await _loese(resolver, "127.0.0.1.nip.io", *adressen)
+
+
+async def test_domain_die_auf_private_ip_aufloest_wird_als_nicht_erlaubtes_ziel_gemeldet(
+    hass: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ende-zu-Ende mit echtem ``aiohttp``-Connector (ohne Netzwerk): Der
+    Aufloeser lehnt ab, der Abruf meldet den Fehlerfall 1 (nicht erlaubtes
+    Ziel) - es wird keine Verbindung aufgebaut."""
+
+    async def _privat(self: Any, _host: str, _port: int = 0, _family: int = 0) -> Any:
+        return _aufgeloest("192.168.1.20")
+
+    monkeypatch.setattr(aiohttp.ThreadedResolver, "resolve", _privat)
+
+    with pytest.raises(WebseiteUngueltigeUrlError, match="nicht erlaubtes Ziel"):
+        await async_ermittle_webseite_info(hass, "https://rebinding.beispiel.ch/")
+
+
+async def test_weiterleitung_auf_domain_mit_privater_ip_wird_abgelehnt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bei einem Weiterleitungssprung (nicht der Erstanfrage) lautet der
+    Fehler 'weitergeleitet' (Fehlerfall 2)."""
+    from aiohttp.client_reqrep import ConnectionKey
+
+    schluessel = ConnectionKey("h", 443, True, True, None, None, None)
+
+    class _Sprung:
+        def __init__(self) -> None:
+            self.aufrufe = 0
+
+        def get(self, url: str, **_kw: Any) -> Any:
+            self.aufrufe += 1
+            if self.aufrufe == 1:
+                return _FakeResponse(
+                    status=302, headers={"Location": "https://intern.beispiel.ch/"}
+                )
+            raise aiohttp.ClientConnectorError(
+                schluessel, _wi._NichtOeffentlichError("privat")
+            )
+
+    with pytest.raises(WebseiteNichtErreichbarError, match="weitergeleitet"):
+        await _wi._hole_html(_Sprung(), "https://beispiel.ch/")  # type: ignore[arg-type]

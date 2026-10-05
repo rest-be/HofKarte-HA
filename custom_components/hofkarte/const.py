@@ -52,3 +52,29 @@ DEFAULT_OSM_RADIUS_METER = 200
 # anzufassen.
 LISTEN_SORT_SPALTEN: tuple[str, ...] = ("name", "adresse", "geoeffnet", "bewertung")
 LISTEN_SORT_RICHTUNGEN: tuple[str, ...] = ("asc", "desc")
+
+
+# --- Längen-/Mengenlimits (Befund F11, Code Review 2026.9.2) -----------------
+#
+# Obergrenzen für Hofladen-Rohdaten (siehe ``parsing.py``). Sie begrenzen
+# den Speicher-/Rechenbedarf (Store, Coordinator-Refresh, Websocket-
+# Antworten, Panel-Rendering) gegenüber manipulierten oder versehentlich
+# riesigen Datensätzen und liegen deutlich über realen Nutzungswerten.
+# Verletzung -> ``HofladenValidationError`` mit klarer Meldung; bestehende,
+# zu grosse Datensätze werden beim Einlesen wie andere ungültige Datensätze
+# übersprungen und protokolliert (der Coordinator-Lauf bricht nicht ab).
+MAX_LAENGE_NAME = 200
+MAX_LAENGE_TEXT = 5000  # beschreibung, bemerkung
+MAX_LAENGE_ADRESSFELD = 200  # adresse, plz, ort, land
+MAX_LAENGE_URL = 2048  # website, Bild-URL
+MAX_LAENGE_EMAIL = 254  # RFC 5321
+MAX_LAENGE_TELEFON = 40
+MAX_ANZAHL_ANGEBOTE = 50
+MAX_ANZAHL_ZAHLUNGSARTEN = 30
+MAX_ANZAHL_BILDER = 20
+MAX_ANZAHL_OEFFNUNGSZEITEN = 100
+MAX_ANZAHL_SONDEROEFFNUNGSZEITEN = 100
+MAX_IMPORT_EINTRAEGE = 500  # Datensätze je Import
+# Erlaubte IDs: Auto-IDs ``hofladen-<hex>`` bleiben gültig. Die ID landet in
+# Entity-/Device-Kennungen sowie (im Panel) in HTML-Attributen.
+ID_MUSTER = r"[A-Za-z0-9_-]{1,64}"

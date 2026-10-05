@@ -28,6 +28,16 @@ private-IP-/localhost-Prüfung, durchlaufen aber unverändert die
 
 ## Bewusste Grenze: rein syntaktische Prüfung, keine DNS-Auflösung
 
+(Stand 2026.10.0-dev.5, Befunde F1/F4 des Code Reviews zu 2026.9.2: Die
+syntaktische Prüfung selbst ist gehärtet - normalisierter Hostname,
+unübliche IPv4-Schreibweisen, ``is_global``, interne Hostnamen, siehe
+``url_sicherheit.py``. Die Ausnahme ``hochgeladen=True`` wird nie aus
+Eingabedaten übernommen, sondern serverseitig abgeleitet (``parsing.py``,
+``url_sicherheit.ist_eigene_upload_url``). Die **DNS-Auflösungsprüfung** mit
+Bindung an die geprüfte IP gibt es nur beim Website-Abruf
+(``webseite_info.py``); für ``image_url`` - eine synchrone Entity-Property -
+ist sie hier nicht möglich, die Grenze unten gilt dort unverändert.)
+
 Die Prüfung erfolgt ausschliesslich anhand der URL-Syntax (Schema,
 Zugangsdaten, IP-Literale) – es findet **keine DNS-Auflösung** statt.
 Das ist eine bewusste Entscheidung: Eine Auflösung über

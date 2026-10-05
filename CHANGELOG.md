@@ -13,6 +13,47 @@ Entwicklung, vor der ersten offiziellen Veröffentlichung, einer an
 Semantic Versioning angelehnten, fortlaufenden Nummerierung und sind
 unten als historische Entwicklungsdokumentation erhalten.
 
+## [2026.10.0-dev.5] - Entwicklungsversion (develop)
+
+Kein produktiver Release. Setzt Block B der Code-Review-Befunde zu
+`2026.9.2` um (F4, F11, F12).
+
+### Sicherheit
+
+- **F4 – SSRF-Prüfung gehärtet (`url_sicherheit.py`):** Hostname wird
+  normalisiert (Kleinschreibung, abschliessender Punkt, IDNA). Abgelehnt
+  werden jetzt `localhost.`, `*.localhost`, `*.local`, `*.internal`,
+  `*.lan`, `*.home.arpa`, Einzel-Label-Hosts (`homeassistant`), unübliche
+  IPv4-Schreibweisen (`127.1`, `0`, `2130706433`, `0x7f000001`,
+  `017700000001`), IPv4-gemappte/NAT64/6to4-IPv6-Adressen auf interne Ziele
+  sowie CGNAT (`100.64.0.0/10`) u. a. – statt der Negativliste gilt die
+  Positivprüfung `is_global`.
+- **F4 – DNS-Rebinding-Schutz beim Website-Abruf (`webseite_info.py`):**
+  Jeder Hostname (Erstanfrage und jeder Weiterleitungssprung) wird
+  asynchron aufgelöst, **alle** A/AAAA-Einträge müssen öffentlich sein
+  (gemischte Antworten werden abgelehnt, z. B. `127.0.0.1.nip.io`), die
+  Verbindung nutzt genau die geprüften Adressen. Fehlerfall wie bisher
+  („nicht erlaubtes Ziel“). Dafür nutzt der Abruf eine eigene,
+  kurzlebige `aiohttp`-Session statt der geteilten Home-Assistant-Session.
+  Die Bild-URL-Prüfung (`image_url`) bleibt syntaktisch; die Grenze ist in
+  `images.py` dokumentiert.
+- **F11 – Längen-/Mengenlimits (`parsing.py`, `const.py`):** Name ≤ 200,
+  Beschreibung/Bemerkung ≤ 5 000, Adressfelder ≤ 200, Website/Bild-URL
+  ≤ 2 048, E-Mail ≤ 254, Telefon ≤ 40; ≤ 50 Angebote, ≤ 30 Zahlungsarten,
+  ≤ 20 Bilder, ≤ 100 Öffnungs- und ≤ 100 Sonderöffnungszeiten;
+  höchstens 500 Datensätze je Import. `id`: `[A-Za-z0-9_-]{1,64}`;
+  E-Mail: einfache Formatprüfung (genau ein `@`, kein Leerraum, kein
+  `? & % # < > " ' , ;`); Telefon: nur Ziffern, Leerzeichen und `+ - / ( ) .`.
+  **Hinweis:** Bestehende Datensätze, die diese Regeln verletzen (z. B.
+  eine ID mit Leerzeichen), werden beim Einlesen wie bisher
+  übersprungen und im Log gewarnt (der Coordinator-Lauf bricht nicht ab).
+- **F12 – Panel-Härtung (`hofkarte-panel.js`):** `escAttr` für alle
+  datenbasierten `data-*`-/`value`-Attribute; Bilder werden nur bei
+  sicherer URL geladen (`istSichereBildUrl`, sonst Platzhalter) und mit
+  `referrerpolicy="no-referrer"`; `mailto:`-Link nur bei validierter
+  Adresse; Import-Datei höchstens 2 MB und 500 Einträge (vor dem Lesen/
+  Parsen geprüft).
+
 ## [2026.10.0-dev.4] - Entwicklungsversion (develop)
 
 Kein produktiver Release. Setzt Block A der Code-Review-Befunde zu

@@ -407,7 +407,9 @@ Sicherheitsprüfung in `images.py`):
   eingebetteten Zugangsdaten. Bei frei eingegebenen externen Adressen
   wird zusätzlich jede literale private/interne IP-Adresse abgelehnt;
   diese Prüfung ist rein syntaktisch (keine DNS-Auflösung, um den
-  Home-Assistant-Event-Loop nicht zu blockieren) – ein Domainname, der
+  Home-Assistant-Event-Loop nicht zu blockieren; interne Hostnamen wie
+  `*.local`/`*.lan` und unübliche IP-Schreibweisen werden abgelehnt) –
+  ein Domainname, der
   erst später auf eine private Adresse auflöst, wird dadurch nicht
   erkannt. Über den geführten Upload erzeugte Bilder sind von der
   IP-Adressbereichs-Prüfung ausgenommen (ihre Vertrauenswürdigkeit

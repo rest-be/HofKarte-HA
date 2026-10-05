@@ -1664,3 +1664,52 @@ async def test_import_commit_persistiert_kein_manipuliertes_hochgeladen_flag(
     hofladen = next(iter(coordinator.data.values()))
     assert hofladen.bilder[0].hochgeladen is False
     assert _serialize_hofladen(hofladen, now=dt_util.now())["hauptbild_url"] is None
+
+
+# ---------------------------------------------------------------------------
+# F11 (Code Review 2026.9.2): Import-Limit
+# ---------------------------------------------------------------------------
+
+
+async def test_import_preview_lehnt_mehr_als_500_eintraege_ab(
+    hass: HomeAssistant,
+) -> None:
+    from custom_components.hofkarte.const import MAX_IMPORT_EINTRAEGE
+
+    await _setup_mit_coordinator(hass)
+    connection = _FakeConnection()
+
+    ws_import_preview(
+        hass,
+        connection,
+        {
+            "id": 40,
+            "type": "hofkarte/management/import_preview",
+            "hoflaeden": [
+                {"id": f"h{i}", "name": f"Hof {i}"} for i in range(MAX_IMPORT_EINTRAEGE + 1)
+            ],
+        },
+    )
+
+    assert connection.results == []
+    assert connection.errors[0][1] == "invalid_data"
+    assert str(MAX_IMPORT_EINTRAEGE) in connection.errors[0][2]
+
+
+async def test_coordinator_ueberspringt_hofladen_mit_ungueltiger_id_ohne_abbruch(
+    hass: HomeAssistant,
+) -> None:
+    from custom_components.hofkarte.coordinator import HofKarteUpdateCoordinator
+    from custom_components.hofkarte.data_provider import StaticTestDataProvider
+
+    provider = StaticTestDataProvider(
+        raw_hoflaeden=[
+            {"id": "alt mit leerzeichen", "name": "Alt"},
+            {"id": "ok-1", "name": "Ok"},
+        ]
+    )
+    coordinator = HofKarteUpdateCoordinator(hass, provider)
+
+    await coordinator.async_config_entry_first_refresh()
+
+    assert list(coordinator.data) == ["ok-1"]

@@ -205,6 +205,75 @@ function eigeneUploadImageId(url, eigenerOrigin) {
   return treffer ? treffer[1] : null;
 }
 
+// Befund F12 (Code Review 2026.9.2): Defense in Depth im Panel. Alle Funktionen
+// sind rein (kein DOM) und isoliert testbar.
+
+// Muss mit const.py übereinstimmen (MAX_IMPORT_EINTRAEGE).
+const IMPORT_MAX_BYTES = 2 * 1024 * 1024;
+const IMPORT_MAX_EINTRAEGE = 500;
+
+const UNSICHERE_HOST_ENDUNGEN = [".localhost", ".local", ".internal", ".lan", ".home.arpa", ".localdomain"];
+
+function istOeffentlicheIpv4(hostname) {
+  const teile = hostname.split(".");
+  if (teile.length !== 4 || !teile.every((t) => /^\d{1,3}$/.test(t))) return null; // keine IPv4
+  const [a, b, c] = teile.map(Number);
+  if (teile.some((t) => Number(t) > 255)) return false;
+  if (a === 0 || a === 10 || a === 127 || a >= 224) return false;
+  if (a === 100 && b >= 64 && b <= 127) return false; // CGNAT
+  if (a === 169 && b === 254) return false;
+  if (a === 172 && b >= 16 && b <= 31) return false;
+  if (a === 192 && b === 168) return false;
+  if (a === 192 && b === 0 && c === 0) return false;
+  if (a === 198 && (b === 18 || b === 19)) return false;
+  return true;
+}
+
+// Spiegelt die Backend-Prüfung (url_sicherheit.py) in kleinem Umfang: nur
+// http(s), keine Zugangsdaten, keine internen Hostnamen und keine
+// nicht öffentlichen IP-Adressen. Die URL-Klasse normalisiert unübliche
+// IPv4-Schreibweisen (127.1, 2130706433, 0x7f000001) bereits zu 127.0.0.1.
+// Upload-URLs des eigenen Origins (Muster des eigenen Uploads) sind erlaubt.
+function istSichereBildUrl(url, eigenerOrigin) {
+  if (typeof url !== "string" || !url.trim()) return false;
+  let parsed;
+  try {
+    parsed = new URL(url.trim());
+  } catch (err) {
+    return false;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  if (parsed.username || parsed.password) return false;
+  if (eigenerOrigin && parsed.origin === eigenerOrigin && !parsed.search && !parsed.hash
+      && /^\/api\/image\/serve\/[0-9a-f]{32}\/(?:original|\d{1,4}x\d{1,4})$/.test(parsed.pathname)) {
+    return true;
+  }
+  let host = parsed.hostname.toLowerCase();
+  if (host.endsWith(".")) host = host.slice(0, -1);
+  if (!host) return false;
+  if (host.startsWith("[")) {
+    // IPv6: nur globale Unicast-Adressen (2000::/3), kein 6to4/Dokumentationsnetz.
+    const m = /^\[([0-9a-f]{1,4})[:\]]/.exec(host);
+    if (!m) return false;
+    const erstes = parseInt(m[1], 16);
+    return erstes >= 0x2000 && erstes <= 0x3fff && erstes !== 0x2002 && host !== "[2001:db8::]";
+  }
+  const ipv4 = istOeffentlicheIpv4(host);
+  if (ipv4 !== null) return ipv4;
+  if (host === "localhost" || UNSICHERE_HOST_ENDUNGEN.some((e) => host.endsWith(e))) return false;
+  if (!host.includes(".")) return false; // Einzel-Label-Host
+  const letztes = host.slice(host.lastIndexOf(".") + 1);
+  if (/^\d+$/.test(letztes) || letztes.startsWith("0x")) return false;
+  return true;
+}
+
+// Spiegelt parsing.py (_EMAIL_REGEX): genau ein "@", kein Leerraum, keines
+// der Zeichen ? & % # < > " ' , ; - verhindert eingeschleuste mailto-Parameter.
+const EMAIL_MUSTER = /^[^@\s?&%#<>"',;]+@[^@\s?&%#<>"',;]+$/;
+function istGueltigeEmail(email) {
+  return typeof email === "string" && email.length <= 254 && EMAIL_MUSTER.test(email);
+}
+
 function isFullDay(row) { return row.beginn === FULL_DAY.beginn && row.ende === FULL_DAY.ende; }
 
 class HofkartePanel extends HTMLElement {
@@ -1271,24 +1340,33 @@ class HofkartePanel extends HTMLElement {
     return `<div class="grid">${this.items.map(item => this.listCard(item)).join("")}</div>`;
   }
 
+  /** Bild nur rendern, wenn die URL die Sicherheitsprüfung besteht (F12);
+   * sonst ein Platzhalter mit Hinweis. Externe Bilder ohne Referrer. */
+  bildHtml(url, alt) {
+    if (!istSichereBildUrl(url, window.location.origin)) {
+      return `<div class="tile-image tile-image-placeholder" role="img" aria-label="Bild nicht anzeigbar" title="Die Adresse dieses Bildes ist nicht zulässig (z. B. internes Ziel) und wird nicht geladen.">⚠️</div>`;
+    }
+    return `<img src="${this.escAttr(url)}" alt="${this.escAttr(alt)}" loading="lazy" referrerpolicy="no-referrer">`;
+  }
+
   listCard(item) {
     const adresse = [item.adresse, item.plz, item.ort, item.land].filter(Boolean).join(", ");
-    const bildHtml = item.hauptbild_url
-      ? `<img class="tile-image" src="${this.escAttr(item.hauptbild_url)}" alt="${this.escAttr(item.name)}" loading="lazy">`
+    const bildHtml = item.hauptbild_url && istSichereBildUrl(item.hauptbild_url, window.location.origin)
+      ? `<img class="tile-image" src="${this.escAttr(item.hauptbild_url)}" alt="${this.escAttr(item.name)}" loading="lazy" referrerpolicy="no-referrer">`
       : `<div class="tile-image tile-image-placeholder" aria-hidden="true">🏬</div>`;
 
     return `<section class="card tile-card">
-      <label class="auswahl-checkbox"><input type="checkbox" data-auswahl="${item.id}" ${this.auswahl.has(item.id) ? "checked" : ""}> Auswählen</label>
+      <label class="auswahl-checkbox"><input type="checkbox" data-auswahl="${this.escAttr(item.id)}" ${this.auswahl.has(item.id) ? "checked" : ""}> Auswählen</label>
       ${bildHtml}
-      <h2><button type="button" class="link-button" data-view="${item.id}">${this.esc(item.name)}</button></h2>
+      <h2><button type="button" class="link-button" data-view="${this.escAttr(item.id)}">${this.esc(item.name)}</button></h2>
       ${adresse ? `<div>${this.esc(adresse)}</div>` : ""}
       ${this.websiteLinkHtml(item.website)}
       <div>${this.geoeffnetBadge(item.geoeffnet)}${item.bewertung ? ` <span class="bewertung-klein">${"★".repeat(item.bewertung)}</span>` : ""}</div>
       <div class="coord-actions">${this.routingAuswahl(item)}</div>
       <div class="actions">
-        <button class="secondary" data-view="${item.id}">Details</button>
-        <button class="secondary" data-edit="${item.id}">Bearbeiten</button>
-        <button class="danger" data-delete="${item.id}">Löschen</button>
+        <button class="secondary" data-view="${this.escAttr(item.id)}">Details</button>
+        <button class="secondary" data-edit="${this.escAttr(item.id)}">Bearbeiten</button>
+        <button class="danger" data-delete="${this.escAttr(item.id)}">Löschen</button>
       </div>
     </section>`;
   }
@@ -1342,8 +1420,8 @@ class HofkartePanel extends HTMLElement {
             ${zeilen.length ? zeilen.map(item => {
               const adresse = [item.adresse, item.plz, item.ort, item.land].filter(Boolean).join(", ");
               return `<tr>
-                <td><input type="checkbox" data-auswahl="${item.id}" ${this.auswahl.has(item.id) ? "checked" : ""} aria-label="${this.escAttr(item.name)} auswählen"></td>
-                <td><button type="button" class="link-button" data-view="${item.id}">${this.esc(item.name)}</button></td>
+                <td><input type="checkbox" data-auswahl="${this.escAttr(item.id)}" ${this.auswahl.has(item.id) ? "checked" : ""} aria-label="${this.escAttr(item.name)} auswählen"></td>
+                <td><button type="button" class="link-button" data-view="${this.escAttr(item.id)}">${this.esc(item.name)}</button></td>
                 <td>${this.esc(adresse) || '<span class="muted">–</span>'}</td>
                 <td>${this.geoeffnetBadge(item.geoeffnet)}</td>
                 <td>${item.bewertung ? "★".repeat(item.bewertung) : '<span class="muted">–</span>'}</td>
@@ -1434,6 +1512,13 @@ class HofkartePanel extends HTMLElement {
     this.error = "";
     this.message = "";
 
+    // F12: Dateigrösse VOR dem Lesen/Parsen begrenzen.
+    if (file.size > IMPORT_MAX_BYTES) {
+      this.error = `Die Datei ist zu gross (höchstens ${IMPORT_MAX_BYTES / (1024 * 1024)} MB erlaubt).`;
+      this.render();
+      return;
+    }
+
     let inhalt;
     try {
       inhalt = await file.text();
@@ -1454,6 +1539,11 @@ class HofkartePanel extends HTMLElement {
 
     if (!Array.isArray(daten) || !daten.length) {
       this.error = "Die Datei muss eine JSON-Liste mit mindestens einem Hofladen enthalten.";
+      this.render();
+      return;
+    }
+    if (daten.length > IMPORT_MAX_EINTRAEGE) {
+      this.error = `Die Datei enthält zu viele Hofläden (höchstens ${IMPORT_MAX_EINTRAEGE} je Import erlaubt).`;
       this.render();
       return;
     }
@@ -1533,8 +1623,8 @@ class HofkartePanel extends HTMLElement {
         <div class="import-diff-spalte"><h4>Importiert</h4>${feldZeile("neu")}</div>
       </div>
       <div class="actions">
-        <button type="button" class="${entscheidung === "aktualisieren" ? "" : "secondary"}" data-import-entscheidung="${eintrag.duplikat_von}" data-import-aktion="aktualisieren">Aktualisieren</button>
-        <button type="button" class="${entscheidung === "ueberspringen" ? "" : "secondary"}" data-import-entscheidung="${eintrag.duplikat_von}" data-import-aktion="ueberspringen">Beibehalten</button>
+        <button type="button" class="${entscheidung === "aktualisieren" ? "" : "secondary"}" data-import-entscheidung="${this.escAttr(eintrag.duplikat_von)}" data-import-aktion="aktualisieren">Aktualisieren</button>
+        <button type="button" class="${entscheidung === "ueberspringen" ? "" : "secondary"}" data-import-entscheidung="${this.escAttr(eintrag.duplikat_von)}" data-import-aktion="ueberspringen">Beibehalten</button>
       </div>
     </section>`;
   }
@@ -1594,7 +1684,7 @@ class HofkartePanel extends HTMLElement {
 
     return `<div class="top">
         <div><h1>${this.esc(d.name)}</h1><div class="muted">Detailansicht – nur Anzeige</div></div>
-        <div class="actions"><button class="secondary" data-back>← Zurück zur Liste</button><button data-edit-from-detail="${d.id}">Bearbeiten</button></div>
+        <div class="actions"><button class="secondary" data-back>← Zurück zur Liste</button><button data-edit-from-detail="${this.escAttr(d.id)}">Bearbeiten</button></div>
       </div>
       ${this.error ? `<div class="notice error">${this.esc(this.error)}</div>` : ""}
 
@@ -1625,7 +1715,7 @@ class HofkartePanel extends HTMLElement {
       ${this.detailAngeboteSection(d.angebote)}
       ${this.detailPillSection("Zahlungsarten", d.zahlungsarten)}
 
-      ${(d.bilder || []).length ? `<section class="card detail-section"><h3>Bilder</h3><div class="thumbs">${d.bilder.map(b => `<img src="${this.escAttr(b.url)}" alt="${this.escAttr(b.beschreibung || d.name)}" loading="lazy">`).join("")}</div></section>` : ""}
+      ${(d.bilder || []).length ? `<section class="card detail-section"><h3>Bilder</h3><div class="thumbs">${d.bilder.map(b => this.bildHtml(b.url, b.beschreibung || d.name)).join("")}</div></section>` : ""}
 
       <section class="card detail-section">
         <h3>Bewertung</h3>
@@ -1673,7 +1763,11 @@ class HofkartePanel extends HTMLElement {
       zeilen.push(`<div class="kontakt-zeile"><a class="website-link" href="tel:${this.escAttr(mobilnummer.replace(/[^\d+]/g, ""))}">📞 ${this.esc(mobilnummer)}</a></div>`);
     }
     if (email) {
-      zeilen.push(`<div class="kontakt-zeile"><a class="website-link" href="mailto:${this.escAttr(email)}">✉️ ${this.esc(email)}</a></div>`);
+      // F12: mailto: nur bei validierter Adresse (sonst reiner Text), damit
+      // keine Zusatzparameter (?cc=…, &body=…) eingeschleust werden können.
+      zeilen.push(istGueltigeEmail(email)
+        ? `<div class="kontakt-zeile"><a class="website-link" href="mailto:${this.escAttr(email)}">✉️ ${this.esc(email)}</a></div>`
+        : `<div class="kontakt-zeile">✉️ ${this.esc(email)}</div>`);
     }
     if (websiteHtml) {
       zeilen.push(`<div class="kontakt-zeile">${websiteHtml}</div>`);
@@ -1735,7 +1829,7 @@ class HofkartePanel extends HTMLElement {
     const latValue = (d.latitude != null && d.latitude !== "") ? d.latitude : "";
     const lonValue = (d.longitude != null && d.longitude !== "") ? d.longitude : "";
 
-    const specials = (d.sonderoeffnungszeiten || []).map(x => `<div class="special" data-special><label>Von<input type=date name=datum_von value="${x.datum_von || ""}"></label><label>Bis<input type=date name=datum_bis value="${x.datum_bis || ""}"></label><label>Beginn<input type=time name=beginn value="${x.beginn || ""}"></label><label>Ende<input type=time name=ende value="${x.ende || ""}"></label><label>Geschlossen<input type=checkbox name=geschlossen ${x.geschlossen ? "checked" : ""}></label><button type=button class=secondary data-remove-special>−</button></div>`).join("");
+    const specials = (d.sonderoeffnungszeiten || []).map(x => `<div class="special" data-special><label>Von<input type=date name=datum_von value="${this.escAttr(x.datum_von || "")}"></label><label>Bis<input type=date name=datum_bis value="${this.escAttr(x.datum_bis || "")}"></label><label>Beginn<input type=time name=beginn value="${this.escAttr(x.beginn || "")}"></label><label>Ende<input type=time name=ende value="${this.escAttr(x.ende || "")}"></label><label>Geschlossen<input type=checkbox name=geschlossen ${x.geschlossen ? "checked" : ""}></label><button type=button class=secondary data-remove-special>−</button></div>`).join("");
     const text = (field) => (d[field] || []).map(x => x.name).join("\n");
     const angeboteText = (d.angebote || []).map(x => x.name).join("\n");
 
@@ -1764,8 +1858,8 @@ class HofkartePanel extends HTMLElement {
           <h2>Standort / Koordinaten <span class="muted" style="font-weight:normal;font-size:.7em">(WGS84)</span></h2>
           <div class="coord-row">
             <div class="field-row two">
-              <label>Latitude<input name="latitude" type="number" step="any" value="${latValue}" placeholder="z. B. 46.9480"></label>
-              <label>Longitude<input name="longitude" type="number" step="any" value="${lonValue}" placeholder="z. B. 7.4474"></label>
+              <label>Latitude<input name="latitude" type="number" step="any" value="${this.escAttr(String(latValue))}" placeholder="z. B. 46.9480"></label>
+              <label>Longitude<input name="longitude" type="number" step="any" value="${this.escAttr(String(lonValue))}" placeholder="z. B. 7.4474"></label>
             </div>
             <button type="button" class="info-btn" data-toggle-coord-info title="Was sind Latitude/Longitude? (Erklärung anzeigen)" aria-label="Was sind Latitude/Longitude? Erklärung anzeigen">ⓘ</button>
           </div>
@@ -1942,7 +2036,7 @@ class HofkartePanel extends HTMLElement {
   bilderListe(bilder) {
     if (!bilder.length) return `<p class="muted">Noch keine Bilder hinterlegt.</p>`;
     return bilder.map((bild, i) => `<div class="bild-row" data-bild-index="${i}">
-      <img src="${this.escAttr(bild.url)}" alt="" loading="lazy">
+      ${this.bildHtml(bild.url, "")}
       <div class="bild-row-fields">
         <input type="text" data-bild-beschreibung placeholder="Beschreibung (optional)" value="${this.escAttr(bild.beschreibung || "")}">
         <div class="bild-row-meta muted">${i === 0 ? "Hauptbild · " : ""}${bild.hochgeladen ? "hochgeladen" : "externe Adresse"}</div>
@@ -2046,8 +2140,8 @@ class HofkartePanel extends HTMLElement {
 
   intervalRow(day, x) {
     return `<div class="interval-row" data-day-interval="${day}">
-      <label>Von<input type=time name=beginn value="${x.beginn || ""}"></label>
-      <label>Bis<input type=time name=ende value="${x.ende || ""}"></label>
+      <label>Von<input type=time name=beginn value="${this.escAttr(x.beginn || "")}"></label>
+      <label>Bis<input type=time name=ende value="${this.escAttr(x.ende || "")}"></label>
       <button type=button class=secondary data-remove-interval title="Intervall entfernen">−</button>
     </div>`;
   }

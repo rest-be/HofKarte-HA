@@ -484,3 +484,159 @@ def test_parse_version_muss_ganze_zahl_sein_kein_float() -> None:
 def test_parse_version_muss_mindestens_eins_sein() -> None:
     with pytest.raises(HofladenValidationError):
         parse_hofladen({"id": "hof-28", "name": "Hofladen", "version": 0})
+
+
+# ---------------------------------------------------------------------------
+# F11 (Code Review 2026.9.2): Längen-/Mengenlimits, ID, E-Mail, Telefon
+# ---------------------------------------------------------------------------
+
+from custom_components.hofkarte import const as _const  # noqa: E402
+
+
+def _basis(**felder: object) -> dict:
+    return {"id": "hof-1", "name": "Hofladen", **felder}
+
+
+@pytest.mark.parametrize(
+    ("feld", "maximum"),
+    [
+        ("name", _const.MAX_LAENGE_NAME),
+        ("beschreibung", _const.MAX_LAENGE_TEXT),
+        ("bemerkung", _const.MAX_LAENGE_TEXT),
+        ("adresse", _const.MAX_LAENGE_ADRESSFELD),
+        ("plz", _const.MAX_LAENGE_ADRESSFELD),
+        ("ort", _const.MAX_LAENGE_ADRESSFELD),
+        ("land", _const.MAX_LAENGE_ADRESSFELD),
+        ("website", _const.MAX_LAENGE_URL),
+    ],
+)
+def test_textfeld_grenzwert_gueltig_und_grenzwert_plus_eins_ungueltig(
+    feld: str, maximum: int
+) -> None:
+    parse_hofladen(_basis(**{feld: "x" * maximum}))
+
+    with pytest.raises(HofladenValidationError, match=feld):
+        parse_hofladen(_basis(**{feld: "x" * (maximum + 1)}))
+
+
+def test_email_laenge_grenzwert() -> None:
+    lokal = "a" * (_const.MAX_LAENGE_EMAIL - len("@b.ch"))
+    parse_hofladen(_basis(email=f"{lokal}@b.ch"))
+
+    with pytest.raises(HofladenValidationError, match="email"):
+        parse_hofladen(_basis(email=f"{lokal}a@b.ch"))
+
+
+def test_telefon_laenge_grenzwert() -> None:
+    parse_hofladen(_basis(mobilnummer="1" * _const.MAX_LAENGE_TELEFON))
+
+    with pytest.raises(HofladenValidationError, match="mobilnummer"):
+        parse_hofladen(_basis(mobilnummer="1" * (_const.MAX_LAENGE_TELEFON + 1)))
+
+
+def test_bild_url_laenge_grenzwert() -> None:
+    praefix = "https://example.com/"
+    ok = praefix + "a" * (_const.MAX_LAENGE_URL - len(praefix))
+    parse_hofladen(_basis(bilder=[{"url": ok}]))
+
+    with pytest.raises(HofladenValidationError, match="url"):
+        parse_hofladen(_basis(bilder=[{"url": ok + "a"}]))
+
+
+@pytest.mark.parametrize(
+    ("feld", "maximum", "eintrag"),
+    [
+        ("bilder", _const.MAX_ANZAHL_BILDER, {"url": "https://example.com/a.jpg"}),
+        (
+            "oeffnungszeiten",
+            _const.MAX_ANZAHL_OEFFNUNGSZEITEN,
+            {"wochentag": 1, "beginn": "08:00", "ende": "12:00"},
+        ),
+        (
+            "sonderoeffnungszeiten",
+            _const.MAX_ANZAHL_SONDEROEFFNUNGSZEITEN,
+            {"datum_von": "2026-12-24", "datum_bis": "2026-12-24", "beginn": "08:00", "ende": "12:00"},
+        ),
+    ],
+)
+def test_mengenlimit_grenzwert_gueltig_und_plus_eins_ungueltig(
+    feld: str, maximum: int, eintrag: dict
+) -> None:
+    parse_hofladen(_basis(**{feld: [dict(eintrag) for _ in range(maximum)]}))
+
+    with pytest.raises(HofladenValidationError, match=f"'{feld}' darf höchstens"):
+        parse_hofladen(_basis(**{feld: [dict(eintrag) for _ in range(maximum + 1)]}))
+
+
+def test_mengenlimit_angebote_und_zahlungsarten() -> None:
+    angebote = [{"id": f"a{i}", "name": f"Angebot {i}"} for i in range(_const.MAX_ANZAHL_ANGEBOTE)]
+    parse_hofladen(_basis(angebote=angebote))
+    with pytest.raises(HofladenValidationError, match="'angebote' darf höchstens"):
+        parse_hofladen(
+            _basis(angebote=angebote + [{"id": "zu-viel", "name": "Zu viel"}])
+        )
+
+    zahlungsarten = [{"id": f"z{i}", "name": f"Zahlart {i}"} for i in range(_const.MAX_ANZAHL_ZAHLUNGSARTEN)]
+    parse_hofladen(_basis(zahlungsarten=zahlungsarten))
+    with pytest.raises(HofladenValidationError, match="'zahlungsarten' darf höchstens"):
+        parse_hofladen(
+            _basis(zahlungsarten=zahlungsarten + [{"id": "zu-viel", "name": "Zu viel"}])
+        )
+
+
+@pytest.mark.parametrize(
+    "gueltige_id",
+    ["hof-1", "hofladen-0123456789abcdef0123456789abcdef", "A_b-9", "x" * 64],
+)
+def test_gueltige_ids(gueltige_id: str) -> None:
+    assert parse_hofladen({"id": gueltige_id, "name": "H"}).id == gueltige_id
+
+
+@pytest.mark.parametrize(
+    "ungueltige_id",
+    ["x" * 65, "mit leerzeichen", 'a"b', "a<b>", "a'b", "a/b", "a.b", "ä", "a\nb"],
+)
+def test_ungueltige_ids_werden_abgelehnt(ungueltige_id: str) -> None:
+    with pytest.raises(HofladenValidationError, match="'id'"):
+        parse_hofladen({"id": ungueltige_id, "name": "H"})
+
+
+@pytest.mark.parametrize(
+    "email",
+    ["hof@beispiel.ch", "a.b+c@sub.beispiel.ch", "x@y"],
+)
+def test_gueltige_emails(email: str) -> None:
+    assert parse_hofladen(_basis(email=email)).email == email
+
+
+@pytest.mark.parametrize(
+    "email",
+    [
+        "keine-mail",
+        "a@@b.ch",
+        "a@b@c.ch",
+        "@b.ch",
+        "a@",
+        "a b@c.ch",
+        "a@b.ch?subject=x",
+        "a@b.ch&cc=x@y.ch",
+        "a%40b.ch@c.ch",
+        "a@b.ch#x",
+        "a@b.ch,c@d.ch",
+        "<a@b.ch>",
+    ],
+)
+def test_ungueltige_emails_werden_abgelehnt(email: str) -> None:
+    with pytest.raises(HofladenValidationError, match="email"):
+        parse_hofladen(_basis(email=email))
+
+
+@pytest.mark.parametrize("nummer", ["+41 79 123 45 67", "079/123.45-67", "(044) 123 45 67"])
+def test_gueltige_telefonnummern(nummer: str) -> None:
+    assert parse_hofladen(_basis(mobilnummer=nummer)).mobilnummer == nummer
+
+
+@pytest.mark.parametrize("nummer", ["079 123 45 67 ext 5", "tel:0791234567", "079;123", "<script>"])
+def test_ungueltige_telefonnummern_werden_abgelehnt(nummer: str) -> None:
+    with pytest.raises(HofladenValidationError, match="mobilnummer"):
+        parse_hofladen(_basis(mobilnummer=nummer))

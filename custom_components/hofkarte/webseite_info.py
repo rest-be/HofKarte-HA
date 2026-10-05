@@ -80,15 +80,28 @@ Moduldoc zur bewussten Grenze ohne DNS-Auflösung) gelten hier zusätzlich:
   Sicherheitsprüfung wie die ursprüngliche URL geprüft, mit einer festen
   Obergrenze an Sprüngen (``_MAX_REDIRECTS``).
 
-Der HTTP-Abruf verwendet Home Assistants verwaltete Client-Session
-(``homeassistant.helpers.aiohttp_client.async_get_clientsession``) – keine
-eigene, unverwaltete ``aiohttp.ClientSession`` (siehe ``quality_scale.yaml``,
-Kriterium ``inject-websession``).
+- **DNS-Prüfung mit Bindung an die geprüfte IP (Befund F4, Code Review
+  2026.9.2):** Die rein syntaktische Prüfung erkennt keinen Domainnamen,
+  der auf eine private Adresse zeigt (z. B. ``127.0.0.1.nip.io`` oder
+  DNS-Rebinding). Der Abruf läuft deshalb über eine eigene, kurzlebige
+  ``aiohttp.ClientSession`` mit ``_OeffentlichAufloeser``: Er löst jeden
+  Hostnamen (Erstanfrage **und** jeden Weiterleitungssprung) asynchron auf,
+  prüft **alle** A/AAAA-Einträge mit ``url_sicherheit.ist_oeffentliche_ip``
+  (``is_global``) und liefert genau diese geprüften Adressen an den
+  Verbindungsaufbau zurück – Prüfung und Verbindung nutzen dieselbe
+  Auflösung, ein Wechsel der Antwort dazwischen (Rebinding) ist nicht
+  möglich. Gemischte Antworten werden abgelehnt. Keine Wiederverwendung
+  von Verbindungen (``force_close``).
 
-Weiterhin **nicht** abgedeckt (bewusst, wie in ``url_sicherheit.py``
-dokumentiert): DNS-Rebinding (ein Domainname, der erst beim tatsächlichen
-Verbindungsaufbau auf eine private IP auflöst). Das entspricht der
-bestehenden, dokumentierten Grenze aus ``images.py``.
+Abweichung von Home Assistants verwalteter Client-Session
+(``async_get_clientsession``, ``quality_scale.yaml``, Kriterium
+``inject-websession``): Ein eigener Resolver lässt sich an der geteilten
+Session nicht einhängen; die Session wird deshalb je Abruf erzeugt und
+sicher geschlossen. Für IP-Literale entfällt die Auflösung (sie sind
+bereits syntaktisch geprüft).
+
+Nicht abgedeckt bleibt die synchrone Bild-URL-Prüfung (``images.py``): Sie
+kann nicht auflösen und bleibt syntaktisch.
 
 ## Vertiefte Text-Heuristik (Issue #9)
 
@@ -116,19 +129,20 @@ für die genauen, dokumentierten Grenzen dieses Ansatzes.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
+import socket
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Any
 
 import aiohttp
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from yarl import URL as YarlURL
 
-from .url_sicherheit import ist_sichere_externe_url
+from .url_sicherheit import ist_oeffentliche_ip, ist_sichere_externe_url
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -931,6 +945,47 @@ async def _lese_antwort_text(antwort: aiohttp.ClientResponse) -> str:
     return bytes(rohdaten).decode(encoding, errors="replace")
 
 
+class _NichtOeffentlichError(OSError):
+    """Ein Hostname löst (auch) auf eine nicht öffentliche Adresse auf."""
+
+
+class _OeffentlichAufloeser(aiohttp.abc.AbstractResolver):
+    """Löst Hostnamen auf und akzeptiert **nur** öffentliche Adressen (F4).
+
+    Gibt genau die geprüften Adressen an ``aiohttp`` zurück - der
+    Verbindungsaufbau nutzt damit dieselbe Auflösung wie die Prüfung
+    (Schutz vor DNS-Rebinding zwischen Prüfung und Abruf). Eine einzige
+    nicht öffentliche Adresse in der Antwort lehnt die gesamte Antwort ab.
+    """
+
+    def __init__(self) -> None:
+        self._intern = aiohttp.ThreadedResolver()
+
+    async def resolve(
+        self, host: str, port: int = 0, family: int = socket.AF_INET
+    ) -> list[dict[str, Any]]:
+        treffer = await self._intern.resolve(host, port, family)
+        adressen = [eintrag["host"] for eintrag in treffer]
+        if not adressen or not all(ist_oeffentliche_ip(a) for a in adressen):
+            raise _NichtOeffentlichError(
+                f"'{host}' löst nicht ausschliesslich auf öffentliche Adressen auf."
+            )
+        return list(treffer)
+
+    async def close(self) -> None:
+        await self._intern.close()
+
+
+@contextlib.asynccontextmanager
+async def _sichere_session() -> Any:
+    """Kurzlebige ``aiohttp``-Session mit ``_OeffentlichAufloeser`` (F4)."""
+    connector = aiohttp.TCPConnector(
+        resolver=_OeffentlichAufloeser(), force_close=True, use_dns_cache=False
+    )
+    async with aiohttp.ClientSession(connector=connector) as session:
+        yield session
+
+
 async def _hole_html(session: aiohttp.ClientSession, url: str) -> str:
     """Ruft ``url`` ab und liefert den (begrenzten) HTML-Text zurück.
 
@@ -970,6 +1025,21 @@ async def _hole_html(session: aiohttp.ClientSession, url: str) -> str:
                 return await _lese_antwort_text(antwort)
         except WebseiteNichtErreichbarError:
             raise
+        except aiohttp.ClientConnectorError as err:
+            if isinstance(err.os_error, _NichtOeffentlichError):
+                # Befund F4: Hostname zeigt (auch) auf eine nicht
+                # öffentliche Adresse.
+                if sprung == 0:
+                    raise WebseiteUngueltigeUrlError(
+                        "Die Website-Adresse ist ungültig oder zeigt auf ein "
+                        "nicht erlaubtes Ziel."
+                    ) from err
+                raise WebseiteNichtErreichbarError(
+                    "Die Website hat auf ein nicht erlaubtes Ziel weitergeleitet."
+                ) from err
+            raise WebseiteNichtErreichbarError(
+                "Die Website konnte nicht erreicht werden."
+            ) from err
         except (aiohttp.ClientError, TimeoutError) as err:
             raise WebseiteNichtErreichbarError(
                 "Die Website konnte nicht erreicht werden."
@@ -1009,8 +1079,8 @@ async def async_ermittle_webseite_info(hass: HomeAssistant, url: str | None) -> 
             "erlaubtes Ziel."
         )
 
-    session = async_get_clientsession(hass)
-    html_text = await _hole_html(session, url)
+    async with _sichere_session() as session:
+        html_text = await _hole_html(session, url)
 
     # Befund F2: Die Auswertung (HTML-Parser + Regex-Heuristiken) ist
     # CPU-gebunden und läuft deshalb im Executor statt in der Event-Loop;

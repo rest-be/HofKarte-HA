@@ -21,9 +21,25 @@ das die Mitternacht überschreitet (z. B. 22:00–02:00) – siehe
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from datetime import date, time
 from typing import Any
+
+from .const import (
+    ID_MUSTER,
+    MAX_ANZAHL_ANGEBOTE,
+    MAX_ANZAHL_BILDER,
+    MAX_ANZAHL_OEFFNUNGSZEITEN,
+    MAX_ANZAHL_SONDEROEFFNUNGSZEITEN,
+    MAX_ANZAHL_ZAHLUNGSARTEN,
+    MAX_LAENGE_ADRESSFELD,
+    MAX_LAENGE_EMAIL,
+    MAX_LAENGE_NAME,
+    MAX_LAENGE_TELEFON,
+    MAX_LAENGE_TEXT,
+    MAX_LAENGE_URL,
+)
 
 from .models import (
     Angebot,
@@ -45,8 +61,40 @@ _BEWERTUNG_MIN = 0
 _BEWERTUNG_MAX = 5
 
 
+_ID_REGEX = re.compile(ID_MUSTER)
+# Telefonnummer: nur Ziffern, Leerzeichen und + - / ( ) . (Befund F11).
+_TELEFON_REGEX = re.compile(r"[0-9+\-/(). ]+")
+# E-Mail: bewusst einfach (kein vollständiges RFC 5322): Genau ein "@", nichts
+# davor/danach leer, kein Leerraum, keine Zeichen, die in ``mailto:``-Links
+# zusätzliche Parameter einschleusen (``?``, ``&``, ``%``, ``#``, ``<``, ``>``,
+# Anführungszeichen, Komma, Semikolon).
+_EMAIL_REGEX = re.compile(r"[^@\s?&%#<>\"',;]+@[^@\s?&%#<>\"',;]+")
+
+# Obergrenzen je Textfeld (Konstanten in ``const.py``).
+_MAX_LAENGE_JE_FELD = {
+    "name": MAX_LAENGE_NAME,
+    "beschreibung": MAX_LAENGE_TEXT,
+    "bemerkung": MAX_LAENGE_TEXT,
+    "adresse": MAX_LAENGE_ADRESSFELD,
+    "plz": MAX_LAENGE_ADRESSFELD,
+    "ort": MAX_LAENGE_ADRESSFELD,
+    "land": MAX_LAENGE_ADRESSFELD,
+    "website": MAX_LAENGE_URL,
+    "mobilnummer": MAX_LAENGE_TELEFON,
+    "email": MAX_LAENGE_EMAIL,
+}
+
+
 class HofladenValidationError(ValueError):
     """Rohdaten für einen Hofladen sind ungültig oder unvollständig."""
+
+
+def _pruefe_laenge(text: str, field_name: str, maximum: int) -> None:
+    if len(text) > maximum:
+        raise HofladenValidationError(
+            f"Feld '{field_name}' darf höchstens {maximum} Zeichen lang sein "
+            f"(aktuell {len(text)})."
+        )
 
 
 def _require_str(raw: Mapping[str, Any], field_name: str) -> str:
@@ -55,7 +103,11 @@ def _require_str(raw: Mapping[str, Any], field_name: str) -> str:
         raise HofladenValidationError(
             f"Pflichtfeld '{field_name}' fehlt oder ist leer."
         )
-    return value.strip()
+    stripped = value.strip()
+    maximum = _MAX_LAENGE_JE_FELD.get(field_name)
+    if maximum is not None:
+        _pruefe_laenge(stripped, field_name, maximum)
+    return stripped
 
 
 def _optional_str(raw: Mapping[str, Any], field_name: str) -> str | None:
@@ -67,6 +119,9 @@ def _optional_str(raw: Mapping[str, Any], field_name: str) -> str | None:
             f"Feld '{field_name}' muss eine Zeichenkette sein."
         )
     stripped = value.strip()
+    maximum = _MAX_LAENGE_JE_FELD.get(field_name)
+    if maximum is not None:
+        _pruefe_laenge(stripped, field_name, maximum)
     return stripped or None
 
 
@@ -310,6 +365,10 @@ def _parse_bild(
     url = raw.get("url")
     if not isinstance(url, str) or not url.strip():
         raise HofladenValidationError(f"{context}: 'url' fehlt oder ist leer.")
+    if len(url.strip()) > MAX_LAENGE_URL:
+        raise HofladenValidationError(
+            f"{context}: 'url' darf höchstens {MAX_LAENGE_URL} Zeichen lang sein."
+        )
 
     beschreibung = raw.get("beschreibung")
     if beschreibung is not None and not isinstance(beschreibung, str):
@@ -336,10 +395,25 @@ def _parse_bild(
     )
 
 
-def _parse_list(raw: Mapping[str, Any], field_name: str, parse_item: Any) -> tuple:
+def _pruefe_anzahl(items: Any, field_name: str, maximum: int) -> None:
+    if isinstance(items, (list, tuple)) and len(items) > maximum:
+        raise HofladenValidationError(
+            f"Feld '{field_name}' darf höchstens {maximum} Einträge enthalten "
+            f"(aktuell {len(items)})."
+        )
+
+
+def _parse_list(
+    raw: Mapping[str, Any],
+    field_name: str,
+    parse_item: Any,
+    maximum: int | None = None,
+) -> tuple:
     items = raw.get(field_name, []) or []
     if not isinstance(items, (list, tuple)):
         raise HofladenValidationError(f"Feld '{field_name}' muss eine Liste sein.")
+    if maximum is not None:
+        _pruefe_anzahl(items, field_name, maximum)
     return tuple(parse_item(item, i) for i, item in enumerate(items))
 
 
@@ -387,6 +461,11 @@ def parse_hofladen(
         )
 
     hofladen_id = _require_str(raw, "id")
+    if not _ID_REGEX.fullmatch(hofladen_id):
+        raise HofladenValidationError(
+            "Feld 'id' darf nur Buchstaben, Ziffern, '-' und '_' enthalten "
+            "und höchstens 64 Zeichen lang sein."
+        )
     name = _require_str(raw, "name")
 
     beschreibung = _optional_str(raw, "beschreibung")
@@ -397,18 +476,34 @@ def parse_hofladen(
     land = _optional_str(raw, "land")
     website = _optional_str(raw, "website")
     mobilnummer = _optional_str(raw, "mobilnummer")
+    if mobilnummer is not None and not _TELEFON_REGEX.fullmatch(mobilnummer):
+        raise HofladenValidationError(
+            "Feld 'mobilnummer' darf nur Ziffern, Leerzeichen und die "
+            "Zeichen + - / ( ) . enthalten."
+        )
     email = _optional_str(raw, "email")
+    if email is not None and not _EMAIL_REGEX.fullmatch(email):
+        raise HofladenValidationError(
+            "Feld 'email' ist keine gültige E-Mail-Adresse (genau ein '@', "
+            "keine Leerzeichen und keines der Zeichen ? & % # < > \" ' , ;)."
+        )
     bewertung = _parse_bewertung(raw)
     version = _parse_version(raw)
 
     latitude = _optional_float(raw, "latitude", _LATITUDE_MIN, _LATITUDE_MAX)
     longitude = _optional_float(raw, "longitude", _LONGITUDE_MIN, _LONGITUDE_MAX)
 
-    oeffnungszeiten = _parse_list(raw, "oeffnungszeiten", _parse_oeffnungszeit)
+    oeffnungszeiten = _parse_list(
+        raw, "oeffnungszeiten", _parse_oeffnungszeit, MAX_ANZAHL_OEFFNUNGSZEITEN
+    )
     sonderoeffnungszeiten = _parse_list(
-        raw, "sonderoeffnungszeiten", _parse_sonderoeffnungszeit
+        raw,
+        "sonderoeffnungszeiten",
+        _parse_sonderoeffnungszeit,
+        MAX_ANZAHL_SONDEROEFFNUNGSZEITEN,
     )
     angebote_raw = _migriere_kategorien_und_produkte_zu_angeboten(raw)
+    _pruefe_anzahl(angebote_raw, "angebote", MAX_ANZAHL_ANGEBOTE)
     angebote = tuple(
         _parse_angebot(item, i) for i, item in enumerate(angebote_raw)
     )
@@ -416,11 +511,13 @@ def parse_hofladen(
         raw,
         "zahlungsarten",
         lambda item, i: _parse_lookup(item, i, "Zahlungsart", Zahlungsart),
+        MAX_ANZAHL_ZAHLUNGSARTEN,
     )
     bilder = _parse_list(
         raw,
         "bilder",
         lambda item, i: _parse_bild(item, i, eigene_origins),
+        MAX_ANZAHL_BILDER,
     )
 
     return Hofladen(

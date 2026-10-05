@@ -539,7 +539,10 @@ falsch“ – siehe Moduldoc in `webseite_info.py`).
 **Sicherheitsmodell:** Der gemeinsame syntaktische Prüfkern
 (`url_sicherheit.py`, aus `images.py` herausgelöst und von beiden
 Modulen genutzt – Schema-Whitelist, keine Zugangsdaten, kein
-„localhost“, keine privaten/internen IP-Literale, keine DNS-Auflösung)
+„localhost“, keine privaten/internen IP-Literale, keine DNS-Auflösung;
+seit `2026.10.0-dev.5` mit normalisiertem Hostnamen, `inet_aton`-
+Schreibweisen, `is_global`-Positivprüfung und internen Hostnamen wie
+`*.local`/`*.lan`/Einzel-Label)
 wird hier um Massnahmen erweitert, die speziell für den tatsächlichen
 Abruf und die Verarbeitung des Antwortinhalts nötig sind: ein
 Antwortgrössen-Limit (2 MB), eine Content-Type-Prüfung (nur HTML-artige
@@ -1022,3 +1025,20 @@ Für Beitragende, die HofKarte erweitern möchten:
 
 Siehe auch `quality_scale.yaml` für offene, bewusst zurückgestellte
 Verbesserungspunkte (z. B. `runtime-data`-Migration, Repair-Issues).
+
+
+## Eingabelimits, DNS-Prüfung und Panel-Härtung (`dev.5`)
+
+- **F4 – DNS-Prüfung mit IP-Bindung:** `webseite_info._OeffentlichAufloeser`
+  (ein `aiohttp.abc.AbstractResolver`) löst Hostnamen auf, verlangt für
+  **alle** Adressen `url_sicherheit.ist_oeffentliche_ip` und gibt genau
+  diese an den Verbindungsaufbau zurück (kein Rebinding zwischen Prüfung
+  und Abruf). Genutzt über `_sichere_session()` (eigene, je Abruf
+  erzeugte Session, `force_close`). Die synchrone Bild-URL-Prüfung bleibt
+  syntaktisch.
+- **F11 – Limits (`parsing.py`, Konstanten in `const.py`):** Längen je Feld,
+  Anzahl Angebote/Zahlungsarten/Bilder/Zeiten, ID-Regel, E-Mail-/
+  Telefonformat, höchstens 500 Datensätze je Import (`ws_import_*`).
+- **F12 – Panel:** `escAttr` für alle datenbasierten Attribute,
+  `istSichereBildUrl` (Bilder), `istGueltigeEmail` (`mailto:`), Import-
+  Limits vor `file.text()`/`JSON.parse`.

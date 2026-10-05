@@ -10,8 +10,11 @@ import pytest
 
 from custom_components.hofkarte.url_sicherheit import (
     ist_eigene_upload_url,
+    ist_oeffentliche_ip,
     ist_sichere_externe_url,
+    normalisiere_hostname,
     normalisiere_origin,
+    pruefe_aufloesung,
     ist_unsicheres_ip_literal,
 )
 
@@ -129,3 +132,96 @@ def test_fremde_oder_manipulierte_urls_sind_kein_eigener_upload(url: str | None)
 def test_ohne_bekannte_origins_ist_nichts_ein_eigener_upload() -> None:
     assert not ist_eigene_upload_url(f"{_ORIGIN}/api/image/serve/{_ID}/original", [])
     assert not ist_eigene_upload_url(f"{_ORIGIN}/api/image/serve/{_ID}/original", ["ungültig"])
+
+
+# --- F4 (Code Review 2026.9.2): Härtung der syntaktischen Prüfung -----------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://localhost./",
+        "http://foo.localhost/",
+        "http://127.1/",
+        "http://0/",
+        "http://2130706433/",
+        "http://0x7f000001/",
+        "http://017700000001/",
+        "http://100.64.0.1/",  # CGNAT
+        "http://homeassistant/",  # Einzel-Label
+        "http://homeassistant.local:8123/",
+        "http://[::ffff:127.0.0.1]/",
+        "http://[::ffff:7f00:1]/",
+        "http://0.0.0.0/",
+        "http://224.0.0.1/",  # Multicast
+        "http://240.0.0.1/",  # reserviert
+        "http://169.254.169.254/",
+        "http://[fe80::1]/",
+        "http://[64:ff9b::7f00:1]/",  # NAT64 auf 127.0.0.1
+        "http://[2002:7f00:1::]/",  # 6to4 auf 127.0.0.1
+        "http://nas.lan/",
+        "http://drucker.internal/",
+        "http://router.home.arpa/",
+        "http://hof.local./",
+        "http://1.2.3.4.5/",  # numerische Endung
+        "http://foo.bar.1/",
+        "http://a..b/",
+    ],
+)
+def test_f4_interne_ziele_und_unuebliche_schreibweisen_werden_abgelehnt(url: str) -> None:
+    assert not ist_sichere_externe_url(url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com/",
+        "https://www.beispiel.ch/hofladen",
+        "https://Beispiel.CH./x",  # abschliessender Punkt, Grossschreibung
+        "http://8.8.8.8/",
+        "https://münchen.example/",
+        "http://[2001:4860:4860::8888]/",
+        "https://hof-1.example.com:8443/a?b=1",
+    ],
+)
+def test_f4_oeffentliche_ziele_bleiben_erlaubt(url: str) -> None:
+    assert ist_sichere_externe_url(url)
+
+
+@pytest.mark.parametrize(
+    ("roh", "erwartet"),
+    [
+        ("Beispiel.CH.", "beispiel.ch"),
+        ("MÜNCHEN.example", "xn--mnchen-3ya.example"),
+        ("a..b", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_normalisiere_hostname(roh: str | None, erwartet: str | None) -> None:
+    assert normalisiere_hostname(roh) == erwartet
+
+
+@pytest.mark.parametrize(
+    ("adresse", "erwartet"),
+    [
+        ("93.184.216.34", True),
+        ("2606:2800:220:1::1", True),
+        ("127.0.0.1", False),
+        ("10.0.0.1", False),
+        ("100.64.0.1", False),
+        ("0.0.0.0", False),
+        ("224.0.1.1", False),
+        ("::ffff:10.0.0.1", False),
+        ("::ffff:8.8.8.8", True),
+        ("kein-ip", False),
+    ],
+)
+def test_ist_oeffentliche_ip(adresse: str, erwartet: bool) -> None:
+    assert ist_oeffentliche_ip(adresse) is erwartet
+
+
+def test_pruefe_aufloesung_verlangt_ausschliesslich_oeffentliche_adressen() -> None:
+    assert pruefe_aufloesung(["93.184.216.34"])
+    assert not pruefe_aufloesung([])
+    assert not pruefe_aufloesung(["93.184.216.34", "127.0.0.1"])  # gemischt
