@@ -46,7 +46,7 @@ async def test_diagnostics_zeigt_erfolgreichen_abruf(hass: HomeAssistant) -> Non
     assert diagnostics["coordinator"]["letzter_abruf_erfolgreich"] is True
     assert diagnostics["coordinator"]["letzte_erfolgreiche_aktualisierung_utc"] is not None
     assert diagnostics["coordinator"]["letzter_fehler_typ"] is None
-    assert diagnostics["coordinator"]["update_intervall_sekunden"] == 15 * 60
+    assert diagnostics["coordinator"]["update_intervall_sekunden"] is None
 
 
 async def test_diagnostics_zeigt_datenquellen_typ_und_schreibfaehigkeit(

@@ -201,3 +201,41 @@ def get_next_closing(hofladen: Hofladen, now: datetime) -> datetime | None:
         key=lambda intervall: intervall[0],
     )
     return kuenftige[0][1] if kuenftige else None
+
+
+def naechster_statuswechsel(hofladen: Hofladen, now: datetime) -> datetime | None:
+    """Frühester Zeitpunkt nach ``now``, ab dem sich ein zeitabhängiger
+    Zustand des Hofladens ändern kann (Befund F6).
+
+    Reine, Home-Assistant-freie Planungsfunktion für die zeitgenaue
+    Aktualisierung der Entities „Geöffnet“, „Nächste Öffnung“ und
+    „Nächste Schliessung“: das Minimum aus
+
+    - dem nächsten Beginn **und** dem nächsten Ende eines Öffnungsintervalls
+      (jeweils strikt nach ``now``) und
+    - dem nächsten lokalen Mitternacht - dann verschiebt sich das
+      Suchfenster (Sonderöffnungszeiten, wöchentliche Muster), sodass sich
+      ``get_next_opening``/``get_next_closing`` ändern können, ohne dass ein
+      Intervall begonnen oder geendet hat.
+
+    Ohne hinterlegte Öffnungszeiten ist der Zustand dauerhaft „unbekannt“;
+    es gibt dann nichts zu planen (``None``). Die Intervalle stammen aus
+    :func:`_alle_intervalle` - die zeitzonenbewusste Logik inklusive
+    Sommer-/Winterzeit wird nicht dupliziert; auch die Mitternacht wird über
+    ``datetime.combine(..., tzinfo=now.tzinfo)`` gebildet, nicht per
+    Addition von 24 Stunden.
+    """
+    if _hat_keine_oeffnungsdaten(hofladen):
+        return None
+
+    kandidaten = [
+        grenze
+        for intervall in _alle_intervalle(hofladen, now)
+        for grenze in intervall
+        if grenze > now
+    ]
+    mitternacht = datetime.combine(
+        now.date() + timedelta(days=1), time.min, tzinfo=now.tzinfo
+    )
+    kandidaten.append(mitternacht)
+    return min(kandidaten)

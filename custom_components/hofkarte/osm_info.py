@@ -24,6 +24,21 @@ suchen" im Bearbeitungsformular, nie automatisch oder im Hintergrund
 (siehe README.md, Abschnitt "Datenschutz- und Standort-Hinweise", sowie
 SECURITY.md für die ausführliche Begründung dieser Ausnahme).
 
+## Fair Use, Gesamtbudget und Cache (Befund F14)
+
+Die Overpass-Instanzen sind öffentliche Community-Dienste mit
+Fair-Use-Regeln. HofKarte begrenzt die Last deshalb mehrfach: die Suche
+läuft nur auf ausdrücklichen Klick, der Radius ist auf höchstens
+``MAX_RADIUS_METER`` (2 000 m) begrenzt, die gesamte Abfrage (alle
+Instanzen zusammen) hat ein **Gesamtzeitbudget** von
+``GESAMT_BUDGET_SEKUNDEN`` (40 s statt bis zu 3 x 25 s) und identische
+Anfragen werden kurz im Arbeitsspeicher gehalten
+(``CACHE_TTL_SEKUNDEN`` = 10 min, höchstens ``CACHE_MAX_EINTRAEGE`` = 32
+Einträge, Schlüssel: auf 4 Nachkommastellen (~11 m) gerundete Koordinaten
+plus Radius), damit wiederholte Klicks denselben Dienst nicht erneut
+belasten. Gecacht wird nur die rohe, erfolgreiche Overpass-Antwort - nie
+ein Fehler.
+
 ## Kein SSRF-Schutz über ``url_sicherheit.py`` nötig
 
 Anders als bei ``webseite_info.py`` (dort bestimmt die Benutzerin/der
@@ -160,10 +175,12 @@ für diese zweite Datenquelle mitgenutzt (siehe
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
 import re
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -224,6 +241,42 @@ ABRUF_TIMEOUT_SEKUNDEN = 25
 # den Ressourcenverbrauch durch eine übergrosse Antwort (siehe Moduldoc).
 MAX_ANTWORT_BYTES = 1 * 1024 * 1024
 _LESE_CHUNK_BYTES = 65536
+# Gesamtbudget für den Overpass-Abruf über ALLE Instanzen (Befund F14);
+# vorher konnten drei Instanzen nacheinander je ABRUF_TIMEOUT_SEKUNDEN
+# (also bis zu 75 s) beanspruchen.
+GESAMT_BUDGET_SEKUNDEN = 40
+# Kurzer In-Memory-Cache identischer Anfragen (Befund F14).
+CACHE_TTL_SEKUNDEN = 600
+CACHE_MAX_EINTRAEGE = 32
+_COORD_STELLEN = 4
+_cache: dict[tuple[float, float, int], tuple[float, dict[str, Any]]] = {}
+
+
+def _cache_leeren() -> None:
+    """Cache leeren (Tests)."""
+    _cache.clear()
+
+
+def _cache_schluessel(lat: float, lon: float, radius: int) -> tuple[float, float, int]:
+    return (round(lat, _COORD_STELLEN), round(lon, _COORD_STELLEN), radius)
+
+
+def _cache_lesen(schluessel: tuple[float, float, int]) -> dict[str, Any] | None:
+    eintrag = _cache.get(schluessel)
+    if eintrag is None:
+        return None
+    zeit, daten = eintrag
+    if time.monotonic() - zeit > CACHE_TTL_SEKUNDEN:
+        del _cache[schluessel]
+        return None
+    return daten
+
+
+def _cache_schreiben(schluessel: tuple[float, float, int], daten: dict[str, Any]) -> None:
+    _cache.pop(schluessel, None)
+    while len(_cache) >= CACHE_MAX_EINTRAEGE:
+        del _cache[next(iter(_cache))]  # ältesten Eintrag verdrängen
+    _cache[schluessel] = (time.monotonic(), daten)
 
 _ERDRADIUS_METER = 6_371_000.0
 
@@ -564,12 +617,22 @@ async def _rufe_overpass_ab(session: aiohttp.ClientSession, query: str) -> dict[
     ws_osm_info``) - die Details lassen sich bei Bedarf nur über diese
     Protokollierung nachvollziehen."""
     letzter_fehler: Exception | None = None
-    for url in OVERPASS_URLS:
-        try:
-            return await _rufe_overpass_instanz_ab(session, url, query)
-        except _OsmInstanzFehlgeschlagen as err:
-            _LOGGER.warning("Overpass-Instanz %s nicht erreichbar: %s", url, err)
-            letzter_fehler = err
+    try:
+        async with asyncio.timeout(GESAMT_BUDGET_SEKUNDEN):
+            for url in OVERPASS_URLS:
+                try:
+                    return await _rufe_overpass_instanz_ab(session, url, query)
+                except _OsmInstanzFehlgeschlagen as err:
+                    _LOGGER.warning("Overpass-Instanz %s nicht erreichbar: %s", url, err)
+                    letzter_fehler = err
+    except TimeoutError as err:
+        _LOGGER.warning(
+            "Overpass-Abruf überschritt das Gesamtbudget von %s s.", GESAMT_BUDGET_SEKUNDEN
+        )
+        raise OsmNichtErreichbarError(
+            "Die Overpass API (OpenStreetMap) hat innerhalb von "
+            f"{GESAMT_BUDGET_SEKUNDEN} Sekunden nicht geantwortet."
+        ) from err
 
     _LOGGER.warning(
         "Alle %s konfigurierten Overpass-Instanzen sind fehlgeschlagen: %s",
@@ -638,14 +701,21 @@ async def async_ermittle_osm_orte(
 
     lat, lon = float(latitude), float(longitude)
     query = _baue_overpass_query(lat, lon, radius)
-    session = async_get_clientsession(hass)
-    daten = await _rufe_overpass_ab(session, query)
+    schluessel = _cache_schluessel(lat, lon, radius)
+    daten = _cache_lesen(schluessel)
+    neu_abgerufen = False
+    if daten is None:
+        session = async_get_clientsession(hass)
+        daten = await _rufe_overpass_ab(session, query)
+        neu_abgerufen = True
 
     elemente = daten.get("elements")
     if not isinstance(elemente, list):
         raise OsmNichtErreichbarError(
             "Die Antwort der Overpass API hat nicht das erwartete Format."
         )
+    if neu_abgerufen:
+        _cache_schreiben(schluessel, daten)  # nur eine brauchbare Antwort
 
     orte: list[OsmOrt] = []
     for element in elemente:

@@ -46,7 +46,12 @@ async def async_setup_frontend_assets(hass: HomeAssistant) -> None:
     """Serve the bundled frontend assets once for the integration."""
     frontend_dir = Path(__file__).parent / "static"
     await hass.http.async_register_static_paths([
-        StaticPathConfig(_STATIC_URL, str(frontend_dir), False)
+        # cache_headers=True (Befund F14): Der Browser darf die Dateien
+        # lange zwischenspeichern, weil alle versionierten Einstiegspunkte
+        # ihre Version in der URL tragen (hofkarte-panel.js?v=<Version>,
+        # Leaflet/markercluster ?v=<Bibliotheksversion>) und sich bei einem
+        # Update damit die URL ändert.
+        StaticPathConfig(_STATIC_URL, str(frontend_dir), True)
     ])
 
 

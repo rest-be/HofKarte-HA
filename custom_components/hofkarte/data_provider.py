@@ -86,6 +86,36 @@ class MutableHofladenDataProvider(HofladenDataProvider):
     async def async_delete_raw_hofladen(self, hofladen_id: str) -> None:
         """Einen bestehenden Hofladen dauerhaft entfernen."""
 
+    async def async_apply_changes(
+        self,
+        upserts: list[dict[str, Any]],
+        loeschungen: list[str] | None = None,
+    ) -> None:
+        """Mehrere Änderungen in **einem** Schreibvorgang anwenden (Befund F5).
+
+        ``upserts`` enthält vollständige oder teilweise Rohdatensätze mit
+        ``id``: Existiert die ``id`` bereits, werden die übergebenen Felder
+        in den bestehenden Datensatz gemischt (wie
+        :meth:`async_update_raw_hofladen`), sonst wird ein neuer Datensatz
+        angehängt. ``loeschungen`` nennt zu entfernende IDs; unbekannte IDs
+        lösen :class:`HofladenNotFoundError` aus.
+
+        Alle Änderungen gelten ganz oder gar nicht: Bei einem Fehler
+        bleibt der bisherige Stand unverändert. Diese Standardimplementierung
+        ruft die Einzeloperationen nacheinander auf (kein atomarer
+        Sammelschreibvorgang); Provider mit eigener Persistenz überschreiben
+        sie, um genau einmal zu speichern.
+        """
+        vorhandene_ids = {r.get("id") for r in await self.async_fetch_raw_hoflaeden()}
+        for roh in upserts:
+            if roh.get("id") in vorhandene_ids:
+                await self.async_update_raw_hofladen(roh["id"], roh)
+            else:
+                await self.async_add_raw_hofladen(roh)
+                vorhandene_ids.add(roh.get("id"))
+        for hofladen_id in loeschungen or []:
+            await self.async_delete_raw_hofladen(hofladen_id)
+
 
 class DuplicateHofladenIdError(ValueError):
     """Es existiert bereits ein Hofladen mit der angegebenen ID."""
@@ -99,6 +129,39 @@ class HofladenNotFoundError(KeyError):
 # diese Versionsnummer künftig erhöht wird (siehe Store-Dokumentation).
 _STORAGE_VERSION = 1
 _STORAGE_KEY = "hofkarte_hoflaeden"
+
+
+def _wende_aenderungen_an(
+    bestehend: list[dict[str, Any]],
+    upserts: list[dict[str, Any]],
+    loeschungen: list[str],
+) -> list[dict[str, Any]]:
+    """Änderungen auf einer Kopie anwenden (reine Funktion, Befund F5).
+
+    Mit ``id``-Index statt wiederholter Listendurchläufe (O(n + m)).
+    Wirft :class:`HofladenNotFoundError` für unbekannte Lösch-IDs; das
+    Original wird nie verändert.
+    """
+    ergebnis = list(bestehend)
+    position = {roh.get("id"): i for i, roh in enumerate(ergebnis)}
+    for roh in upserts:
+        hofladen_id = roh.get("id")
+        if hofladen_id in position:
+            i = position[hofladen_id]
+            ergebnis[i] = {**ergebnis[i], **roh}
+        else:
+            position[hofladen_id] = len(ergebnis)
+            ergebnis.append(dict(roh))
+    zu_loeschen = set()
+    for hofladen_id in loeschungen:
+        if hofladen_id not in position:
+            raise HofladenNotFoundError(
+                f"Kein Hofladen mit der ID '{hofladen_id}' gefunden."
+            )
+        zu_loeschen.add(hofladen_id)
+    if zu_loeschen:
+        ergebnis = [r for r in ergebnis if r.get("id") not in zu_loeschen]
+    return ergebnis
 
 
 class StorageHofladenDataProvider(MutableHofladenDataProvider):
@@ -196,6 +259,24 @@ class StorageHofladenDataProvider(MutableHofladenDataProvider):
                 f"Kein Hofladen mit der ID '{hofladen_id}' gefunden."
             )
 
+    async def async_apply_changes(
+        self,
+        upserts: list[dict[str, Any]],
+        loeschungen: list[str] | None = None,
+    ) -> None:
+        """Mehrere Änderungen anwenden und **genau einmal** speichern (F5).
+
+        Läuft vollständig unter dem Lock. Die Änderungen werden auf einer
+        Kopie angewendet; erst nach erfolgreichem Speichern wird der
+        Arbeitsspeicherstand ersetzt (bei einem Fehler bleibt alles beim
+        Alten, kein Teilergebnis).
+        """
+        async with self._lock:
+            daten = await self._async_geladene_daten()
+            neu = _wende_aenderungen_an(daten, upserts, loeschungen or [])
+            await self._store.async_save(neu)
+            self._raw_hoflaeden = neu
+
 
 class StaticTestDataProvider(MutableHofladenDataProvider):
     """Reiner Testdaten-Provider ohne Persistenz und ohne externe Anbindung.
@@ -271,6 +352,17 @@ class StaticTestDataProvider(MutableHofladenDataProvider):
 
         raise HofladenNotFoundError(
             f"Kein Hofladen mit der ID '{hofladen_id}' gefunden."
+        )
+
+    async def async_apply_changes(
+        self,
+        upserts: list[dict[str, Any]],
+        loeschungen: list[str] | None = None,
+    ) -> None:
+        """Mehrere Änderungen atomar im Arbeitsspeicher anwenden (F5)."""
+        await asyncio.sleep(0)
+        self._raw_hoflaeden = _wende_aenderungen_an(
+            self._raw_hoflaeden, upserts, loeschungen or []
         )
 
     async def async_delete_raw_hofladen(self, hofladen_id: str) -> None:

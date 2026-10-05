@@ -127,6 +127,31 @@ def _normalisiert(text: str | None) -> str:
     return (text or "").strip().casefold()
 
 
+class _DuplikatIndex:
+    """Einmal gebauter Index der bestehenden Hofläden nach normalisiertem
+    Namen (Befund F5): statt für jeden Importeintrag alle Bestandsdaten zu
+    durchlaufen, werden nur Kandidaten mit gleichem Namen geprüft. Die
+    Reihenfolge der Kandidaten bleibt die des Bestands, das Ergebnis ist
+    damit identisch zum früheren linearen Durchlauf."""
+
+    def __init__(self, bestehende: list[Hofladen]) -> None:
+        self._nach_name: dict[str, list[tuple[Hofladen, str]]] = {}
+        for kandidat in bestehende:
+            self._nach_name.setdefault(_normalisiert(kandidat.name), []).append(
+                (kandidat, _normalisiert(kandidat.adresse))
+            )
+
+    def finde(self, hofladen: Hofladen) -> Hofladen | None:
+        ziel_adresse = _normalisiert(hofladen.adresse)
+        for kandidat, kandidat_adresse in self._nach_name.get(
+            _normalisiert(hofladen.name), ()
+        ):
+            if hofladen.adresse and kandidat.adresse and ziel_adresse != kandidat_adresse:
+                continue
+            return kandidat
+        return None
+
+
 def _finde_duplikat(
     hofladen: Hofladen, bestehende: list[Hofladen]
 ) -> Hofladen | None:
@@ -142,15 +167,7 @@ def _finde_duplikat(
     Zusammenführungen (Datenverlust) wiegt schwerer als der
     Komfortgewinn.
     """
-    ziel_name = _normalisiert(hofladen.name)
-    for kandidat in bestehende:
-        if _normalisiert(kandidat.name) != ziel_name:
-            continue
-        if hofladen.adresse and kandidat.adresse:
-            if _normalisiert(hofladen.adresse) != _normalisiert(kandidat.adresse):
-                continue
-        return kandidat
-    return None
+    return _DuplikatIndex(bestehende).finde(hofladen)
 
 
 def _get_coordinator(hass: HomeAssistant) -> HofKarteUpdateCoordinator:
@@ -377,10 +394,11 @@ def ws_import_preview(
             )
             return
 
-    bestehende = list((coordinator.data or {}).values())
+    # Index einmal bauen statt je Eintrag den gesamten Bestand zu durchlaufen.
+    duplikat_index = _DuplikatIndex(list((coordinator.data or {}).values()))
     eintraege = []
     for hofladen in geparste:
-        duplikat = _finde_duplikat(hofladen, bestehende)
+        duplikat = duplikat_index.finde(hofladen)
         eintraege.append(
             {
                 "hofladen": _json_value(hofladen),
@@ -444,8 +462,21 @@ async def ws_import_commit(
         )
         return
 
+    if not coordinator.provider_unterstuetzt_schreibzugriffe:
+        connection.send_error(
+            msg["id"],
+            "not_supported",
+            "Der konfigurierte Data Provider unterstützt keine Schreibzugriffe "
+            "(Anlegen/Bearbeiten von Hofläden).",
+        )
+        return
+
     bestehende_ids = set((coordinator.data or {}).keys())
-    vorbereitet: list[tuple[str, dict[str, Any]]] = []
+    # (Aktion, endgültige Rohdaten, validierter Hofladen) - das Ergebnis der
+    # Validierungsphase wird beim Schreiben weiterverwendet (kein zweites
+    # Parsen, Befund F5).
+    vorbereitet: list[tuple[str, dict[str, Any], Hofladen]] = []
+    zwischenstand: dict[str, Hofladen] = {}
 
     for index, eintrag in enumerate(eintraege):
         context = f"Eintrag #{index + 1}"
@@ -475,29 +506,28 @@ async def ws_import_commit(
             raw["id"] = f"hofladen-{uuid4().hex}"
 
         try:
-            coordinator.parse_roh(raw)
+            endgueltig, hofladen, _ = coordinator.bereite_save_vor(raw, zwischenstand)
         except HofladenValidationError as err:
             connection.send_error(
                 msg["id"], "invalid_data", f"{context}: {err}"
             )
             return
+        zwischenstand[hofladen.id] = hofladen
 
-        vorbereitet.append((aktion, raw))
+        vorbereitet.append((aktion, endgueltig, hofladen))
 
-    importiert = 0
-    aktualisiert = 0
     uebersprungen = len(eintraege) - len(vorbereitet)
+    aktualisiert = sum(1 for aktion, _, _ in vorbereitet if aktion == _IMPORT_AKTION_AKTUALISIEREN)
+    importiert = len(vorbereitet) - aktualisiert
 
-    for aktion, raw in vorbereitet:
-        try:
-            await coordinator.async_save_hofladen(raw)
-        except NotImplementedError as err:
-            connection.send_error(msg["id"], "not_supported", str(err))
-            return
-        if aktion == _IMPORT_AKTION_AKTUALISIEREN:
-            aktualisiert += 1
-        else:
-            importiert += 1
+    # Ein Schreibvorgang und ein Coordinator-Update für den gesamten Import.
+    try:
+        await coordinator.async_schreibe_vorbereitete(
+            [(roh, hofladen) for _, roh, hofladen in vorbereitet]
+        )
+    except NotImplementedError as err:
+        connection.send_error(msg["id"], "not_supported", str(err))
+        return
 
     connection.send_result(
         msg["id"],

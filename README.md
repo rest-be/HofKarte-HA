@@ -111,9 +111,9 @@ HofKarte unterscheidet zwei Arten von „Konfiguration“:
   zur Verfügung: Standard-Sortierfeld/-richtung für die
   Hofladen-Übersicht sowie ein dauerhaft gespeicherter Standard-
   Suchradius für „🔍 Angaben automatisch ermitteln“ (20–2000 m,
-  voreingestellt 200 m). Update-Intervall und Abruf-Timeout des
-  Coordinators sind davon unabhängig und weiterhin nur auf Code-Ebene
-  änderbar (siehe „Bekannte Einschränkungen“).
+  voreingestellt 200 m). Der Abruf-Timeout des Coordinators ist davon
+  unabhängig und weiterhin nur auf Code-Ebene änderbar (ein
+  Update-Intervall gibt es seit `2026.10.0-dev.7` nicht mehr) (siehe „Bekannte Einschränkungen“).
 - **Die Hofladen-Daten:** Hofläden, ihre Stammdaten, Öffnungszeiten und
   ihr Sortiment werden **nicht** über die Home-Assistant-Konfiguration
   gepflegt, sondern über die grafische Verwaltungsoberfläche (siehe
@@ -680,7 +680,10 @@ Integration bereit. Alle Entities lesen ausschliesslich aus dem
 Coordinator – es gibt keine Mehrfachabfragen pro Entity.
 
 - Asynchroner Abruf mit konfigurierbarem Timeout (Standard: 30 Sekunden)
-- Konfigurierbares Update-Intervall (Standard: 15 Minuten)
+- Kein periodischer Abruf (seit `2026.10.0-dev.7`): Änderungen werden
+  inkrementell übernommen, zeitabhängige Zustände (Geöffnet, Nächste
+  Öffnung/Schliessung) aktualisieren sich **zeitgenau** zum nächsten
+  Statuswechsel
 - Initialer Datenabruf beim Einrichten der Config Entry; schlägt dieser
   fehl, versucht Home Assistant die Einrichtung automatisch später
   erneut
@@ -765,7 +768,8 @@ ohne sinnvolle Standardwerte handelt.
 herunterladen** steht eine technische Übersicht zur Fehlersuche zur
 Verfügung (`custom_components/hofkarte/diagnostics.py`): Status des
 letzten Datenabrufs, Zeitpunkt der letzten erfolgreichen
-Aktualisierung, konfiguriertes Update-Intervall, Typ des Data Providers
+Aktualisierung, Update-Intervall (seit `2026.10.0-dev.7` leer, da kein periodischer
+Abruf), Typ des Data Providers
 und dessen Schreibfähigkeit sowie die Anzahl verwalteter Hofläden.
 
 **Bewusst nicht enthalten:** Hofladen-Inhalte (Namen, Adressen,
@@ -779,7 +783,8 @@ haben.
 
 - **Netzwerk-/Datenquellenfehler und Timeouts:** werden im Coordinator
   sauber abgefangen; Home Assistant zeigt betroffene Entities als
-  „unavailable“ an und versucht es beim nächsten Intervall erneut.
+  „unavailable“ an; der Coordinator liest nur noch beim Start (und nach
+  Start einmalig neu) – er pollt nicht.
 - **Ungültige/fehlende Pflichtfelder:** einzelne ungültige
   Hofladen-Datensätze werden übersprungen und geloggt, statt den
   gesamten Abruf abzubrechen.
@@ -795,8 +800,16 @@ haben.
 
 - Ein gemeinsamer Coordinator verhindert Mehrfachabfragen einzelner
   Entities.
-- Update-Intervall 15 Minuten – für Öffnungszeiten-Aktualität
-  angemessen, ohne unnötige Last zu erzeugen.
+- Kein periodischer Abruf: Schreibzugriffe aktualisieren die Daten
+  inkrementell (ein Import von 500 Hofläden = ein Schreibvorgang und ein
+  Update), der Öffnungsstatus wird zeitgenau zum nächsten Statuswechsel
+  neu berechnet (`async_track_point_in_time`) statt im 15-Minuten-Raster.
+- Statische Dateien des Panels werden mit langem Browser-Cache
+  ausgeliefert; die URLs tragen die Version (`?v=`), sodass Updates
+  zuverlässig ankommen.
+- „Angaben automatisch ermitteln“ (OpenStreetMap): Gesamtzeitbudget 40 s,
+  identische Anfragen werden 10 Minuten zwischengespeichert; der Suchradius
+  ist auf 2 000 m begrenzt (Fair Use der öffentlichen Overpass-Dienste).
 - Keine blockierenden Aufrufe (auch die Bild-URL-Sicherheitsprüfung ist
   bewusst rein syntaktisch, siehe oben).
 
@@ -860,8 +873,8 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
 - Nur eine Instanz pro Home-Assistant-Installation möglich (Single
   Instance).
 - Der Options Flow deckt nur die Übersicht-Sortiervorgabe und den
-  Standard-Suchradius ab; Update-Intervall und Timeout des Coordinators
-  sind weiterhin nur auf Code-Ebene konfigurierbar.
+  Standard-Suchradius ab; der Timeout des Coordinators ist weiterhin nur
+  auf Code-Ebene konfigurierbar.
 - Bei Uhrzeiten in einer Sommerzeit-Umstellungslücke bzw. im doppelt
   vorkommenden Bereich beim Zurückstellen wird die von `zoneinfo`
   standardmässig gewählte Auflösung verwendet, ohne explizite
@@ -958,6 +971,16 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
   Konfiguration) – keine Cloud-Synchronisation.
 - **Diagnostics:** Die herunterladbare Diagnose enthält bewusst keine
   Hofladen-Inhalte und keine Standortdaten (siehe oben).
+- **Kontaktfelder (Mobilnummer, E-Mail):** liegen **unverschlüsselt** in
+  `.storage/hofkarte_hoflaeden` und sind damit Teil von
+  Home-Assistant-Backups. Entities und Diagnostics veröffentlichen sie
+  nicht; wer Backups teilt, teilt auch diese Daten.
+- **Obergrenzen und URL-Prüfung (Befunde F4/F11):** Längen- und
+  Mengenlimits je Feld (siehe `const.py`), höchstens 500 Datensätze und
+  2 MB je Import, ID-Regel `[A-Za-z0-9_-]{1,64}`. Abgerufene Webseiten
+  werden nur über öffentliche Adressen geladen (DNS-Prüfung mit
+  IP-Bindung); interne Ziele, `*.local`/`*.lan`, Einzel-Label-Hosts und
+  unübliche IP-Schreibweisen werden abgelehnt (Details: `SECURITY.md`).
 - **Bilder:** Extern eingegebene Bild-Adressen werden vor der Nutzung
   auf ein sicheres Format geprüft (siehe „Bilder“); dennoch lädt Home
   Assistant beim Anzeigen eines Hauptbilds das Bild von der

@@ -8,7 +8,14 @@ DOMAIN = "hofkarte"
 DEFAULT_NAME = "HofKarte"
 
 # Coordinator / Datenabruf
-DEFAULT_UPDATE_INTERVAL = timedelta(minutes=15)
+# Befund F6: Kein periodischer Abruf mehr. Die Daten ändern sich nur durch
+# Schreibzugriffe über den Coordinator (inkrementelles Update, siehe
+# coordinator.py); zeitabhängige Zustände (Geöffnet, Nächste Öffnung/
+# Schliessung) aktualisieren sich zeitgenau über async_track_point_in_time
+# (siehe entity.py/opening_hours.naechster_statuswechsel). Ein 15-Minuten-
+# Raster war ungenau (bis zu 15 Minuten verspätet) und las bei jedem Lauf
+# alle Datensätze neu ein.
+DEFAULT_UPDATE_INTERVAL: timedelta | None = None
 DEFAULT_FETCH_TIMEOUT_SECONDS = 30
 
 # Sortiment und Eigenschaften (User Editierbar):

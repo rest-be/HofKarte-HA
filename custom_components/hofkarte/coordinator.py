@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta
+from collections.abc import Iterable
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -72,7 +73,7 @@ class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
         self,
         hass: HomeAssistant,
         provider: HofladenDataProvider,
-        update_interval: timedelta = DEFAULT_UPDATE_INTERVAL,
+        update_interval: timedelta | None = DEFAULT_UPDATE_INTERVAL,
         fetch_timeout_seconds: float = DEFAULT_FETCH_TIMEOUT_SECONDS,
         config_entry: ConfigEntry | None = None,
     ) -> None:
@@ -202,7 +203,8 @@ class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
         Die Rohdaten werden zunächst über ``parsing.parse_hofladen``
         validiert (Fail-Fast: bei ungültigen Daten wird nichts geschrieben)
         und erst danach an den Provider übergeben. Anschliessend wird ein
-        regulärer Refresh angestossen, damit ``coordinator.data`` sowie die
+        inkrementelles Update von ``coordinator.data`` verteilt (kein
+        erneutes Parsen aller Datensätze, Befund F5), damit die
         über den Coordinator-Listener angebundene Device Registry (siehe
         ``device.py``) konsistent aktualisiert werden.
 
@@ -225,7 +227,7 @@ class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
             )
 
         await self._provider.async_add_raw_hofladen(raw_hofladen)
-        await self.async_refresh()
+        await self._async_uebernehme(gesetzt=[hofladen])
 
         _LOGGER.debug("Hofladen hinzugefügt: %s", hofladen.id)
         return hofladen
@@ -258,8 +260,8 @@ class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
         Die Rohdaten des bestehenden Hofladens werden mit den Änderungen
         zusammengeführt und über ``parsing.parse_hofladen`` validiert,
         bevor irgendetwas geschrieben wird (Fail-Fast, analog zu
-        ``async_add_hofladen``). Anschliessend wird ein regulärer Refresh
-        angestossen, damit ``coordinator.data`` sowie abhängige Entities
+        ``async_add_hofladen``). Anschliessend wird der validierte Stand
+        inkrementell in ``coordinator.data`` eingesetzt (Befund F5), damit ``coordinator.data`` sowie abhängige Entities
         (z. B. die Sortiment-Attribute am Binary Sensor „Geöffnet“, siehe
         ``attributes.py``) konsistent aktualisiert werden.
 
@@ -301,7 +303,7 @@ class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
         validierter_hofladen = self.parse_roh(zusammengefuehrter_raw)
 
         await self._provider.async_update_raw_hofladen(hofladen_id, updates)
-        await self.async_refresh()
+        await self._async_uebernehme(gesetzt=[validierter_hofladen])
 
         _LOGGER.debug(
             "Sortiment aktualisiert für Hofladen %s: %s", hofladen_id, list(updates)
@@ -323,7 +325,7 @@ class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
         ``raw_hofladen`` zusammengeführt; existiert sie nicht, wird ein
         neuer Hofladen angelegt. Validiert (Fail-Fast) über
         ``parsing.parse_hofladen`` und stösst wie die übrigen
-        Schreibfunktionen einen Refresh an.
+        Schreibfunktionen ein inkrementelles Update an (Befund F5).
 
         **Optimistische Versionierung (Konflikterkennung):** Beim
         Aktualisieren eines bestehenden Hofladens wird eine in
@@ -354,10 +356,51 @@ class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
                 "Schreibzugriffe (Anlegen/Bearbeiten von Hofläden)."
             )
 
-        hofladen_id = raw_hofladen.get("id")
-        bestehender_hofladen = (
-            self.data.get(hofladen_id) if self.data and hofladen_id else None
+        endgueltiger_raw, validierter_hofladen, bestehend = self.bereite_save_vor(
+            raw_hofladen
         )
+
+        if bestehend:
+            await self._provider.async_update_raw_hofladen(
+                validierter_hofladen.id, endgueltiger_raw
+            )
+            _LOGGER.debug(
+                "Hofladen aktualisiert: %s (Version %s)",
+                validierter_hofladen.id,
+                validierter_hofladen.version,
+            )
+        else:
+            await self._provider.async_add_raw_hofladen(endgueltiger_raw)
+            _LOGGER.debug("Hofladen angelegt: %s", validierter_hofladen.id)
+
+        await self._async_uebernehme(gesetzt=[validierter_hofladen])
+        return validierter_hofladen
+
+    def bereite_save_vor(
+        self,
+        raw_hofladen: dict[str, Any],
+        zwischenstand: dict[str, Hofladen] | None = None,
+    ) -> tuple[dict[str, Any], Hofladen, bool]:
+        """Versionsprüfung, serverseitige Version, Validierung und Flag (F1/F5).
+
+        Die gemeinsame, rein lesende Vorstufe von :meth:`async_save_hofladen`
+        und :meth:`async_save_many`/:meth:`async_schreibe_vorbereitete`:
+        liefert ``(endgültige Rohdaten, validierter Hofladen, existiert
+        bereits)``. ``zwischenstand`` enthält die bereits vorbereiteten, aber
+        noch nicht geschriebenen Hofläden eines Sammelvorgangs, damit
+        mehrere Einträge zur selben ``id`` wie bei sequentiellem Speichern
+        aufeinander aufbauen (Version +1 je Eintrag). Es wird nichts
+        geschrieben (Fail-Fast).
+
+        Wirft :class:`HofladenValidationError` und
+        :class:`HofladenVersionConflictError`.
+        """
+        hofladen_id = raw_hofladen.get("id")
+        bestehender_hofladen = None
+        if hofladen_id:
+            bestehender_hofladen = (zwischenstand or {}).get(hofladen_id) or (
+                self.data.get(hofladen_id) if self.data else None
+            )
 
         endgueltiger_raw = dict(raw_hofladen)
         if bestehender_hofladen is not None:
@@ -376,27 +419,78 @@ class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
         endgueltiger_raw = self._mit_serverseitigem_flag(
             endgueltiger_raw, validierter_hofladen
         )
+        return endgueltiger_raw, validierter_hofladen, bestehender_hofladen is not None
 
-        if bestehender_hofladen is not None:
-            await self._provider.async_update_raw_hofladen(
-                validierter_hofladen.id, endgueltiger_raw
-            )
-            _LOGGER.debug(
-                "Hofladen aktualisiert: %s (Version %s)",
-                validierter_hofladen.id,
-                validierter_hofladen.version,
-            )
-        else:
-            await self._provider.async_add_raw_hofladen(endgueltiger_raw)
-            _LOGGER.debug("Hofladen angelegt: %s", validierter_hofladen.id)
+    async def async_save_many(
+        self, raw_hoflaeden: list[dict[str, Any]]
+    ) -> list[Hofladen]:
+        """Mehrere Hofläden anlegen/aktualisieren: ein Schreibvorgang, ein Update (F5).
 
-        await self.async_refresh()
-        return validierter_hofladen
+        Fail-Fast: Zuerst wird **jeder** Datensatz vorbereitet (Version,
+        Validierung); erst wenn das für alle gelingt, wird einmal
+        geschrieben. Wirft dieselben Ausnahmen wie
+        :meth:`async_save_hofladen`.
+        """
+        if not isinstance(self._provider, MutableHofladenDataProvider):
+            raise NotImplementedError(
+                "Der konfigurierte Data Provider unterstützt keine "
+                "Schreibzugriffe (Anlegen/Bearbeiten von Hofläden)."
+            )
+        zwischenstand: dict[str, Hofladen] = {}
+        vorbereitet: list[tuple[dict[str, Any], Hofladen]] = []
+        for raw in raw_hoflaeden:
+            endgueltig, hofladen, _ = self.bereite_save_vor(raw, zwischenstand)
+            zwischenstand[hofladen.id] = hofladen
+            vorbereitet.append((endgueltig, hofladen))
+        return await self.async_schreibe_vorbereitete(vorbereitet)
+
+    async def async_schreibe_vorbereitete(
+        self, vorbereitet: list[tuple[dict[str, Any], Hofladen]]
+    ) -> list[Hofladen]:
+        """Bereits mit :meth:`bereite_save_vor` vorbereitete Datensätze in
+        einem Schreibvorgang speichern und **einmal** an die Listener
+        verteilen (kein erneutes Parsen, Befund F5)."""
+        if not isinstance(self._provider, MutableHofladenDataProvider):
+            raise NotImplementedError(
+                "Der konfigurierte Data Provider unterstützt keine "
+                "Schreibzugriffe (Anlegen/Bearbeiten von Hofläden)."
+            )
+        if not vorbereitet:
+            return []
+        await self._provider.async_apply_changes([roh for roh, _ in vorbereitet])
+        hoflaeden = [hofladen for _, hofladen in vorbereitet]
+        await self._async_uebernehme(gesetzt=hoflaeden)
+        _LOGGER.debug("%s Hofläden gespeichert (ein Schreibvorgang)", len(hoflaeden))
+        return hoflaeden
+
+    async def _async_uebernehme(
+        self,
+        *,
+        gesetzt: Iterable[Hofladen] = (),
+        entfernt: Iterable[str] = (),
+    ) -> None:
+        """Bereits validierte Änderungen inkrementell in ``coordinator.data``
+        einsetzen und per ``async_set_updated_data`` verteilen (Befund F5):
+        kein ``async_refresh()`` mit erneutem Parsen aller Datensätze.
+
+        Ist noch kein Stand geladen (``data is None``), wird stattdessen
+        regulär aktualisiert.
+        """
+        if self.data is None:
+            await self.async_refresh()
+            return
+        neu = dict(self.data)
+        for hofladen in gesetzt:
+            neu[hofladen.id] = hofladen
+        for hofladen_id in entfernt:
+            neu.pop(hofladen_id, None)
+        self._letzte_erfolgreiche_aktualisierung = dt_util.utcnow()
+        self.async_set_updated_data(neu)
 
     async def async_delete_hofladen(self, hofladen_id: str) -> None:
         """Einen Hofladen dauerhaft aus der Datenquelle entfernen.
 
-        Stösst nach dem Löschen einen regulären Refresh an; dadurch wird
+        Entfernt den Eintrag danach inkrementell aus ``coordinator.data``; dadurch wird
         über den bestehenden Coordinator-Listener (siehe ``device.py``)
         automatisch auch das zugehörige Device entfernt.
 
@@ -416,5 +510,5 @@ class HofKarteUpdateCoordinator(DataUpdateCoordinator[dict[str, Hofladen]]):
             )
 
         await self._provider.async_delete_raw_hofladen(hofladen_id)
-        await self.async_refresh()
+        await self._async_uebernehme(entfernt=[hofladen_id])
         _LOGGER.debug("Hofladen gelöscht: %s", hofladen_id)

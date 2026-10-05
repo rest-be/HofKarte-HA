@@ -35,7 +35,7 @@ async def test_setup_frontend_assets_registers_static_path(
     pfad_config = registrierte_pfade[0]
     assert pfad_config.url_path == "/api/hofkarte/static"
     assert pfad_config.path.endswith("static")
-    assert pfad_config.cache_headers is False
+    assert pfad_config.cache_headers is True, "Befund F14: langes Caching, URL trägt ?v=<Version>"
 
 
 async def test_register_frontend_adds_panel(hass: HomeAssistant) -> None:

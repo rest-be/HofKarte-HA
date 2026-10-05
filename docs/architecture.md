@@ -83,7 +83,12 @@ Der Coordinator bietet öffentliche Schreibmethoden
 Schreibzugriffe (Verwaltungsoberfläche, künftige eigene Skripte) laufen
 über diese Methoden, nie direkt über den Data Provider. Jede Methode
 validiert Fail-Fast über `parsing.parse_hofladen`, bevor irgendetwas
-geschrieben wird, und löst danach einen regulären Refresh aus.
+geschrieben wird, und setzt danach den bereits validierten Stand
+**inkrementell** in `coordinator.data` ein (`async_set_updated_data`,
+kein `async_refresh()` mit erneutem Parsen aller Datensätze; Befund F5).
+`async_save_many`/`async_schreibe_vorbereitete` speichern mehrere
+Datensätze in **einem** Schreibvorgang (`async_apply_changes` des
+Providers, atomar) und lösen **ein** Update aus.
 
 ### Coordinator → Devices/Entities
 
@@ -1007,6 +1012,27 @@ Hofladen-Inhalte oder Standortdaten (siehe README, Abschnitt
 
 - Ein gemeinsamer Coordinator verhindert Mehrfachabfragen einzelner
   Entities.
+- **Kein periodischer Abruf (Befund F6):** `DEFAULT_UPDATE_INTERVAL` ist
+  `None`. Daten ändern sich nur durch Schreibzugriffe (inkrementelles
+  Update); zeitabhängige Zustände aktualisieren sich zeitgenau:
+  `HofKarteZeitgesteuerteEntity` (Binary Sensor „Geöffnet“, Sensoren
+  „Nächste Öffnung/Schliessung“) plant mit `async_track_point_in_time` den
+  Zeitpunkt aus `opening_hours.naechster_statuswechsel` (nächster
+  Intervallbeginn/-ende oder lokale Mitternacht, hass-frei und
+  zeitzonen-/DST-korrekt über die vorhandene Intervalllogik), plant nach
+  jedem Tick neu, rechnet bei jedem Coordinator-Update neu und meldet den
+  Timer über `async_on_remove` ab. Hofläden ohne Öffnungszeiten brauchen
+  keinen Timer. `async_sync_devices` läuft nur noch, wenn sich die Menge
+  oder die Namen der Hofläden ändern. Begründung gegenüber „seltener
+  pollen“: ein Raster bleibt ungenau, ein Poll liest alle Datensätze neu.
+- Duplikaterkennung beim Import (`_DuplikatIndex`) nutzt einen
+  Namensindex statt eines Durchlaufs je Eintrag (gleiche Semantik).
+- `frontend.py`: `cache_headers=True` für `/api/hofkarte/static`; die
+  versionierten Einstiegs-URLs (`?v=<Version>`) erzwingen nach Updates
+  neu geladene Dateien (Befund F14).
+- `osm_info.py`: Gesamtbudget 40 s für alle Overpass-Instanzen und
+  10-Minuten-Cache (max. 32 Einträge, gerundete Koordinaten + Radius,
+  nur erfolgreiche Antworten) gegen wiederholte identische Abfragen.
 - `PARALLEL_UPDATES = 0` in allen drei Entity-Plattformen (keine
   pro-Entity-Netzwerkzugriffe, die gedrosselt werden müssten).
 - Keine blockierenden Aufrufe im Event Loop – konkretes Beispiel: Die

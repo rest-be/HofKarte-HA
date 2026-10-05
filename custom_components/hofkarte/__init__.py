@@ -70,12 +70,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    async_sync_devices(hass, entry, coordinator.data)
-    entry.async_on_unload(
-        coordinator.async_add_listener(
-            lambda: async_sync_devices(hass, entry, coordinator.data)
-        )
-    )
+    # Befund F6: Device Registry nur abgleichen, wenn sich die Menge oder
+    # die Namen der Hofläden tatsächlich geändert haben (nicht bei jedem
+    # Update, z. B. durch einen Statuswechsel oder eine Sortimentsänderung).
+    letzter_stand: dict[str, str] = {}
+
+    def _sync_devices_bei_aenderung() -> None:
+        aktuell = {h.id: h.name for h in coordinator.data.values()}
+        if aktuell == letzter_stand:
+            return
+        letzter_stand.clear()
+        letzter_stand.update(aktuell)
+        async_sync_devices(hass, entry, coordinator.data)
+
+    _sync_devices_bei_aenderung()
+    entry.async_on_unload(coordinator.async_add_listener(_sync_devices_bei_aenderung))
 
     if not hass.is_running:
         # Befund F1: ``hochgeladen`` wird aus der Origin dieser Instanz

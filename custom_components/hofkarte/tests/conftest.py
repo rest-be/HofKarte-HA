@@ -13,3 +13,14 @@ def auto_enable_custom_integrations(enable_custom_integrations):
     ``custom_components``.
     """
     yield
+
+
+@pytest.fixture(autouse=True)
+def osm_cache_leeren():
+    """Der Overpass-In-Memory-Cache (Befund F14) darf nicht zwischen Tests
+    durchschlagen."""
+    from custom_components.hofkarte import osm_info
+
+    osm_info._cache_leeren()
+    yield
+    osm_info._cache_leeren()

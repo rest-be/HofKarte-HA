@@ -16,7 +16,11 @@ from homeassistant.util import dt as dt_util
 from .const import DOMAIN
 from .coordinator import HofKarteUpdateCoordinator
 from .distance import calculate_distance_km
-from .entity import HofKarteEntity, async_setup_hofladen_entities
+from .entity import (
+    HofKarteEntity,
+    HofKarteZeitgesteuerteEntity,
+    async_setup_hofladen_entities,
+)
 from .opening_hours import get_next_closing, get_next_opening
 
 # Alle Hofladen-Daten stammen aus einem gemeinsamen Coordinator-Abruf
@@ -47,7 +51,7 @@ async def async_setup_entry(
     )
 
 
-class _HofKarteZeitpunktSensor(HofKarteEntity, SensorEntity):
+class _HofKarteZeitpunktSensor(HofKarteZeitgesteuerteEntity, SensorEntity):
     """Gemeinsame Basis für die beiden zeitpunktbasierten Sensoren.
 
     ``TIMESTAMP`` ist die einzige passende Device Class für einen

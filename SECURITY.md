@@ -167,6 +167,19 @@ Sicherheitsmassnahmen:
   externe Bilder mit `referrerpolicy="no-referrer"`), `mailto:`-Links nur
   für validierte Adressen, Import-Datei höchstens 2 MB.
 
+### Datenschutz der Kontaktfelder, Last auf externe Dienste (Befund F14)
+
+- **Kontaktdaten:** Mobilnummer und E-Mail liegen **unverschlüsselt** in
+  `.storage/hofkarte_hoflaeden` und sind Teil von Home-Assistant-
+  Backups. Entities (Attribute) und Diagnostics geben sie nicht aus; wer
+  ein Backup oder die Storage-Datei weitergibt, gibt sie mit weiter.
+- **Overpass (OpenStreetMap):** Radius höchstens 2 000 m, Gesamtbudget
+  40 s über alle Instanzen, 10-Minuten-Cache (höchstens 32 Einträge) gegen
+  wiederholte identische Abfragen; es werden nur Koordinaten und Radius
+  gesendet, nur auf ausdrücklichen Klick.
+- **Statische Dateien:** werden mit langem Cache ausgeliefert; Versionen
+  stehen in den URLs (`?v=`), nach einem Update lädt der Browser neu.
+
 ### Gebündelte Frontend-Bibliotheken (Befund F7, ab 2026.10.0-dev.6)
 
 Die Kartenansicht nutzt Leaflet `1.9.4` (BSD-2-Clause) und bei mehr als

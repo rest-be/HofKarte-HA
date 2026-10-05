@@ -762,3 +762,124 @@ async def test_radius_default_ist_standard_radius(
 
     gesendete_query = session.aufrufe[0]["data"]["data"]
     assert f"around:{STANDARD_RADIUS_METER}," in gesendete_query
+
+
+# ---------------------------------------------------------------------------
+# F14: Gesamtbudget und kurzer In-Memory-Cache
+# ---------------------------------------------------------------------------
+
+
+def _ein_element() -> dict[str, Any]:
+    return {"type": "node", "lat": 46.949, "lon": 7.448, "tags": {"name": "Hofladen", "shop": "farm"}}
+
+
+async def test_identische_anfrage_wird_aus_dem_cache_bedient(
+    hass: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _FakeSession([_FakeResponse(body=_overpass_antwort([_ein_element()]))])
+    _patch_session(monkeypatch, session)
+
+    erste = await async_ermittle_osm_orte(hass, 46.948, 7.4474, 100)
+    zweite = await async_ermittle_osm_orte(hass, 46.948, 7.4474, 100)
+    # auf 4 Nachkommastellen gerundet: praktisch gleicher Punkt -> ebenfalls Cache
+    dritte = await async_ermittle_osm_orte(hass, 46.94803, 7.44741, 100)
+
+    assert len(session.aufrufe) == 1
+    assert erste == zweite and len(dritte) == 1
+
+
+async def test_cache_schluessel_beruecksichtigt_radius_und_ort(
+    hass: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _FakeSession([_FakeResponse(body=_overpass_antwort([_ein_element()])) for _ in range(3)])
+    _patch_session(monkeypatch, session)
+
+    await async_ermittle_osm_orte(hass, 46.948, 7.4474, 100)
+    await async_ermittle_osm_orte(hass, 46.948, 7.4474, 200)
+    await async_ermittle_osm_orte(hass, 47.5, 8.0, 100)
+    assert len(session.aufrufe) == 3
+
+
+async def test_cache_eintrag_laeuft_nach_der_ttl_ab(
+    hass: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.hofkarte import osm_info
+
+    uhr = {"t": 1000.0}
+    monkeypatch.setattr(osm_info.time, "monotonic", lambda: uhr["t"])
+    session = _FakeSession([_FakeResponse(body=_overpass_antwort([_ein_element()])) for _ in range(2)])
+    _patch_session(monkeypatch, session)
+
+    await async_ermittle_osm_orte(hass, 46.948, 7.4474, 100)
+    uhr["t"] += osm_info.CACHE_TTL_SEKUNDEN - 1
+    await async_ermittle_osm_orte(hass, 46.948, 7.4474, 100)
+    assert len(session.aufrufe) == 1
+    uhr["t"] += 2
+    await async_ermittle_osm_orte(hass, 46.948, 7.4474, 100)
+    assert len(session.aufrufe) == 2
+
+
+async def test_cache_ist_auf_32_eintraege_begrenzt(
+    hass: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.hofkarte import osm_info
+
+    session = _FakeSession([_FakeResponse(body=_overpass_antwort([_ein_element()])) for _ in range(40)])
+    _patch_session(monkeypatch, session)
+    for i in range(40):
+        await async_ermittle_osm_orte(hass, 46.0 + i * 0.01, 7.0, 100)
+    assert len(osm_info._cache) == osm_info.CACHE_MAX_EINTRAEGE == 32
+
+
+async def test_fehler_und_unbrauchbare_antworten_werden_nicht_gecacht(
+    hass: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.hofkarte import osm_info
+
+    session = _alle_instanzen_fehlschlagen(lambda: _FakeResponse(status=503, body=b"busy"))
+    _patch_session(monkeypatch, session)
+    with pytest.raises(OsmNichtErreichbarError):
+        await async_ermittle_osm_orte(hass, 46.948, 7.4474, 100)
+    assert osm_info._cache == {}
+
+    session2 = _FakeSession([_FakeResponse(body=json.dumps({"elements": "kaputt"}).encode())])
+    _patch_session(monkeypatch, session2)
+    with pytest.raises(OsmNichtErreichbarError):
+        await async_ermittle_osm_orte(hass, 46.948, 7.4474, 100)
+    assert osm_info._cache == {}
+
+
+async def test_gesamtbudget_bricht_haengende_instanzen_ab(
+    hass: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio
+
+    from custom_components.hofkarte import osm_info
+
+    class _Haengt:
+        async def __aenter__(self) -> Any:
+            await asyncio.sleep(30)
+
+        async def __aexit__(self, *exc: Any) -> bool:
+            return False
+
+    class _HaengendeSession:
+        aufrufe = 0
+
+        def post(self, *args: Any, **kwargs: Any) -> Any:
+            type(self).aufrufe += 1
+            return _Haengt()
+
+    monkeypatch.setattr(osm_info, "GESAMT_BUDGET_SEKUNDEN", 0.1)
+    _patch_session(monkeypatch, _HaengendeSession())
+    with pytest.raises(OsmNichtErreichbarError, match="Sekunden"):
+        await asyncio.wait_for(async_ermittle_osm_orte(hass, 46.948, 7.4474, 100), 5)
+    assert _HaengendeSession.aufrufe == 1, "Budget gilt für alle Instanzen zusammen"
+    assert osm_info.GESAMT_BUDGET_SEKUNDEN == 0.1
+
+
+def test_gesamtbudget_ist_kleiner_als_die_summe_der_einzel_timeouts() -> None:
+    from custom_components.hofkarte import osm_info
+
+    assert osm_info.GESAMT_BUDGET_SEKUNDEN == 40
+    assert osm_info.GESAMT_BUDGET_SEKUNDEN < osm_info.ABRUF_TIMEOUT_SEKUNDEN * len(osm_info.OVERPASS_URLS)

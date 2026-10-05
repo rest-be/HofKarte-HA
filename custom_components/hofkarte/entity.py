@@ -10,14 +10,19 @@ Hofladen-Entities identisch sind, sowie einen Helper, der pro Plattform
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from datetime import datetime
 
+from homeassistant.core import CALLBACK_TYPE, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .coordinator import HofKarteUpdateCoordinator
 from .device import build_device_info
 from .models import Hofladen
+from .opening_hours import naechster_statuswechsel
 
 
 class HofKarteEntity(CoordinatorEntity[HofKarteUpdateCoordinator]):
@@ -55,6 +60,57 @@ class HofKarteEntity(CoordinatorEntity[HofKarteUpdateCoordinator]):
         if hofladen is None:
             return None
         return build_device_info(hofladen)
+
+
+class HofKarteZeitgesteuerteEntity(HofKarteEntity):
+    """Entity, deren Zustand von der Uhrzeit abhängt (Befund F6).
+
+    Statt auf einen periodischen Coordinator-Abruf zu warten, wird die
+    Entity exakt zum nächsten Statuswechsel aktualisiert
+    (``async_track_point_in_time``, Zeitpunkt aus
+    ``opening_hours.naechster_statuswechsel``) und danach neu geplant.
+    Bei jedem Coordinator-Update (geänderte Öffnungszeiten) wird der
+    Zeitpunkt neu berechnet. Die Abmeldung des Timers erfolgt über
+    ``async_on_remove``.
+    """
+
+    _zeit_abmeldung: CALLBACK_TYPE | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(self._zeitplan_abmelden)
+        self._zeitplan_neu_berechnen()
+
+    @callback
+    def _zeitplan_abmelden(self) -> None:
+        if self._zeit_abmeldung is not None:
+            self._zeit_abmeldung()
+            self._zeit_abmeldung = None
+
+    @callback
+    def _zeitplan_neu_berechnen(self) -> None:
+        """Nächsten Statuswechsel ermitteln und genau dafür einen Timer setzen."""
+        self._zeitplan_abmelden()
+        hofladen = self.hofladen
+        if hofladen is None:
+            return
+        zeitpunkt = naechster_statuswechsel(hofladen, dt_util.now())
+        if zeitpunkt is None:
+            return
+        self._zeit_abmeldung = async_track_point_in_time(
+            self.hass, self._bei_statuswechsel, zeitpunkt
+        )
+
+    @callback
+    def _bei_statuswechsel(self, _jetzt: datetime) -> None:
+        self._zeit_abmeldung = None
+        self.async_write_ha_state()
+        self._zeitplan_neu_berechnen()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._zeitplan_neu_berechnen()
+        super()._handle_coordinator_update()
 
 
 def async_setup_hofladen_entities(

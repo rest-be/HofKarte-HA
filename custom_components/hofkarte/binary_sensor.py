@@ -11,7 +11,7 @@ from homeassistant.util import dt as dt_util
 from .attributes import build_sortiment_attributes
 from .const import DOMAIN
 from .coordinator import HofKarteUpdateCoordinator
-from .entity import HofKarteEntity, async_setup_hofladen_entities
+from .entity import HofKarteZeitgesteuerteEntity, async_setup_hofladen_entities
 from .opening_hours import is_open
 
 # Alle Hofladen-Daten stammen aus einem gemeinsamen Coordinator-Abruf
@@ -38,7 +38,7 @@ async def async_setup_entry(
     )
 
 
-class HofKarteGeoeffnetBinarySensor(HofKarteEntity, BinarySensorEntity):
+class HofKarteGeoeffnetBinarySensor(HofKarteZeitgesteuerteEntity, BinarySensorEntity):
     """Zeigt an, ob ein Hofladen aktuell geöffnet ist.
 
     Es existiert keine passende Home-Assistant-``BinarySensorDeviceClass``

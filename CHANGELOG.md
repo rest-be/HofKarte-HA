@@ -13,6 +13,42 @@ Entwicklung, vor der ersten offiziellen Veröffentlichung, einer an
 Semantic Versioning angelehnten, fortlaufenden Nummerierung und sind
 unten als historische Entwicklungsdokumentation erhalten.
 
+## [2026.10.0-dev.7] - Entwicklungsversion (develop)
+
+Kein produktiver Release. Setzt Block D der Code-Review-Befunde zu
+`2026.9.2` um (F5, F6, Rest von F14).
+
+### Geändert
+
+- **F5 – Batch-Schreiben, inkrementelles Update:** Neue Provider-
+  Operation `async_apply_changes` (atomar, ein `Store.async_save`, unter
+  dem Lock; auch im `StaticTestDataProvider`). Der Coordinator setzt nach
+  `async_save_hofladen`/`async_add_hofladen`/`async_update_hofladen_sortiment`/
+  `async_delete_hofladen` den validierten Stand inkrementell in
+  `coordinator.data` ein (`async_set_updated_data`), kein
+  `async_refresh()` mit Neu-Parsen aller Datensätze mehr. Neu:
+  `async_save_many`, `bereite_save_vor`, `async_schreibe_vorbereitete`.
+  `ws_import_commit` validiert jeden Eintrag einmal, schreibt dann **einmal**
+  und löst **ein** Update aus (vorher je Eintrag ein Schreibvorgang plus
+  Refresh, doppeltes Parsen). Die Fail-Fast-Garantie bleibt (auch
+  Versionskonflikte werden jetzt vor dem ersten Schreiben erkannt).
+  Duplikatsuche beim Import über einen Namensindex (`_DuplikatIndex`,
+  Semantik unverändert).
+- **F6 – zeitgenaue Statuswechsel:** `update_interval` ist jetzt `None`
+  (kein 15-Minuten-Polling). Binary Sensor „Geöffnet“ sowie die Sensoren
+  „Nächste Öffnung/Schliessung“ planen mit `async_track_point_in_time`
+  den nächsten Statuswechsel (neue hass-freie Funktion
+  `opening_hours.naechster_statuswechsel`: nächster Intervallbeginn/-ende
+  oder Mitternacht; Zeitzonen-/DST-Logik der bestehenden Intervallbildung),
+  planen nach jedem Tick neu, rechnen bei Datenänderung neu und melden
+  Timer über `async_on_remove` ab. `async_sync_devices` läuft nur noch bei
+  geänderter Menge/geänderten Namen der Hofläden.
+- **F14 (Rest):** `cache_headers=True` für die statischen Panel-Dateien
+  (URLs tragen `?v=<Version>`). Overpass: Gesamtbudget 40 s (statt bis zu
+  75 s) und 10-Minuten-Cache (32 Einträge). README/SECURITY.md um
+  Obergrenzen, Kontaktdaten-Datenschutz (unverschlüsselt in
+  `.storage/`, Teil von Backups) und die SSRF-Prüfung ergänzt.
+
 ## [2026.10.0-dev.6] - Entwicklungsversion (develop)
 
 Kein produktiver Release. Setzt Block C der Code-Review-Befunde zu
