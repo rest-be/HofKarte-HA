@@ -66,19 +66,34 @@ offenen Sicherheitslücken:
 
 - Die Bild-URL-Prüfung (`custom_components/hofkarte/images.py`) ist rein
   syntaktisch (Schema, Zugangsdaten, literale private/interne
-  IP-Adressen) und führt **keine DNS-Auflösung** durch, um den
-  Home-Assistant-Event-Loop nicht zu blockieren. Ein Domainname, der
-  erst zur Abrufzeit auf eine private Adresse auflöst (DNS-Rebinding),
-  wird dadurch nicht erkannt. Siehe README, Abschnitt „Bekannte
+  IP-Adressen, seit `2026.10.0-dev.5` gehärtet) und führt **keine
+  DNS-Auflösung** durch, um den Home-Assistant-Event-Loop nicht zu
+  blockieren. Ein Domainname, der erst zur Abrufzeit auf eine private
+  Adresse auflöst (DNS-Rebinding), wird dadurch nicht erkannt (der
+  Website-Abruf ist dagegen geschützt, siehe unten). Siehe README, Abschnitt „Bekannte
   Einschränkungen“.
 - Über den geführten Bilder-Upload erzeugte Bilder (`Bild.hochgeladen =
   True`) sind von der Ablehnung privater/interner IP-Adressen bewusst
   ausgenommen, da ihre URL zwangsläufig auf die eigene
-  Home-Assistant-Instanz zeigt. Die Vertrauensbasis ist hier die
-  Herkunft (über Home Assistants offiziellen `image_upload`-Mechanismus
-  erzeugt), nicht der Adressbereich; Schema- und
-  Zugangsdaten-Prüfung gelten unverändert auch für hochgeladene Bilder.
-  Siehe `docs/architecture.md`, Abschnitt „Geführter Bilder-Upload“.
+  Home-Assistant-Instanz zeigt. Das Flag wird dabei **ausschliesslich
+  serverseitig abgeleitet** (ab `2026.10.0-dev.4`, Befund F1 des Code
+  Reviews zu 2026.9.2): Es gilt nur für URLs im exakten Muster des
+  eigenen Uploads (`/api/image/serve/<32 Hex-Zeichen>/original|BxH`, ohne
+  Query/Fragment) **und** auf einer Origin dieser Home-Assistant-Instanz
+  (interne, externe, Cloud- bzw. automatisch erkannte lokale URL). Ein
+  in Importdateien, `ws_save`-Anfragen oder Store-Daten behauptetes
+  `hochgeladen: true` wird ignoriert und weder gespeichert noch
+  exportiert; Schema- und Zugangsdaten-Prüfung gelten unverändert. Wird
+  Home Assistant über einen nicht als interne/externe URL
+  konfigurierten Hostnamen aufgerufen, gilt ein dort hochgeladenes Bild
+  mit privater IP als normale externe URL und wird abgelehnt – dann
+  die interne/externe URL unter *Einstellungen → System → Netzwerk*
+  konfigurieren. Siehe `docs/architecture.md`, Abschnitt „Geführter
+  Bilder-Upload“.
+- Die Text-Heuristiken der Website-Auswertung (Adresse, Öffnungszeiten,
+  Telefon, E-Mail) sind laufzeitbegrenzt (Befund F2): Eingabelänge und
+  Zeilenlänge sind gekappt, alle Muster haben Obergrenzen, und die
+  Auswertung läuft im Executor mit Zeitlimit statt in der Event-Loop.
 - Der Bilder-Upload selbst nutzt ausschliesslich Home Assistants eigene
   `image_upload`-Komponente (kein eigener Upload-Endpunkt); Format-
   (JPEG/PNG/GIF) und Grössenprüfung (max. 10 MB) erfolgen serverseitig
@@ -128,10 +143,58 @@ Sicherheitsmassnahmen:
   Vorschlag im Bearbeitungsformular – es wird dabei nichts automatisch
   gespeichert; das eigentliche Speichern erfolgt unverändert über den
   bestehenden, administratorpflichtigen `ws_save`-Befehl.
-- **Bekannte, bewusste Einschränkung (wie bei `images.py`):** Es findet
-  **keine DNS-Auflösung** zur Prüfung statt – ein Domainname, der erst
-  beim tatsächlichen Verbindungsaufbau auf eine private Adresse
-  auflöst (DNS-Rebinding), wird nicht erkannt.
+- **DNS-Rebinding-Schutz (ab `2026.10.0-dev.5`, Befund F4):** Der
+  Website-Abruf löst jeden Hostnamen (Erstanfrage und jeden
+  Weiterleitungssprung) asynchron auf, prüft **alle** A/AAAA-Einträge auf
+  öffentliche Erreichbarkeit (`is_global`; gemischte Antworten werden
+  abgelehnt) und verbindet sich mit genau den geprüften Adressen. Dafür
+  nutzt der Abruf je Anfrage eine eigene, kurzlebige `aiohttp`-Session
+  mit eigenem Resolver (statt der geteilten Home-Assistant-Session).
+  Zusätzlich wird die URL-Syntax gehärtet (normalisierter Hostname,
+  unübliche IPv4-Schreibweisen wie `127.1`/`2130706433`/`0x7f000001`,
+  interne Hostnamen wie `*.local`/`*.lan`/Einzel-Label).
+- **Grenze der Bild-URL-Prüfung:** Für `image_url` (synchrone
+  Entity-Property) findet weiterhin keine Auflösung statt; die
+  Prüfung ist dort rein syntaktisch (siehe oben).
+- **Eingabelimits (Befund F11):** Längen-/Mengenlimits für alle
+  Hofladen-Felder, strikte ID-Regel (`[A-Za-z0-9_-]{1,64}`), einfache
+  Format-Prüfung für E-Mail/Telefon und höchstens 500 Datensätze je
+  Import (Konstanten in `const.py`). Bestehende Datensätze, die die
+  Regeln verletzen (z. B. eine ID mit Leerzeichen), werden beim
+  Einlesen übersprungen und im Log gewarnt.
+- **Panel-Defense-in-Depth (Befund F12):** Datenwerte in HTML-Attributen
+  werden escaped, Bilder nur bei sicherer URL geladen (sonst Platzhalter,
+  externe Bilder mit `referrerpolicy="no-referrer"`), `mailto:`-Links nur
+  für validierte Adressen, Import-Datei höchstens 2 MB.
+
+### Datenschutz der Kontaktfelder, Last auf externe Dienste (Befund F14)
+
+- **Kontaktdaten:** Mobilnummer und E-Mail liegen **unverschlüsselt** in
+  `.storage/hofkarte_hoflaeden` und sind Teil von Home-Assistant-
+  Backups. Entities (Attribute) und Diagnostics geben sie nicht aus; wer
+  ein Backup oder die Storage-Datei weitergibt, gibt sie mit weiter.
+- **Overpass (OpenStreetMap):** Radius höchstens 2 000 m, Gesamtbudget
+  40 s über alle Instanzen, 10-Minuten-Cache (höchstens 32 Einträge) gegen
+  wiederholte identische Abfragen; es werden nur Koordinaten und Radius
+  gesendet, nur auf ausdrücklichen Klick.
+- **Statische Dateien:** werden mit langem Cache ausgeliefert; Versionen
+  stehen in den URLs (`?v=`), nach einem Update lädt der Browser neu.
+
+### Gebündelte Frontend-Bibliotheken (Befund F7, ab 2026.10.0-dev.6)
+
+Die Kartenansicht nutzt Leaflet `1.9.4` (BSD-2-Clause) und bei mehr als
+200 Markern `leaflet.markercluster` `1.5.3` (MIT). Beide liegen
+**unverändert im Repository** (`custom_components/hofkarte/static/vendor/`)
+und werden von Home Assistant selbst ausgeliefert – es wird **kein
+Skript und kein Stylesheet mehr von einem CDN** geladen. Damit entfällt
+das Lieferkettenrisiko eines nachträglich veränderten CDN-Inhalts (im
+Panel läuft Code mit den Rechten der angemeldeten Home-Assistant-Sitzung).
+Herkunft, Lizenzen und SHA-256-Prüfsummen stehen in
+`THIRD_PARTY_NOTICES.md`; ein Test gleicht die Prüfsummen mit den Dateien
+ab. Die einzige verbleibende Verbindung zu Dritten in der Kartenansicht
+sind die OpenStreetMap-Kacheln (siehe Datenschutz-Hinweise). Das Panel
+meldet einen Ladefehler der Bibliothek ohne automatische
+Wiederholungsschleife (Befund F8).
 
 ### Funktion „Ort in der Nähe suchen“ (`osm_info.py`, Issue #10, erweitert in Issue #11)
 
@@ -140,7 +203,7 @@ Backend-Code von HofKarte** ein – diesmal an die OpenStreetMap-Overpass-
 API, einen von HofKarte nicht kontrollierten, aber freien, kostenlosen,
 kontofreien OpenStreetMap-Community-Dienst (kein kommerzieller
 Cloud-Dienst, kein LLM/KI-Dienst, kein „Scraping-as-a-Service“). Anders
-als die rein clientseitig vom Browser geladenen Leaflet/OpenStreetMap-
+als die rein clientseitig vom Browser geladenen OpenStreetMap-
 Kartenkacheln (Issue #2) überträgt diese Funktion **serverseitig
 konkrete Koordinaten eines bestimmten Hofladens** an den externen Dienst
 – ausschliesslich auf ausdrücklichen Klick auf „📍 Ort in der Nähe

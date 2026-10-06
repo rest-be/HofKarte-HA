@@ -83,7 +83,12 @@ Der Coordinator bietet öffentliche Schreibmethoden
 Schreibzugriffe (Verwaltungsoberfläche, künftige eigene Skripte) laufen
 über diese Methoden, nie direkt über den Data Provider. Jede Methode
 validiert Fail-Fast über `parsing.parse_hofladen`, bevor irgendetwas
-geschrieben wird, und löst danach einen regulären Refresh aus.
+geschrieben wird, und setzt danach den bereits validierten Stand
+**inkrementell** in `coordinator.data` ein (`async_set_updated_data`,
+kein `async_refresh()` mit erneutem Parsen aller Datensätze; Befund F5).
+`async_save_many`/`async_schreibe_vorbereitete` speichern mehrere
+Datensätze in **einem** Schreibvorgang (`async_apply_changes` des
+Providers, atomar) und lösen **ein** Update aus.
 
 ### Coordinator → Devices/Entities
 
@@ -253,8 +258,9 @@ ausreichend.
   gezeichnetes Koordinatenraster ohne echtes Kartenmaterial) hätte den
   eigentlichen Zweck (Wiedererkennung realer Orte/Strassen) verfehlt.
 - Eine schlanke JavaScript-Kartenbibliothek mit OpenStreetMap-Kacheln,
-  per `<script>`/`<link>` von einem CDN eingebunden – **ohne**
-  Build-Pipeline oder npm-Abhängigkeit im Repository.
+  als unveränderte Distributionsdatei im Repository gebündelt (seit
+  `2026.10.0-dev.6`, Befund F7) – **ohne** Build-Pipeline, npm-
+  Abhängigkeit oder CDN zur Laufzeit.
 
 **Entscheid: [Leaflet](https://leafletjs.com/) `1.9.4` (BSD-2-Clause) +
 OpenStreetMap-Kacheln.** Begründung:
@@ -262,9 +268,12 @@ OpenStreetMap-Kacheln.** Begründung:
 - kein API-Schlüssel und kein Kartendienst-Konto nötig
   (OpenStreetMap-Kacheln sind ohne Registrierung nutzbar) – im
   Unterschied zu den meisten kommerziellen Kartendiensten;
-- keine Build-Pipeline/npm-Abhängigkeit im Repository nötig: reines
-  `<script>`/`<link>` von einem CDN (`cdn.jsdelivr.net`), mit **fest
-  gepinnter** Versionsnummer statt „latest“;
+- keine Build-Pipeline/npm-Abhängigkeit nötig: die **fest gepinnte**
+  Version liegt unverändert unter `static/vendor/leaflet/` und wird von
+  Home Assistant ausgeliefert (`/api/hofkarte/static/vendor/…?v=<Version>`);
+  **kein CDN** – keine Lieferketten-Abhängigkeit zur Laufzeit, kein
+  Verbindungsaufbau zu Dritten ausser den OSM-Kacheln. Herkunft, Lizenz
+  (BSD-2-Clause) und SHA-256-Prüfsummen: `THIRD_PARTY_NOTICES.md`;
 - seit vielen Jahren aktiv gewartet, sehr verbreitet (u. a. in
   zahlreichen Home-Assistant-HACS-Karten bereits im Einsatz), kompakt
   (~40 KB gzip für JS und CSS zusammen).
@@ -276,35 +285,43 @@ Build-Pipeline und nicht in `manifest.json` deklariert (es ist eine
 reine Frontend-/Browser-Abhängigkeit, keine Python-Abhängigkeit der
 Integration selbst).
 
-**Lazy Loading:** `ladeLeaflet()` in `hofkarte-panel.js` lädt das
-`<script>`-Tag (und `karteAnsicht()` das zugehörige `<link>`-Stylesheet)
-**erst beim ersten Öffnen** der Kartenansicht, nicht beim Start des
-Panels – wer die Kartenansicht nie öffnet, löst auch nie eine
-Verbindung zum CDN oder zum OpenStreetMap-Kachel-Server aus (siehe
-Datenschutz-Hinweise im Handbuch). Das zurückgegebene Promise wird
-zwischengespeichert (`leafletLoadPromise`), damit mehrfaches Öffnen der
-Ansicht nicht mehrfach nachlädt; schlägt das Laden fehl (z. B. CDN
-nicht erreichbar), wird es verworfen, damit ein erneuter Versuch beim
-nächsten Öffnen möglich ist, statt dauerhaft fehlzuschlagen.
+**Lazy Loading und Fehlerbehandlung:** `ladeLeaflet()` in
+`hofkarte-panel.js` lädt das lokale `<script>` **erst beim ersten
+Öffnen** der Kartenansicht, nicht beim Start des Panels – wer die
+Kartenansicht nie öffnet, löst auch nie eine Verbindung zum
+OpenStreetMap-Kachel-Server aus (siehe Datenschutz-Hinweise im
+Handbuch). Das Promise wird je Skript zwischengespeichert. Schlägt das
+Laden fehl, wird das fehlerhafte `<script>`-Element wieder entfernt, das
+Promise verworfen und die Meldung per `textContent` angezeigt – **ohne**
+`render()` (Befund F8: sonst würde `render()` → `initKarte()` →
+`ladeLeaflet()` eine Endlosschleife bilden). Ein neuer Versuch erfolgt
+nur über „Erneut versuchen“ bzw. beim ausdrücklichen Wechsel in die
+Kartenansicht. Analog sperrt `_loadFailed` (Befund F9) das automatische
+Laden der Hofladen-Liste bei jeder `hass`-Änderung nach einem
+Fehlschlag; stattdessen gibt es einen Backoff-Timer (2 s, 4 s, … max.
+60 s) und den Button „Erneut versuchen“. Der `_loading`-Schutz bleibt.
 
-**Rendering innerhalb des Shadow-DOM-Custom-Elements:** Leaflets CSS
-muss innerhalb desselben Shadow-DOM-Baums geladen werden wie die Karte
-selbst (Shadow-DOM-Style-Isolation) – das `<link>`-Element steht daher
-direkt im von `karteAnsicht()` erzeugten Markup, nicht im globalen
-Dokument-`<head>`. Da `render()` bei **jeder** Änderung den gesamten
-Shadow-DOM-Inhalt per `innerHTML` ersetzt (bestehendes Architekturmuster
-dieses Panels, siehe unten), würde eine bestehende Leaflet-Karteninstanz
-sonst mit einem bereits aus dem DOM entfernten Container weiterleben
-(offene Event-Listener u. a. auf `window`). `teardownKarte()` entfernt
-die Instanz deshalb **vor** jedem `innerHTML`-Ersatz explizit
-(`map.remove()`); ist die Kartenansicht weiterhin aktiv, baut
-`initKarte()` danach eine neue Instanz in den neu erzeugten Container
-auf. Das bedeutet: Die Karte wird bei jedem Re-Render der Ansicht
-(Wechsel in die Kartenansicht, Ändern des Geöffnet-Filters) neu
-aufgebaut statt aktualisiert – konsistent mit dem bestehenden,
-einfachen Render-Modell des Panels und für die hier relevanten
-Datenmengen (einzelne bis wenige Dutzend Hofläden) ohne spürbaren
-Performance-Nachteil.
+**Clustering:** Ab 200 Markern (`KARTE_CLUSTER_AB`) wird das ebenfalls
+lokal gebündelte `leaflet.markercluster` (MIT) nachgeladen. Begründung
+gegenüber `preferCanvas`: Die Marker sind DOM-basierte `divIcon`s, ein
+Canvas-Renderer greift für sie nicht; Clustering senkt Knotenzahl und
+Zeichenlast tatsächlich. Fehlt die Bibliothek, werden die Marker einzeln
+dargestellt.
+
+**Rendering innerhalb des Shadow-DOM-Custom-Elements (seit
+`2026.10.0-dev.6`, Befund F10):** `<style>` und die Leaflet-
+Stylesheets (`<link>`) stehen **dauerhaft** im Shadow Root, `render()`
+ersetzt nur noch den Inhalt von `<main>`. Die Karte lebt, solange die
+Kartenansicht offen ist: `initKarte()` erzeugt sie **einmal** und hängt
+bei weiteren Renders lediglich ihren Container (`_karteHost`) in den
+neuen Platzhalter um; bei Filter-/Datenänderung wird nur die
+Marker-Ebene getauscht (`aktualisiereMarker()`, mit Signaturvergleich).
+`teardownKarte()` (`map.remove()`) läuft nur beim Verlassen der
+Kartenansicht bzw. in `disconnectedCallback()`. Es gibt genau einen
+`popupopen`-Handler pro Karte. Listen-/Kartenaktionen laufen über eine
+einmalig gebundene Event-Delegation auf `<main>`; der Listenfilter ist
+mit ~150 ms entprellt und ersetzt nur `<tbody>`; Such-/Sortierschlüssel
+werden je Hofladen einmal vorberechnet.
 
 Die Kartengrössenberechnung (`L.map()`) erfolgt, nachdem der Container
 bereits über `innerHTML` ins DOM eingefügt wurde (Layout ist zu diesem
@@ -539,7 +556,10 @@ falsch“ – siehe Moduldoc in `webseite_info.py`).
 **Sicherheitsmodell:** Der gemeinsame syntaktische Prüfkern
 (`url_sicherheit.py`, aus `images.py` herausgelöst und von beiden
 Modulen genutzt – Schema-Whitelist, keine Zugangsdaten, kein
-„localhost“, keine privaten/internen IP-Literale, keine DNS-Auflösung)
+„localhost“, keine privaten/internen IP-Literale, keine DNS-Auflösung;
+seit `2026.10.0-dev.5` mit normalisiertem Hostnamen, `inet_aton`-
+Schreibweisen, `is_global`-Positivprüfung und internen Hostnamen wie
+`*.local`/`*.lan`/Einzel-Label)
 wird hier um Massnahmen erweitert, die speziell für den tatsächlichen
 Abruf und die Verarbeitung des Antwortinhalts nötig sind: ein
 Antwortgrössen-Limit (2 MB), eine Content-Type-Prüfung (nur HTML-artige
@@ -762,12 +782,14 @@ HTTP-Anfragen:
   `CONF_OSM_RADIUS_METER`, alle in `const.py` definiert) – dauerhaft in
   der Config Entry gespeicherte Vorgabewerte für die Übersicht bzw. für
   „Angaben automatisch ermitteln“, analog zur globalen
-  „Einstellungen“-Maske der parallel gepflegten iOS-App. Anders als bei
-  Home-Assistant-Integrationen, die sich auf eine automatisch von
-  `OptionsFlow` bereitgestellte Basis-Implementierung verlassen, setzt
-  `HofKarteOptionsFlow.__init__` `self.config_entry` bewusst explizit,
-  um unabhängig von einer sich über Home-Assistant-Versionen wandelnden
-  Basisklassen-Eigenheit zu bleiben. Die Verwaltungsoberfläche liest
+  „Einstellungen“-Maske der parallel gepflegten iOS-App. Seit
+  `2026.10.0-dev.4` (Befund F3) hat `HofKarteOptionsFlow` **keinen**
+  eigenen Konstruktor mehr: `self.config_entry` stellt Home Assistant
+  selbst bereit (Property seit 2024.11, ab 2025.12 ohne Setter – eine
+  explizite Zuweisung würde dort einen `AttributeError` auslösen). Die
+  beiden Auswahlfelder sind `SelectSelector`-Dropdowns mit
+  übersetzten Optionsbezeichnungen (`selector.<schlüssel>.options.<wert>`
+  in `strings.json`/`translations`). Die Verwaltungsoberfläche liest
   diese Werte beim Laden über den neuen, administratorpflichtigen
   WebSocket-Befehl `hofkarte/management/settings` und verwendet sie als
   Vorgabewerte statt wie bisher rein pro Formularsitzung flüchtiger
@@ -990,6 +1012,27 @@ Hofladen-Inhalte oder Standortdaten (siehe README, Abschnitt
 
 - Ein gemeinsamer Coordinator verhindert Mehrfachabfragen einzelner
   Entities.
+- **Kein periodischer Abruf (Befund F6):** `DEFAULT_UPDATE_INTERVAL` ist
+  `None`. Daten ändern sich nur durch Schreibzugriffe (inkrementelles
+  Update); zeitabhängige Zustände aktualisieren sich zeitgenau:
+  `HofKarteZeitgesteuerteEntity` (Binary Sensor „Geöffnet“, Sensoren
+  „Nächste Öffnung/Schliessung“) plant mit `async_track_point_in_time` den
+  Zeitpunkt aus `opening_hours.naechster_statuswechsel` (nächster
+  Intervallbeginn/-ende oder lokale Mitternacht, hass-frei und
+  zeitzonen-/DST-korrekt über die vorhandene Intervalllogik), plant nach
+  jedem Tick neu, rechnet bei jedem Coordinator-Update neu und meldet den
+  Timer über `async_on_remove` ab. Hofläden ohne Öffnungszeiten brauchen
+  keinen Timer. `async_sync_devices` läuft nur noch, wenn sich die Menge
+  oder die Namen der Hofläden ändern. Begründung gegenüber „seltener
+  pollen“: ein Raster bleibt ungenau, ein Poll liest alle Datensätze neu.
+- Duplikaterkennung beim Import (`_DuplikatIndex`) nutzt einen
+  Namensindex statt eines Durchlaufs je Eintrag (gleiche Semantik).
+- `frontend.py`: `cache_headers=True` für `/api/hofkarte/static`; die
+  versionierten Einstiegs-URLs (`?v=<Version>`) erzwingen nach Updates
+  neu geladene Dateien (Befund F14).
+- `osm_info.py`: Gesamtbudget 40 s für alle Overpass-Instanzen und
+  10-Minuten-Cache (max. 32 Einträge, gerundete Koordinaten + Radius,
+  nur erfolgreiche Antworten) gegen wiederholte identische Abfragen.
 - `PARALLEL_UPDATES = 0` in allen drei Entity-Plattformen (keine
   pro-Entity-Netzwerkzugriffe, die gedrosselt werden müssten).
 - Keine blockierenden Aufrufe im Event Loop – konkretes Beispiel: Die
@@ -1020,3 +1063,20 @@ Für Beitragende, die HofKarte erweitern möchten:
 
 Siehe auch `quality_scale.yaml` für offene, bewusst zurückgestellte
 Verbesserungspunkte (z. B. `runtime-data`-Migration, Repair-Issues).
+
+
+## Eingabelimits, DNS-Prüfung und Panel-Härtung (`dev.5`)
+
+- **F4 – DNS-Prüfung mit IP-Bindung:** `webseite_info._OeffentlichAufloeser`
+  (ein `aiohttp.abc.AbstractResolver`) löst Hostnamen auf, verlangt für
+  **alle** Adressen `url_sicherheit.ist_oeffentliche_ip` und gibt genau
+  diese an den Verbindungsaufbau zurück (kein Rebinding zwischen Prüfung
+  und Abruf). Genutzt über `_sichere_session()` (eigene, je Abruf
+  erzeugte Session, `force_close`). Die synchrone Bild-URL-Prüfung bleibt
+  syntaktisch.
+- **F11 – Limits (`parsing.py`, Konstanten in `const.py`):** Längen je Feld,
+  Anzahl Angebote/Zahlungsarten/Bilder/Zeiten, ID-Regel, E-Mail-/
+  Telefonformat, höchstens 500 Datensätze je Import (`ws_import_*`).
+- **F12 – Panel:** `escAttr` für alle datenbasierten Attribute,
+  `istSichereBildUrl` (Bilder), `istGueltigeEmail` (`mailto:`), Import-
+  Limits vor `file.text()`/`JSON.parse`.

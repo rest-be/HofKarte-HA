@@ -51,6 +51,48 @@
           "description": "If set, only farm shops that are currently open are returned."
         }
       }
+    },
+    "hoflaeden_in_naehe": {
+      "name": "Farm shops nearby",
+      "description": "Returns farm shops within a radius around an arbitrary location, sorted by distance. Basis for a proximity notification based on the actual device location.",
+      "fields": {
+        "latitude": {
+          "name": "Latitude",
+          "description": "Latitude of the reference point (e.g. from a person/device_tracker entity)."
+        },
+        "longitude": {
+          "name": "Longitude",
+          "description": "Longitude of the reference point (e.g. from a person/device_tracker entity)."
+        },
+        "radius_meter": {
+          "name": "Radius",
+          "description": "Search radius in meters around the reference point."
+        },
+        "nur_geoeffnet": {
+          "name": "Only currently open",
+          "description": "If set, only farm shops that are currently open are returned."
+        },
+        "min_bewertung": {
+          "name": "Minimum rating",
+          "description": "If set, only farm shops with a rating of at least this value are returned (0–5, simple \"favorites only\" filter)."
+        }
+      }
+    }
+  },
+  "selector": {
+    "listen_sort_spalte": {
+      "options": {
+        "name": "Name",
+        "adresse": "Address",
+        "geoeffnet": "Open now",
+        "bewertung": "Rating"
+      }
+    },
+    "listen_sort_richtung": {
+      "options": {
+        "asc": "Ascending",
+        "desc": "Descending"
+      }
     }
   }
 }

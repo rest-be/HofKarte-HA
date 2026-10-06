@@ -111,9 +111,9 @@ HofKarte unterscheidet zwei Arten von „Konfiguration“:
   zur Verfügung: Standard-Sortierfeld/-richtung für die
   Hofladen-Übersicht sowie ein dauerhaft gespeicherter Standard-
   Suchradius für „🔍 Angaben automatisch ermitteln“ (20–2000 m,
-  voreingestellt 200 m). Update-Intervall und Abruf-Timeout des
-  Coordinators sind davon unabhängig und weiterhin nur auf Code-Ebene
-  änderbar (siehe „Bekannte Einschränkungen“).
+  voreingestellt 200 m). Der Abruf-Timeout des Coordinators ist davon
+  unabhängig und weiterhin nur auf Code-Ebene änderbar (ein
+  Update-Intervall gibt es seit `2026.10.0-dev.7` nicht mehr) (siehe „Bekannte Einschränkungen“).
 - **Die Hofladen-Daten:** Hofläden, ihre Stammdaten, Öffnungszeiten und
   ihr Sortiment werden **nicht** über die Home-Assistant-Konfiguration
   gepflegt, sondern über die grafische Verwaltungsoberfläche (siehe
@@ -240,12 +240,16 @@ Standort zeigt. Die Marker sind analog zur Statusfarbgebung in
 Kacheln-/Listenansicht nach Öffnungsstatus eingefärbt (grün geöffnet,
 grau geschlossen, sonst die bisherige Standardfarbe bei unbekanntem
 Status). Umgesetzt mit [Leaflet](https://leafletjs.com/) `1.9.4`
-und OpenStreetMap-Kartenkacheln, per `<script>`/`<link>` mit fest
-gepinnter Version von einem CDN nachgeladen – bewusst erst beim ersten
-Öffnen dieser Ansicht, keine Build-Pipeline, kein API-Schlüssel nötig.
-Das ist eine bewusste, im Architekturdokument begründete Ausnahme vom
-Projektgrundsatz „keine neuen Abhängigkeiten“ (siehe
-`docs/architecture.md`). Der Klick auf eine Stecknadel führt über ein
+und OpenStreetMap-Kartenkacheln. Leaflet (und, ab 200 Markern,
+`leaflet.markercluster` `1.5.3`) liegt **unverändert im Repository**
+(`static/vendor/`, Lizenzen und Prüfsummen in `THIRD_PARTY_NOTICES.md`)
+und wird von Home Assistant selbst ausgeliefert – **kein CDN**. Es wird
+bewusst erst beim ersten Öffnen dieser Ansicht geladen, keine
+Build-Pipeline, kein API-Schlüssel nötig. Lässt sich die Bibliothek nicht
+laden, erscheint eine Meldung mit „Erneut versuchen“ (keine automatische
+Wiederholungsschleife). Das ist eine bewusste, im Architekturdokument
+begründete Ausnahme vom Projektgrundsatz „keine neuen Abhängigkeiten“
+(siehe `docs/architecture.md`). Der Klick auf eine Stecknadel führt über ein
 Popup mit Button „Zur Detailansicht“ zur selben Detailansicht wie in
 Kacheln/Liste.
 
@@ -407,7 +411,9 @@ Sicherheitsprüfung in `images.py`):
   eingebetteten Zugangsdaten. Bei frei eingegebenen externen Adressen
   wird zusätzlich jede literale private/interne IP-Adresse abgelehnt;
   diese Prüfung ist rein syntaktisch (keine DNS-Auflösung, um den
-  Home-Assistant-Event-Loop nicht zu blockieren) – ein Domainname, der
+  Home-Assistant-Event-Loop nicht zu blockieren; interne Hostnamen wie
+  `*.local`/`*.lan` und unübliche IP-Schreibweisen werden abgelehnt) –
+  ein Domainname, der
   erst später auf eine private Adresse auflöst, wird dadurch nicht
   erkannt. Über den geführten Upload erzeugte Bilder sind von der
   IP-Adressbereichs-Prüfung ausgenommen (ihre Vertrauenswürdigkeit
@@ -456,6 +462,39 @@ hoflaeden:
 bereits ab), separate Actions je Filterdimension, sowie eine
 proprietäre REST-API oder eine Suche über andere Integrationen hinweg.
 
+Daneben steht die Action `hofkarte.hoflaeden_in_naehe` zur Verfügung,
+die – anders als `hoflaeden_suchen` und der `Entfernung`-Sensor (beide
+gegen die fixe, konfigurierte Home-Assistant-Position) – gegen einen
+beliebigen, bei jedem Aufruf mitgegebenen Standort prüft:
+
+**Parameter:**
+
+| Parameter        | Typ     | Pflicht | Bedeutung                                           |
+|-------------------|---------|---------|------------------------------------------------------|
+| `latitude`        | Zahl    | ja      | Breitengrad des Bezugspunkts                          |
+| `longitude`       | Zahl    | ja      | Längengrad des Bezugspunkts                           |
+| `radius_meter`    | Zahl    | ja      | Suchradius in Metern um den Bezugspunkt               |
+| `nur_geoeffnet`   | Bool    | nein    | Nur aktuell geöffnete Hofläden                        |
+| `min_bewertung`   | Zahl (0–5) | nein | Nur Hofläden mit mindestens dieser Bewertung – einfacher „nur Favoriten“-Filter, der das bestehende, geteilte `bewertung`-Feld wiederverwendet statt ein eigenes Favoriten-Feld einzuführen. Ein Hofladen ohne Bewertung (Standardwert 0) erfüllt keinen `min_bewertung`-Wert grösser 0. |
+
+**Rückgabedaten**, aufsteigend nach Entfernung sortiert:
+
+```yaml
+anzahl_treffer: 1
+hoflaeden:
+  - id: hof-mueller
+    name: Hofladen Müller
+    geoeffnet: true
+    entfernung_meter: 340
+    bewertung: 5
+```
+
+Es werden dabei **keine** Standortdaten durch die Integration
+gespeichert oder verfolgt – der Bezugspunkt wird bei jedem Aufruf frisch
+übergeben (z. B. aus den `latitude`/`longitude`-Attributen einer
+`person`- oder `device_tracker`-Entity). Siehe auch das mitgelieferte
+Automation-Blueprint im Abschnitt „Mobile PWA“ unten.
+
 ## Beispiele für Automationen
 
 **Benachrichtigung, wenn ein Lieblings-Hofladen öffnet:**
@@ -501,6 +540,117 @@ Integration): Da `image`-Entities in Lovelace-Bildkarten funktionieren,
 kann eine Picture-Entity-Karte direkt `image.hofladen_mueller_hauptbild`
 verwenden.
 
+**Mitgeliefertes Blueprint – Benachrichtigung bei Hofladen in der
+Nähe:** Statt die Action `hoflaeden_in_naehe` selbst zu verdrahten,
+kann das Automation-Blueprint
+[`blueprints/automation/hofkarte/naehe_benachrichtigung.yaml`](blueprints/automation/hofkarte/naehe_benachrichtigung.yaml)
+importiert werden (*Einstellungen → Automatisierungen & Szenen →
+Blueprints → Blueprint importieren*). Es löst bei jeder
+Standortänderung einer `person`- oder `device_tracker`-Entity eine
+frei wählbare Benachrichtigungs-Aktion aus, wenn sich ein Hofladen
+innerhalb des konfigurierten Radius befindet.
+
+### Einrichtungsanleitung: Push-Benachrichtigung bei Hofladen in der Nähe
+
+Dieser Abschnitt beschreibt Schritt für Schritt, wie die
+Nähe-Benachrichtigung aufs Smartphone eingerichtet wird. **Es wird
+keine eigene Push-Infrastruktur benötigt** – die Benachrichtigung
+läuft über die offizielle Home Assistant Companion App, die bereits
+eine zuverlässige, verschlüsselte Push-Zustellung mitbringt. Dieses
+Blueprint dient lediglich dazu, bei Bedarf eine solche Aktion
+auszulösen.
+
+1. **Companion App installieren und verbinden.** Auf dem Smartphone
+   die „Home Assistant“-App aus dem App Store bzw. Play Store
+   installieren und mit der eigenen Home-Assistant-Instanz verbinden
+   (Benutzerkonto, nicht zwingend dasselbe technische Konto wie das
+   für die PWA – siehe Abschnitt „Mobile PWA“ unten). Dabei legt die
+   App automatisch eine `notify.mobile_app_<gerätename>`-Aktion sowie
+   eine `person`-/`device_tracker`-Entity mit dem Standort dieses
+   Geräts an.
+2. **Standortfreigabe aktivieren.** In den App-Einstellungen unter
+   *Einstellungen → Begleit-App → Standort* die Standortfreigabe an
+   Home Assistant erlauben (im Hintergrund, nicht nur bei geöffneter
+   App – sonst wird kein Standortwechsel erkannt, wenn das Smartphone
+   gerade nicht aktiv genutzt wird).
+3. **Blueprint importieren.** In Home Assistant unter *Einstellungen
+   → Automatisierungen & Szenen → Blueprints → Blueprint importieren*
+   die URL
+   `https://github.com/rest-be/HofKarte-HA/blob/develop/blueprints/automation/hofkarte/naehe_benachrichtigung.yaml`
+   eingeben und importieren.
+4. **Automation aus dem Blueprint erstellen.** Unter *Automatisierungen
+   → Automatisierung erstellen → Aus Blueprint* das importierte
+   Blueprint „HofKarte – Benachrichtigung bei Hofladen in der Nähe“
+   auswählen und folgende Eingaben setzen:
+   - **Standort:** die im Schritt 1 angelegte `person`- oder
+     `device_tracker`-Entity des eigenen Smartphones.
+   - **Radius:** z. B. `500` m.
+   - **Nur wenn geöffnet:** aktiviert lassen, wenn nur bei
+     tatsächlich offenen Hofläden benachrichtigt werden soll.
+   - **Mindestbewertung (nur Favoriten):** optional – z. B. `4`, wenn
+     nur bei mit mindestens 4 von 5 Sternen bewerteten
+     Lieblings-Hofläden benachrichtigt werden soll. `0` (Standard)
+     bedeutet keine Einschränkung.
+   - **Benachrichtigungs-Aktion:** die im Schritt 1 angelegte
+     `notify.mobile_app_<gerätename>`-Aktion, z. B. mit folgenden
+     Daten:
+     ```yaml
+     action: notify.mobile_app_mein_smartphone
+     data:
+       title: "Hofladen in der Nähe"
+       message: >-
+         {{ hofladen_name }} ist {{ entfernung_meter }} m entfernt
+         (Bewertung: {{ bewertung }}/5).
+     ```
+     Die Vorlagen-Variablen `hofladen_name`, `entfernung_meter` und
+     `bewertung` stehen hier automatisch zur Verfügung (siehe
+     Blueprint-Beschreibung).
+5. **Automation speichern und testen.** Nach dem Speichern einmal den
+   Standort des Smartphones ändern (oder testweise den Radius
+   grosszügig wählen) und prüfen, ob die Benachrichtigung ankommt.
+   Bei Problemen helfen *Einstellungen → System → Protokolle* sowie
+   die Traces der Automation (*Automatisierungen → … → Traces/Verlauf
+   öffnen*).
+
+## Mobile PWA
+
+Unabhängig von dieser Integration wird unter
+[`rest-be/HofKarte-PWA`](https://github.com/rest-be/HofKarte-PWA) eine
+Progressive Web App entwickelt, die HofKarte als dünner Client dieser
+Integration nutzt – **ohne eigene Datenhaltung**: Sämtliche Hofladen-
+Daten bleiben in dieser Integration, die PWA liest und schreibt
+ausschliesslich über die bestehende Home-Assistant-WebSocket-API.
+
+Für den Betrieb der PWA sind auf Seiten dieser Integration folgende,
+unabhängig von der PWA selbst sinnvolle Voraussetzungen zu schaffen:
+
+- **Eigener Admin-Benutzer** (z. B. „HofKarte“) als technisches
+  Service-Konto für die PWA, mit einem eigenen Long-Lived Access Token
+  pro Gerät (granulare Widerrufbarkeit bei Geräteverlust) statt eines
+  persönlichen Kontos oder eines gemeinsamen Passworts.
+- **`cors_allowed_origins`** in `configuration.yaml`, damit der Browser
+  Anfragen von der die PWA ausliefernden Origin (z. B. GitHub Pages)
+  akzeptiert – siehe Home-Assistant-Dokumentation zu `http:`. Für den
+  **Foto-Upload** ist das seit `2026.10.0` nicht mehr nötig: Die PWA
+  (ab 1.11.0) nutzt den WebSocket-Befehl
+  `hofkarte/management/upload_image` (nur Admin, JPEG/PNG/GIF, bis
+  3 MiB). Nur Fotos über ca. 2.5 MB weichen auf den REST-Upload aus,
+  der CORS weiterhin braucht (die PWA verkleinert Fotos vorher auf
+  max. 1600 px).
+- **Interner HTTPS-Zugriff** auf diese Home-Assistant-Instanz (z. B.
+  über eine eigene DuckDNS-Domain mit Let's-Encrypt-Zertifikat per
+  DNS-01-Challenge): Eine über `https://` ausgelieferte PWA darf aus
+  Browser-Sicherheitsgründen (*Mixed Content*) keine Verbindung zu
+  einer nur über `http://` erreichbaren Home-Assistant-Instanz
+  aufbauen, auch nicht innerhalb eines VPNs.
+- Die Nähe-Benachrichtigung der PWA nutzt die oben beschriebene Action
+  `hoflaeden_in_naehe` bzw. das mitgelieferte Automation-Blueprint,
+  ausgelöst über die Standort-Entities der offiziellen Home Assistant
+  Companion App.
+
+Detailplanung und Umsetzungsschritte für dieses Zusammenspiel werden
+unabhängig von diesem Repository dokumentiert.
+
 ## Unter der Haube (technische Referenz)
 
 Dieser Abschnitt richtet sich an technisch interessierte
@@ -536,7 +686,10 @@ Integration bereit. Alle Entities lesen ausschliesslich aus dem
 Coordinator – es gibt keine Mehrfachabfragen pro Entity.
 
 - Asynchroner Abruf mit konfigurierbarem Timeout (Standard: 30 Sekunden)
-- Konfigurierbares Update-Intervall (Standard: 15 Minuten)
+- Kein periodischer Abruf (seit `2026.10.0-dev.7`): Änderungen werden
+  inkrementell übernommen, zeitabhängige Zustände (Geöffnet, Nächste
+  Öffnung/Schliessung) aktualisieren sich **zeitgenau** zum nächsten
+  Statuswechsel
 - Initialer Datenabruf beim Einrichten der Config Entry; schlägt dieser
   fehl, versucht Home Assistant die Einrichtung automatisch später
   erneut
@@ -544,6 +697,47 @@ Coordinator – es gibt keine Mehrfachabfragen pro Entity.
   den gesamten Abruf scheitern zu lassen
 - Bei einem späteren Fehlversuch bleiben die zuletzt erfolgreich
   abgerufenen Daten erhalten
+
+### Optimistische Versionierung und Konflikterkennung
+
+Jeder Hofladen trägt ein Feld `version` (fortlaufende Ganzzahl, beginnt
+bei 1). Grundlage dafür ist, dass mehrere Geräte denselben Hofladen
+unabhängig voneinander bearbeiten können – insbesondere die
+HofKarte-PWA im Offline-Betrieb (eine Änderung wird dort lokal
+zwischengespeichert und erst beim nächsten Verbindungsaufbau
+synchronisiert, siehe `rest-be/HofKarte-PWA`). Ohne Versionierung
+würde eine verspätet nachgereichte Offline-Änderung eine
+zwischenzeitlich von einem anderen Gerät bereits gespeicherte Änderung
+stillschweigend überschreiben.
+
+Beim Speichern über die WebSocket-Action `hofkarte/management/save`
+(verwendet von der grafischen Verwaltungsoberfläche sowie der PWA)
+gilt:
+
+- Wird ein **neuer** Hofladen angelegt, erhält er `version: 1`.
+- Wird ein **bestehender** Hofladen aktualisiert und der übergebene
+  Datensatz enthält eine `version`, die nicht mehr mit der aktuell
+  gespeicherten übereinstimmt, wird die Änderung **abgelehnt** – die
+  Antwort enthält `"konflikt": true` sowie den aktuellen,
+  serverseitigen Stand unter `"aktueller_hofladen"`, damit die
+  aufrufende Oberfläche eine Konflikt-Ansicht (z. B. „Meine Version
+  übernehmen“ / „Server-Version übernehmen“) anzeigen kann, statt
+  Daten unbemerkt zu verlieren.
+- Stimmt die mitgeschickte `version` überein (oder fehlt sie ganz –
+  z. B. bei älteren Aufrufern oder beim Import, siehe
+  „Bewusst nicht Teil“ unten), wird gespeichert und die Version um 1
+  erhöht; die Antwort enthält dann `"konflikt": false`.
+- Die mitgelieferte Verwaltungsoberfläche (`hofkarte-panel.js`) nimmt
+  daran automatisch teil, ohne eigene Codeänderung: Sie schickt beim
+  Speichern stets den zuletzt geladenen vollständigen Hofladen-
+  Datensatz zurück, inklusive `version`.
+
+**Bewusst nicht Teil dieser Prüfung:** der Import (`ws_import_commit`)
+und jeder andere Aufrufer, der keine `version` mitschickt – dort wird
+wie vor Einführung der Versionierung ohne Konfliktprüfung
+geschrieben (volle Abwärtskompatibilität). Für Bild-Operationen genügt
+weiterhin einfaches Last-Write-Wins (Bilder werden selten zeitgleich
+auf zwei Geräten verändert) – keine Versionierung dafür nötig.
 
 ### Data Provider und Architekturentscheid zur Datenquelle
 
@@ -580,7 +774,8 @@ ohne sinnvolle Standardwerte handelt.
 herunterladen** steht eine technische Übersicht zur Fehlersuche zur
 Verfügung (`custom_components/hofkarte/diagnostics.py`): Status des
 letzten Datenabrufs, Zeitpunkt der letzten erfolgreichen
-Aktualisierung, konfiguriertes Update-Intervall, Typ des Data Providers
+Aktualisierung, Update-Intervall (seit `2026.10.0-dev.7` leer, da kein periodischer
+Abruf), Typ des Data Providers
 und dessen Schreibfähigkeit sowie die Anzahl verwalteter Hofläden.
 
 **Bewusst nicht enthalten:** Hofladen-Inhalte (Namen, Adressen,
@@ -594,7 +789,8 @@ haben.
 
 - **Netzwerk-/Datenquellenfehler und Timeouts:** werden im Coordinator
   sauber abgefangen; Home Assistant zeigt betroffene Entities als
-  „unavailable“ an und versucht es beim nächsten Intervall erneut.
+  „unavailable“ an; der Coordinator liest nur noch beim Start (und nach
+  Start einmalig neu) – er pollt nicht.
 - **Ungültige/fehlende Pflichtfelder:** einzelne ungültige
   Hofladen-Datensätze werden übersprungen und geloggt, statt den
   gesamten Abruf abzubrechen.
@@ -610,8 +806,16 @@ haben.
 
 - Ein gemeinsamer Coordinator verhindert Mehrfachabfragen einzelner
   Entities.
-- Update-Intervall 15 Minuten – für Öffnungszeiten-Aktualität
-  angemessen, ohne unnötige Last zu erzeugen.
+- Kein periodischer Abruf: Schreibzugriffe aktualisieren die Daten
+  inkrementell (ein Import von 500 Hofläden = ein Schreibvorgang und ein
+  Update), der Öffnungsstatus wird zeitgenau zum nächsten Statuswechsel
+  neu berechnet (`async_track_point_in_time`) statt im 15-Minuten-Raster.
+- Statische Dateien des Panels werden mit langem Browser-Cache
+  ausgeliefert; die URLs tragen die Version (`?v=`), sodass Updates
+  zuverlässig ankommen.
+- „Angaben automatisch ermitteln“ (OpenStreetMap): Gesamtzeitbudget 40 s,
+  identische Anfragen werden 10 Minuten zwischengespeichert; der Suchradius
+  ist auf 2 000 m begrenzt (Fair Use der öffentlichen Overpass-Dienste).
 - Keine blockierenden Aufrufe (auch die Bild-URL-Sicherheitsprüfung ist
   bewusst rein syntaktisch, siehe oben).
 
@@ -675,8 +879,8 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
 - Nur eine Instanz pro Home-Assistant-Installation möglich (Single
   Instance).
 - Der Options Flow deckt nur die Übersicht-Sortiervorgabe und den
-  Standard-Suchradius ab; Update-Intervall und Timeout des Coordinators
-  sind weiterhin nur auf Code-Ebene konfigurierbar.
+  Standard-Suchradius ab; der Timeout des Coordinators ist weiterhin nur
+  auf Code-Ebene konfigurierbar.
 - Bei Uhrzeiten in einer Sommerzeit-Umstellungslücke bzw. im doppelt
   vorkommenden Bereich beim Zurückstellen wird die von `zoneinfo`
   standardmässig gewählte Auflösung verwendet, ohne explizite
@@ -701,8 +905,8 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
 - **Keine Cloud, kein externer Dienst:** HofKarte kommuniziert nicht mit
   externen Servern – mit vier Ausnahmen: dem Laden von Hofladen-Bildern
   über die vom Benutzer hinterlegten Bild-URLs (siehe „Bilder“), dem
-  Laden der Kartenbibliothek Leaflet und der Kartenkacheln von
-  OpenStreetMap, sobald die Übersichtsansicht „🗺️ Karte“ tatsächlich
+  Laden der Kartenkacheln von OpenStreetMap (die Kartenbibliothek
+  Leaflet selbst liegt lokal im Repository, kein CDN), sobald die Übersichtsansicht „🗺️ Karte“ tatsächlich
   geöffnet wird (siehe „Eingebettete Kartenansicht“ oben) – dabei werden
   nur Kachel-/Ausschnittkoordinaten übertragen, keine Hofladen- oder
   Standortdaten im Klartext – dem Abruf über die Funktion
@@ -773,6 +977,16 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
   Konfiguration) – keine Cloud-Synchronisation.
 - **Diagnostics:** Die herunterladbare Diagnose enthält bewusst keine
   Hofladen-Inhalte und keine Standortdaten (siehe oben).
+- **Kontaktfelder (Mobilnummer, E-Mail):** liegen **unverschlüsselt** in
+  `.storage/hofkarte_hoflaeden` und sind damit Teil von
+  Home-Assistant-Backups. Entities und Diagnostics veröffentlichen sie
+  nicht; wer Backups teilt, teilt auch diese Daten.
+- **Obergrenzen und URL-Prüfung (Befunde F4/F11):** Längen- und
+  Mengenlimits je Feld (siehe `const.py`), höchstens 500 Datensätze und
+  2 MB je Import, ID-Regel `[A-Za-z0-9_-]{1,64}`. Abgerufene Webseiten
+  werden nur über öffentliche Adressen geladen (DNS-Prüfung mit
+  IP-Bindung); interne Ziele, `*.local`/`*.lan`, Einzel-Label-Hosts und
+  unübliche IP-Schreibweisen werden abgelehnt (Details: `SECURITY.md`).
 - **Bilder:** Extern eingegebene Bild-Adressen werden vor der Nutzung
   auf ein sicheres Format geprüft (siehe „Bilder“); dennoch lädt Home
   Assistant beim Anzeigen eines Hauptbilds das Bild von der

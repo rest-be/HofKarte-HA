@@ -13,6 +13,252 @@ Entwicklung, vor der ersten offiziellen Veröffentlichung, einer an
 Semantic Versioning angelehnten, fortlaufenden Nummerierung und sind
 unten als historische Entwicklungsdokumentation erhalten.
 
+## [2026.10.0-rc.1] - Release Candidate (develop)
+
+Release Candidate für `2026.10.0`: fasst die Entwicklungsstände
+`dev.4`–`dev.7` (Code-Review-Umsetzung, Blöcke A–D) und den Abschnitt
+„Unveröffentlicht“ zusammen und ergänzt den Foto-Upload per WebSocket.
+
+### Hinzugefügt
+
+- **WebSocket-Befehl `hofkarte/management/upload_image`
+  (Foto-Upload ohne CORS):** Die Mobile PWA (ab 1.11.0) lädt Fotos
+  Base64-kodiert über die bereits bestehende WebSocket-Verbindung
+  hoch. Dadurch ist für den Foto-Upload **kein
+  `cors_allowed_origins`** mehr nötig. Der Befehl ist nur für
+  Administratoren zugelassen, nimmt `filename`, `content_type`
+  (nur `image/jpeg`, `image/png`, `image/gif`) und `data` entgegen,
+  begrenzt die Rohdaten auf 3 MiB (WebSocket-Limit von Home Assistant:
+  4 MiB), bereinigt den Dateinamen und legt das Bild über die
+  `image_upload`-Komponente von Home Assistant ab (identisch zum
+  REST-Upload; Auslieferung via `/api/image/serve/<id>/original`).
+  Antwort: `{"id": "<Bild-ID>"}`. Fehlercodes: `invalid_data`,
+  `not_ready`, `upload_failed`. Grössere Dateien nutzt die PWA weiter
+  über den REST-Weg (dort ist CORS weiterhin nötig).
+
+### Geändert
+
+- Version `2026.10.0-rc.1`; neue Datei `RELEASE_NOTES_2026.10.0.md`.
+
+## [2026.10.0-dev.7] - Entwicklungsversion (develop)
+
+Kein produktiver Release. Setzt Block D der Code-Review-Befunde zu
+`2026.9.2` um (F5, F6, Rest von F14).
+
+### Geändert
+
+- **F5 – Batch-Schreiben, inkrementelles Update:** Neue Provider-
+  Operation `async_apply_changes` (atomar, ein `Store.async_save`, unter
+  dem Lock; auch im `StaticTestDataProvider`). Der Coordinator setzt nach
+  `async_save_hofladen`/`async_add_hofladen`/`async_update_hofladen_sortiment`/
+  `async_delete_hofladen` den validierten Stand inkrementell in
+  `coordinator.data` ein (`async_set_updated_data`), kein
+  `async_refresh()` mit Neu-Parsen aller Datensätze mehr. Neu:
+  `async_save_many`, `bereite_save_vor`, `async_schreibe_vorbereitete`.
+  `ws_import_commit` validiert jeden Eintrag einmal, schreibt dann **einmal**
+  und löst **ein** Update aus (vorher je Eintrag ein Schreibvorgang plus
+  Refresh, doppeltes Parsen). Die Fail-Fast-Garantie bleibt (auch
+  Versionskonflikte werden jetzt vor dem ersten Schreiben erkannt).
+  Duplikatsuche beim Import über einen Namensindex (`_DuplikatIndex`,
+  Semantik unverändert).
+- **F6 – zeitgenaue Statuswechsel:** `update_interval` ist jetzt `None`
+  (kein 15-Minuten-Polling). Binary Sensor „Geöffnet“ sowie die Sensoren
+  „Nächste Öffnung/Schliessung“ planen mit `async_track_point_in_time`
+  den nächsten Statuswechsel (neue hass-freie Funktion
+  `opening_hours.naechster_statuswechsel`: nächster Intervallbeginn/-ende
+  oder Mitternacht; Zeitzonen-/DST-Logik der bestehenden Intervallbildung),
+  planen nach jedem Tick neu, rechnen bei Datenänderung neu und melden
+  Timer über `async_on_remove` ab. `async_sync_devices` läuft nur noch bei
+  geänderter Menge/geänderten Namen der Hofläden.
+- **F14 (Rest):** `cache_headers=True` für die statischen Panel-Dateien
+  (URLs tragen `?v=<Version>`). Overpass: Gesamtbudget 40 s (statt bis zu
+  75 s) und 10-Minuten-Cache (32 Einträge). README/SECURITY.md um
+  Obergrenzen, Kontaktdaten-Datenschutz (unverschlüsselt in
+  `.storage/`, Teil von Backups) und die SSRF-Prüfung ergänzt.
+
+## [2026.10.0-dev.6] - Entwicklungsversion (develop)
+
+Kein produktiver Release. Setzt Block C der Code-Review-Befunde zu
+`2026.9.2` um (F7, F8, F9, F10, F14 – Panel-Teil).
+
+### Sicherheit
+
+- **F7 – Leaflet lokal gebündelt, kein CDN mehr:** Leaflet `1.9.4`
+  (BSD-2-Clause) und `leaflet.markercluster` `1.5.3` (MIT) liegen
+  unverändert unter `static/vendor/` und werden von Home Assistant
+  ausgeliefert (`/api/hofkarte/static/vendor/…?v=<Version>`). Neu:
+  `THIRD_PARTY_NOTICES.md` (Lizenzen, Herkunft, SHA-256); SECURITY.md,
+  README und Architekturdokument angepasst.
+
+### Behoben
+
+- **F8 – Kein Render-Loop bei Leaflet-Ladefehler:** Der Fehlerpfad von
+  `initKarte()` ruft nicht mehr `render()` auf (vorher: Fehler → Render →
+  `initKarte()` → erneuter Ladeversuch → …). Meldung per `textContent`,
+  fehlgeschlagenes `<script>` wird entfernt, erneuter Versuch nur über
+  „Erneut versuchen“ bzw. ausdrücklichen Wechsel in die Kartenansicht.
+- **F9 – Keine Dauer-Neuladung nach Ladefehler:** `_loadFailed` verhindert
+  das Neuladen bei jeder `hass`-Änderung; stattdessen Backoff (2 s … max.
+  60 s) und Button „Erneut versuchen“. `_loading`-Schutz bleibt.
+
+### Geändert (Performance, F10/F14)
+
+- `<style>` und Leaflet-CSS werden einmalig angelegt; `render()` ersetzt
+  nur `<main>`.
+- Event-Delegation auf `<main>` statt Listener je Kachel/Zeile/Render.
+- Listenfilter entprellt (150 ms) mit Teil-Update von `<tbody>`;
+  Auswahl aktualisiert nur Zähler/Export-Knopf/Checkboxen.
+- Such-/Sortierschlüssel je Hofladen einmal vorberechnet.
+- Karte wird einmal erzeugt; bei Filter-/Datenänderung nur die
+  Marker-Ebene getauscht; Abbau nur beim Verlassen der Kartenansicht;
+  ein gemeinsamer Popup-Handler; `isConnected`-Prüfung nach dem Laden.
+- Clustering ab 200 Markern (`leaflet.markercluster`).
+- **F14 (Panel):** Kacheln und Editor laden eigene Uploads als
+  256×256-Vorschau (Original nur in der Detailansicht, Rückfall auf das
+  Original bei Fehler), `decoding="async"`.
+- Messung (jsdom, 500 synthetische Hofläden): Listener-Registrierungen
+  bei 5 Filtereingaben 4494 → 0, bei 5 Auswahl-Klicks 4350 → 0, beim
+  Öffnen der Liste 1014 → 6; neue DOM-Knoten bei 5 schnellen
+  Filtereingaben 29 303 → 5 636 (ein Teil-Update); Kartenansicht beim
+  Öffnen 2544 → 50 DOM-Knoten (geclustert).
+
+## [2026.10.0-dev.5] - Entwicklungsversion (develop)
+
+Kein produktiver Release. Setzt Block B der Code-Review-Befunde zu
+`2026.9.2` um (F4, F11, F12).
+
+### Sicherheit
+
+- **F4 – SSRF-Prüfung gehärtet (`url_sicherheit.py`):** Hostname wird
+  normalisiert (Kleinschreibung, abschliessender Punkt, IDNA). Abgelehnt
+  werden jetzt `localhost.`, `*.localhost`, `*.local`, `*.internal`,
+  `*.lan`, `*.home.arpa`, Einzel-Label-Hosts (`homeassistant`), unübliche
+  IPv4-Schreibweisen (`127.1`, `0`, `2130706433`, `0x7f000001`,
+  `017700000001`), IPv4-gemappte/NAT64/6to4-IPv6-Adressen auf interne Ziele
+  sowie CGNAT (`100.64.0.0/10`) u. a. – statt der Negativliste gilt die
+  Positivprüfung `is_global`.
+- **F4 – DNS-Rebinding-Schutz beim Website-Abruf (`webseite_info.py`):**
+  Jeder Hostname (Erstanfrage und jeder Weiterleitungssprung) wird
+  asynchron aufgelöst, **alle** A/AAAA-Einträge müssen öffentlich sein
+  (gemischte Antworten werden abgelehnt, z. B. `127.0.0.1.nip.io`), die
+  Verbindung nutzt genau die geprüften Adressen. Fehlerfall wie bisher
+  („nicht erlaubtes Ziel“). Dafür nutzt der Abruf eine eigene,
+  kurzlebige `aiohttp`-Session statt der geteilten Home-Assistant-Session.
+  Die Bild-URL-Prüfung (`image_url`) bleibt syntaktisch; die Grenze ist in
+  `images.py` dokumentiert.
+- **F11 – Längen-/Mengenlimits (`parsing.py`, `const.py`):** Name ≤ 200,
+  Beschreibung/Bemerkung ≤ 5 000, Adressfelder ≤ 200, Website/Bild-URL
+  ≤ 2 048, E-Mail ≤ 254, Telefon ≤ 40; ≤ 50 Angebote, ≤ 30 Zahlungsarten,
+  ≤ 20 Bilder, ≤ 100 Öffnungs- und ≤ 100 Sonderöffnungszeiten;
+  höchstens 500 Datensätze je Import. `id`: `[A-Za-z0-9_-]{1,64}`;
+  E-Mail: einfache Formatprüfung (genau ein `@`, kein Leerraum, kein
+  `? & % # < > " ' , ;`); Telefon: nur Ziffern, Leerzeichen und `+ - / ( ) .`.
+  **Hinweis:** Bestehende Datensätze, die diese Regeln verletzen (z. B.
+  eine ID mit Leerzeichen), werden beim Einlesen wie bisher
+  übersprungen und im Log gewarnt (der Coordinator-Lauf bricht nicht ab).
+- **F12 – Panel-Härtung (`hofkarte-panel.js`):** `escAttr` für alle
+  datenbasierten `data-*`-/`value`-Attribute; Bilder werden nur bei
+  sicherer URL geladen (`istSichereBildUrl`, sonst Platzhalter) und mit
+  `referrerpolicy="no-referrer"`; `mailto:`-Link nur bei validierter
+  Adresse; Import-Datei höchstens 2 MB und 500 Einträge (vor dem Lesen/
+  Parsen geprüft).
+
+## [2026.10.0-dev.4] - Entwicklungsversion (develop)
+
+Kein produktiver Release. Setzt Block A der Code-Review-Befunde zu
+`2026.9.2` um (F3, F1, F2, F13). Die in `[Unreleased]` unten
+beschriebenen Änderungen (`dev.1`–`dev.3`) bleiben unverändert gültig.
+
+### Sicherheit
+
+- **F1 – `Bild.hochgeladen` wird serverseitig abgeleitet:** Das Flag, das
+  die private-IP-Prüfung für Bild-URLs aussetzt, wurde bisher ungeprüft
+  aus Client-/Importdaten übernommen; ein manipulierter Datensatz
+  (`{"url": "http://192.168.1.20/relay/0?turn=on", "hochgeladen": true}`)
+  umging damit den SSRF-Schutz. Es gilt jetzt nur noch für URLs im
+  exakten Muster des eigenen Uploads (`/api/image/serve/<32 Hex>/…`) auf
+  einer Origin dieser Home-Assistant-Instanz (neu:
+  `url_sicherheit.ist_eigene_upload_url`, `instanz_origin.py`).
+  Durchgesetzt in `parse_hofladen` (damit in `ws_save`, Import und beim
+  Lesen bestehender Store-Daten); gespeicherte und exportierte Daten
+  tragen nie ein behauptetes Flag. Das Panel löscht hochgeladene Bilder
+  (`image/delete`) nur noch für URLs des eigenen Origins
+  (`eigeneUploadImageId`). Nach dem Start von Home Assistant werden die
+  Daten einmal neu eingelesen, damit die automatisch erkannte lokale
+  Adresse berücksichtigt ist.
+- **F2 – Quadratische Regex-Laufzeit behoben:** Adress- und
+  E-Mail-Heuristik der Website-Auswertung konnten die Event-Loop blockieren
+  (Messung: ≈ 13 s bei 20 000 Zeichen). Muster begrenzt (Wort-, Local-Part-,
+  Domain-Längen, Wortgrenzen-Lookbehind), Eingabe gekappt
+  (`MAX_SICHTBARER_TEXT_ZEICHEN`, `MAX_ZEILE_ZEICHEN`), E-Mail-Suche nur bei
+  `@`, Auswertung im Executor mit Zeitlimit
+  (`EXTRAKTION_TIMEOUT_SEKUNDEN`).
+
+### Behoben
+
+- **F3 – Options Flow:** Expliziter Konstruktor mit
+  `self.config_entry = …` entfernt (ab Home Assistant 2025.12 ohne Setter,
+  die Einstellungen-Maske wäre dort nicht mehr öffnbar). Die
+  Auswahlfelder nutzen jetzt `SelectSelector` mit übersetzten Labels.
+  Keine Anhebung der Mindestversion nötig (`hacs.json` ≥ 2025.1.0).
+- **F13 – Robustheit:** `RecursionError` bei tief verschachteltem JSON-LD
+  abgefangen, `_flatten_json_ld` iterativ; `ws_save` meldet
+  `DuplicateHofladenIdError`/`HofladenNotFoundError` als `duplicate_id`
+  bzw. `not_found` statt unbehandelt.
+
+## [Unreleased]
+
+### Hinzugefügt
+
+- **Action `hofkarte.hoflaeden_in_naehe`:** Liefert Hofläden innerhalb
+  eines Radius um einen beliebigen, mitgegebenen Standort
+  (`latitude`/`longitude`/`radius_meter`), sortiert nach Entfernung,
+  optional nur aktuell geöffnete (`nur_geoeffnet`). Anders als der
+  bestehende `Entfernung`-Sensor und die Action `hoflaeden_suchen`
+  (beide gegen die fixe, konfigurierte Home-Assistant-Position) prüft
+  diese Action gegen einen beliebigen Standort, der bei jedem Aufruf
+  frisch übergeben wird – Grundlage für Nähe-Benachrichtigungen anhand
+  des tatsächlichen, aktuellen Gerätestandorts (z. B. aus einer
+  `person`-/`device_tracker`-Entity der Home Assistant Companion App).
+  Es werden weiterhin keine Standortdaten durch die Integration
+  gespeichert oder verfolgt.
+- **Automation-Blueprint „HofKarte – Benachrichtigung bei Hofladen in
+  der Nähe“** (`blueprints/automation/hofkarte/naehe_benachrichtigung.yaml`):
+  nutzt die neue Action, um bei jeder Standortänderung einer Person
+  oder eines Geräts zu prüfen, ob ein Hofladen in der Nähe liegt, und
+  löst dafür eine frei wählbare Benachrichtigungs-Aktion aus.
+- **README-Abschnitt „Mobile PWA“:** Hinweis auf die unabhängig
+  entwickelte, unter `rest-be/HofKarte-PWA` gepflegte Progressive Web
+  App, die HofKarte als Client dieser Integration nutzt (eigener
+  Admin-Benutzer, CORS-Einstellung, HTTPS/DuckDNS).
+- **Parameter `min_bewertung` für `hofkarte.hoflaeden_in_naehe`:**
+  filtert optional auf Hofläden mit mindestens dieser Bewertung (0–5)
+  – ein einfacher „nur Favoriten“-Filter, der das bestehende, geteilte
+  `bewertung`-Feld wiederverwendet statt ein eigenes Favoriten-Feld
+  einzuführen. Die Service-Antwort liefert neu auch die Bewertung pro
+  Treffer. Das Automation-Blueprint „Benachrichtigung bei Hofladen in
+  der Nähe“ bekommt dafür den neuen Eingabeparameter „Mindestbewertung
+  (nur Favoriten)“ sowie die `bewertung`-Vorlagenvariable für die
+  Benachrichtigungs-Aktion. Dazu eine neue Schritt-für-Schritt-
+  Einrichtungsanleitung im README für die Nähe-Benachrichtigung über
+  die Home Assistant Companion App.
+- **Optimistische Versionierung je Hofladen (neues Feld `version`):**
+  jeder Hofladen trägt neu eine fortlaufende Versionsnummer (Start
+  bei 1, wird bei jeder Aktualisierung um 1 erhöht). Grundlage für
+  verlässlichen Offline-Sync mehrerer Geräte (siehe HofKarte-PWA,
+  Vorgehensplan Phase 8b): Schickt ein Aufrufer beim Aktualisieren
+  eines Hofladens über die WebSocket-Action
+  `hofkarte/management/save` eine `version` mit, die nicht mehr mit
+  der aktuell gespeicherten übereinstimmt (ein anderes Gerät hat
+  zwischenzeitlich bereits synchronisiert), wird die Änderung
+  **nicht** stillschweigend überschrieben, sondern als Ergebnis mit
+  `"konflikt": true` und dem aktuellen Serverstand zurückgemeldet.
+  Fehlt `version` (ältere Aufrufer, Import), wird wie bisher ohne
+  Prüfung gespeichert – vollständig abwärtskompatibel. Die
+  mitgelieferte Verwaltungsoberfläche (`hofkarte-panel.js`) nutzt dies
+  automatisch mit, da sie den zuletzt geladenen Hofladen-Datensatz
+  (inkl. `version`) beim Speichern unverändert zurückschickt.
+
 ## [2026.9.2] - 2026-09-30
 
 Enthält die in den sieben Entwicklungsversionen `2026.9.2-dev.1` bis

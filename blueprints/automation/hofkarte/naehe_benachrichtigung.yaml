@@ -1,0 +1,104 @@
+blueprint:
+  name: HofKarte – Benachrichtigung bei Hofladen in der Nähe
+  description: >-
+    Prüft bei jeder Standortänderung einer Person oder eines Geräts, ob sich
+    ein in HofKarte erfasster Hofladen innerhalb eines Radius befindet, und
+    löst dafür eine Benachrichtigung aus. Nutzt die Action
+    `hofkarte.hoflaeden_in_naehe` gegen den tatsächlichen, aktuellen
+    Gerätestandort (nicht die fixe Home-Assistant-Position) – geeignet z. B.
+    für die HofKarte-PWA auf dem Smartphone über die offizielle Home
+    Assistant Companion App.
+  domain: automation
+  source_url: https://github.com/rest-be/HofKarte-HA/blob/develop/blueprints/automation/hofkarte/naehe_benachrichtigung.yaml
+  input:
+    standort_entity:
+      name: Standort
+      description: >-
+        Die person- oder device_tracker-Entity, deren Standort überwacht
+        werden soll (muss latitude/longitude-Attribute liefern, z. B. über
+        die Home Assistant Companion App).
+      selector:
+        entity:
+          domain:
+            - person
+            - device_tracker
+    radius_meter:
+      name: Radius
+      description: Suchradius in Metern um den aktuellen Standort.
+      default: 500
+      selector:
+        number:
+          min: 50
+          max: 5000
+          step: 50
+          unit_of_measurement: m
+          mode: slider
+    nur_wenn_geoeffnet:
+      name: Nur wenn geöffnet
+      description: >-
+        Wenn aktiviert, wird nur benachrichtigt, wenn der gefundene Hofladen
+        gerade geöffnet ist.
+      default: true
+      selector:
+        boolean:
+    mindestbewertung:
+      name: Mindestbewertung (nur Favoriten)
+      description: >-
+        Wenn grösser als 0, wird nur benachrichtigt, wenn der gefundene
+        Hofladen mindestens diese Bewertung hat – einfacher Weg, nur bei
+        Lieblings-Hofläden benachrichtigt zu werden, ohne ein eigenes
+        "Favorit"-Feld zu benötigen. 0 = keine Einschränkung (alle
+        bewerteten wie unbewerteten Hofläden).
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 5
+          step: 1
+          mode: slider
+    benachrichtigungs_aktion:
+      name: Benachrichtigungs-Aktion
+      description: >-
+        Die Aktion, die bei einem Treffer ausgeführt wird (z. B. eine
+        `notify.mobile_app_<gerät>`-Aktion). Die Variablen
+        `hofladen_name`, `entfernung_meter` und `bewertung` stehen darin
+        über Vorlagen zur Verfügung (siehe Beispiel in der Beschreibung
+        dieses Blueprints).
+      selector:
+        action:
+
+mode: single
+max_exceeded: silent
+
+trigger:
+  - platform: state
+    entity_id: !input standort_entity
+
+condition:
+  - condition: template
+    value_template: >-
+      {{ state_attr(trigger.entity_id, 'latitude') is not none
+         and state_attr(trigger.entity_id, 'longitude') is not none }}
+
+action:
+  - variables:
+      hk_latitude: "{{ state_attr(trigger.entity_id, 'latitude') }}"
+      hk_longitude: "{{ state_attr(trigger.entity_id, 'longitude') }}"
+  - action: hofkarte.hoflaeden_in_naehe
+    data:
+      latitude: "{{ hk_latitude }}"
+      longitude: "{{ hk_longitude }}"
+      radius_meter: !input radius_meter
+      nur_geoeffnet: !input nur_wenn_geoeffnet
+      min_bewertung: !input mindestbewertung
+    response_variable: hk_treffer
+  - if:
+      - condition: template
+        value_template: "{{ hk_treffer.anzahl_treffer > 0 }}"
+    then:
+      - variables:
+          hk_naechster: "{{ hk_treffer.hoflaeden[0] }}"
+          hofladen_name: "{{ hk_naechster.name }}"
+          entfernung_meter: "{{ hk_naechster.entfernung_meter }}"
+          bewertung: "{{ hk_naechster.bewertung }}"
+      - action: !input benachrichtigungs_aktion
