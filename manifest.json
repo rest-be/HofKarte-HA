@@ -1,0 +1,14 @@
+{
+  "domain": "hofkarte",
+  "name": "HofKarte",
+  "codeowners": [
+    "@rest-be"
+  ],
+  "config_flow": true,
+  "dependencies": ["http", "image_upload"],
+  "documentation": "https://github.com/rest-be/HofKarte",
+  "issue_tracker": "https://github.com/rest-be/HofKarte/issues",
+  "iot_class": "local_polling",
+  "requirements": [],
+  "version": "2026.10.0"
+}

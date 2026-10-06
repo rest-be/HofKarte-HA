@@ -1,0 +1,98 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "HofKarte einrichten",
+        "description": "Richte HofKarte ein, um Hofläden zu speichern und zu finden.",
+        "data": {
+          "name": "Anzeigename"
+        }
+      }
+    },
+    "error": {
+      "invalid_name": "Bitte einen gültigen Anzeigenamen eingeben."
+    },
+    "abort": {
+      "single_instance_allowed": "HofKarte ist bereits eingerichtet. Es wird nur eine Instanz unterstützt."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "HofKarte-Einstellungen",
+        "description": "Standard-Sortierung für die Übersicht sowie der Standard-Suchradius für „Angaben automatisch ermitteln“ (OpenStreetMap).",
+        "data": {
+          "listen_sort_spalte": "Standard-Sortierfeld",
+          "listen_sort_richtung": "Sortierrichtung",
+          "osm_radius_meter": "Suchradius OpenStreetMap (Meter)"
+        }
+      }
+    }
+  },
+  "services": {
+    "hoflaeden_suchen": {
+      "name": "Hofläden suchen",
+      "description": "Durchsucht und filtert die in HofKarte verwalteten Hofläden. Alle angegebenen Filter werden UND-verknüpft.",
+      "fields": {
+        "suchbegriff": {
+          "name": "Suchbegriff",
+          "description": "Freitextsuche (Gross-/Kleinschreibung egal) über Name, Beschreibung und Ort."
+        },
+        "angebot": {
+          "name": "Angebot",
+          "description": "Nur Hofläden mit exakt diesem Angebots-/Produktnamen."
+        },
+        "zahlungsart": {
+          "name": "Zahlungsart",
+          "description": "Nur Hofläden, die exakt diese Zahlungsart akzeptieren."
+        },
+        "nur_geoeffnet": {
+          "name": "Nur aktuell geöffnete",
+          "description": "Wenn gesetzt, werden nur aktuell geöffnete Hofläden geliefert."
+        }
+      }
+    },
+    "hoflaeden_in_naehe": {
+      "name": "Hofläden in der Nähe",
+      "description": "Liefert Hofläden innerhalb eines Radius um einen beliebigen Standort, sortiert nach Entfernung. Grundlage für eine Nähe-Benachrichtigung anhand des tatsächlichen Gerätestandorts.",
+      "fields": {
+        "latitude": {
+          "name": "Breitengrad",
+          "description": "Breitengrad des Bezugspunkts (z. B. aus einer person-/device_tracker-Entity)."
+        },
+        "longitude": {
+          "name": "Längengrad",
+          "description": "Längengrad des Bezugspunkts (z. B. aus einer person-/device_tracker-Entity)."
+        },
+        "radius_meter": {
+          "name": "Radius",
+          "description": "Suchradius in Metern um den Bezugspunkt."
+        },
+        "nur_geoeffnet": {
+          "name": "Nur aktuell geöffnet",
+          "description": "Wenn gesetzt, werden nur aktuell geöffnete Hofläden zurückgegeben."
+        },
+        "min_bewertung": {
+          "name": "Mindestbewertung",
+          "description": "Wenn gesetzt, werden nur Hofläden mit mindestens dieser Bewertung zurückgegeben (0–5, einfacher \"nur Favoriten\"-Filter)."
+        }
+      }
+    }
+  },
+  "selector": {
+    "listen_sort_spalte": {
+      "options": {
+        "name": "Name",
+        "adresse": "Adresse",
+        "geoeffnet": "Aktuell geöffnet",
+        "bewertung": "Bewertung"
+      }
+    },
+    "listen_sort_richtung": {
+      "options": {
+        "asc": "Aufsteigend",
+        "desc": "Absteigend"
+      }
+    }
+  }
+}
