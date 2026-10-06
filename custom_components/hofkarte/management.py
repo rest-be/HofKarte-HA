@@ -41,6 +41,7 @@ from .data_provider import DuplicateHofladenIdError, HofladenNotFoundError
 from .images import get_main_image_url
 from .models import Hofladen
 from .opening_hours import is_open
+from .discovery import overpass as discovery_overpass
 from .osm_info import (
     MAX_RADIUS_METER,
     MIN_RADIUS_METER,
@@ -66,6 +67,7 @@ WS_IMPORT_PREVIEW = "hofkarte/management/import_preview"
 WS_IMPORT_COMMIT = "hofkarte/management/import_commit"
 WS_WEBSEITE_INFO = "hofkarte/management/webseite_info"
 WS_OSM_INFO = "hofkarte/management/osm_info"
+WS_DISCOVER = "hofkarte/management/discover"
 WS_SETTINGS = "hofkarte/management/settings"
 WS_UPLOAD_IMAGE = "hofkarte/management/upload_image"
 
@@ -701,6 +703,64 @@ async def ws_osm_info(
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): WS_DISCOVER,
+        vol.Required("latitude"): vol.Coerce(float),
+        vol.Required("longitude"): vol.Coerce(float),
+        vol.Optional("radius", default=discovery_overpass.STANDARD_RADIUS_METER): vol.All(
+            vol.Coerce(int),
+            vol.Range(
+                min=discovery_overpass.MIN_RADIUS_METER,
+                max=discovery_overpass.MAX_RADIUS_METER,
+            ),
+        ),
+        vol.Optional("erweitert", default=False): bool,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_discover(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Hofladen-Kandidaten in der Umgebung einer Koordinate suchen
+    (Hofladen-Discovery, Phase 1; ohne KI, nur OpenStreetMap/Overpass).
+
+    Liefert ausschliesslich **Vorschläge zur Überprüfung**; es wird nichts
+    gespeichert. Fehlercodes: ``not_ready`` (HofKarte nicht eindeutig
+    eingerichtet), ``invalid_coordinates``, ``unreachable``. Keine Treffer
+    sind kein Fehler: das Ergebnis enthält dann eine leere Liste, damit die
+    Oberfläche die manuelle Erfassung anbieten kann."""
+    try:
+        _get_coordinator(hass)
+    except ValueError as err:
+        connection.send_error(msg["id"], "not_ready", str(err))
+        return
+
+    try:
+        kandidaten = await discovery_overpass.async_suche(
+            hass,
+            msg["latitude"],
+            msg["longitude"],
+            radius_meter=msg["radius"],
+            erweitert=msg["erweitert"],
+        )
+    except discovery_overpass.DiscoveryUngueltigeKoordinatenError as err:
+        connection.send_error(msg["id"], "invalid_coordinates", str(err))
+        return
+    except discovery_overpass.DiscoveryNichtErreichbarError as err:
+        connection.send_error(msg["id"], "unreachable", str(err))
+        return
+
+    connection.send_result(
+        msg["id"],
+        {
+            "radius": msg["radius"],
+            "kandidaten": [k.als_dict() for k in kandidaten],
+        },
+    )
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): WS_UPLOAD_IMAGE,
         vol.Optional("filename", default="foto.jpg"): vol.All(
             str, vol.Length(max=255)
@@ -794,5 +854,6 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_import_commit)
     websocket_api.async_register_command(hass, ws_webseite_info)
     websocket_api.async_register_command(hass, ws_osm_info)
+    websocket_api.async_register_command(hass, ws_discover)
     websocket_api.async_register_command(hass, ws_settings)
     websocket_api.async_register_command(hass, ws_upload_image)

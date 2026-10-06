@@ -15,6 +15,33 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Hinzugefügt (2026.10.1-dev.1, Hofladen-Discovery Phase 1)
+
+- **Hofladen-Discovery (Open-Source-Variante, ohne KI):** neues Paket
+  `custom_components/hofkarte/discovery/` ermittelt Hofladen-Kandidaten
+  für eine Koordinate aus OpenStreetMap (Overpass) – nur Vorschläge,
+  nichts wird gespeichert.
+  - `profile.py`: Suchprofil `farmshop` als Daten. Standardfilter ist
+    nur `["shop"="farm"]` (in der Messung günstig und mit allen in OSM
+    vorhandenen Hofläden); weitere Filter nur über `erweitert=true`
+    (nicht gemessen).
+  - `overpass.py`: Query, Antwortprüfung, Kandidaten, Cache. Eine
+    Antwort mit leerem `elements` und `remark` „runtime error“ gilt als
+    Fehler (nicht als „keine Treffer“) und wird nie gecacht. Unbenannte
+    Objekte und Namensvarianten (`brand`, `operator`, `alt_name`,
+    `name:fr`, …) bleiben Kandidaten. Doppelt erfasste Objekte
+    (Gebäude + Punkt, ≤ 30 m, gleicher/ähnlicher Name, gleiche
+    Website-Domain oder ein Objekt ohne Namen) werden zu einem Kandidaten
+    zusammengeführt.
+  - `text.py` (`difflib`, keine neue Abhängigkeit) und `geo.py`.
+- **WebSocket-Befehl `hofkarte/management/discover`** (nur Administratoren):
+  `latitude`, `longitude`, optional `radius` (Standard 2 000 m, 50–5 000 m)
+  und `erweitert`. Fehlercodes `not_ready`, `invalid_coordinates`,
+  `unreachable`; keine Treffer ergeben eine leere Liste.
+- Der HTTP-Abruf (mehrere Overpass-Instanzen, Gesamtbudget, Grössenlimit)
+  wird von `osm_info.py` wiederverwendet und blieb unverändert; die
+  Funktion „Ort in der Nähe suchen“ verhält sich wie bisher.
+
 ## [2026.10.0] - 2026-10-06
 
 Enthält die in den Entwicklungsversionen `2026.10.0-dev.4` bis `-dev.7`
