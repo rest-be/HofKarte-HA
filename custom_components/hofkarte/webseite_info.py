@@ -348,7 +348,10 @@ class WebseiteNichtErreichbarError(Exception):
     """Die Website konnte nicht erreicht oder nicht gelesen werden
     (Fehlerfall 2: Verbindungsfehler, Timeout, HTTP-Fehlerstatus,
     ungültiges/nicht-HTML-Antwortformat, zu grosse Antwort, unsichere
-    Weiterleitung)."""
+    Weiterleitung). ``status`` trägt bei einem HTTP-Fehlerstatus den
+    Statuscode (sonst ``None``)."""
+
+    status: int | None = None
 
 
 class WebseiteInformationenNichtGefundenError(Exception):
@@ -918,12 +921,17 @@ def _aufgeloeste_weiterleitungsziel(basis_url: str, location_header: str) -> str
     return str(YarlURL(basis_url).join(YarlURL(location_header)))
 
 
-async def _lese_antwort_text(antwort: aiohttp.ClientResponse) -> str:
+async def _lese_antwort_text(
+    antwort: aiohttp.ClientResponse,
+    erlaubte_typen: tuple[str, ...] = _ERLAUBTE_CONTENT_TYPES,
+) -> str:
     """Liest den Antwortkörper begrenzt auf ``MAX_ANTWORT_BYTES`` und
     dekodiert ihn. Muss innerhalb des ``async with``-Blocks der Anfrage
-    aufgerufen werden."""
+    aufgerufen werden. ``erlaubte_typen`` ist für die Discovery
+    (``discovery/website.py``, z. B. ``robots.txt`` als ``text/plain``)
+    anpassbar; der Standard bleibt HTML."""
     content_type = (antwort.content_type or "").lower()
-    if not any(content_type.startswith(t) for t in _ERLAUBTE_CONTENT_TYPES):
+    if not any(content_type.startswith(t) for t in erlaubte_typen):
         raise WebseiteNichtErreichbarError(
             "Die Antwort der Website ist keine lesbare HTML-Seite "
             f"(Content-Type: '{content_type or 'unbekannt'}')."
@@ -986,8 +994,18 @@ async def _sichere_session() -> Any:
         yield session
 
 
-async def _hole_html(session: aiohttp.ClientSession, url: str) -> str:
+async def _hole_html(
+    session: aiohttp.ClientSession,
+    url: str,
+    *,
+    headers: dict[str, str] | None = None,
+    erlaubte_typen: tuple[str, ...] = _ERLAUBTE_CONTENT_TYPES,
+) -> str:
     """Ruft ``url`` ab und liefert den (begrenzten) HTML-Text zurück.
+
+    ``headers`` und ``erlaubte_typen`` sind optional und werden nur von der
+    Discovery genutzt (eigener User-Agent, ``robots.txt``); ohne sie
+    verhält sich die Funktion unverändert.
 
     Löst Weiterleitungen bewusst **manuell** auf (``allow_redirects=False``
     je Einzelanfrage) und prüft jedes Weiterleitungsziel erneut über
@@ -995,11 +1013,12 @@ async def _hole_html(session: aiohttp.ClientSession, url: str) -> str:
     """
     timeout = aiohttp.ClientTimeout(total=ABRUF_TIMEOUT_SEKUNDEN)
     aktuelle_url = url
+    zusatz: dict[str, Any] = {"headers": headers} if headers else {}
 
     for sprung in range(_MAX_REDIRECTS + 1):
         try:
             async with session.get(
-                aktuelle_url, timeout=timeout, allow_redirects=False
+                aktuelle_url, timeout=timeout, allow_redirects=False, **zusatz
             ) as antwort:
                 if antwort.status in _WEITERLEITUNGS_STATUS:
                     location = antwort.headers.get("Location")
@@ -1017,12 +1036,14 @@ async def _hole_html(session: aiohttp.ClientSession, url: str) -> str:
                     continue
 
                 if antwort.status >= 400:
-                    raise WebseiteNichtErreichbarError(
+                    fehler = WebseiteNichtErreichbarError(
                         "Die Website hat einen Fehler zurückgegeben "
                         f"(Status {antwort.status})."
                     )
+                    fehler.status = antwort.status  # für robots.txt-Auswertung
+                    raise fehler
 
-                return await _lese_antwort_text(antwort)
+                return await _lese_antwort_text(antwort, erlaubte_typen)
         except WebseiteNichtErreichbarError:
             raise
         except aiohttp.ClientConnectorError as err:

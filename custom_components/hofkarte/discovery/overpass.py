@@ -119,6 +119,32 @@ class Kandidat:
         return ((self.name,) if self.name else ()) + self.weitere_namen
 
 
+def kandidat_aus_dict(daten: dict[str, Any]) -> Kandidat:
+    """Kandidat aus der JSON-Darstellung (``als_dict``) zurückgewinnen, z. B.
+    wenn die Oberfläche einen Kandidaten zur Anreicherung zurückschickt.
+    Alle Texte werden wie bei OSM-Daten bereinigt und begrenzt."""
+    def t(key: str) -> str | None:
+        return _text(daten.get(key))
+
+    namen = [n for n in (_text(x) for x in daten.get("weitere_namen") or []) if n]
+    return Kandidat(
+        refs=tuple(r for r in (_text(x) for x in daten.get("refs") or []) if r),
+        name=t("name"),
+        weitere_namen=tuple(namen),
+        latitude=float(daten["latitude"]),
+        longitude=float(daten["longitude"]),
+        entfernung_meter=float(daten.get("entfernung_meter") or 0.0),
+        typ=tuple(x for x in (_text(y) for y in daten.get("typ") or []) if x),
+        adresse=t("adresse"),
+        plz=t("plz"),
+        ort=t("ort"),
+        website=t("website"),
+        telefon=t("telefon"),
+        email=t("email"),
+        oeffnungszeiten=t("oeffnungszeiten"),
+    )
+
+
 # --- reine Funktionen --------------------------------------------------------
 
 

@@ -41,6 +41,7 @@ from .data_provider import DuplicateHofladenIdError, HofladenNotFoundError
 from .images import get_main_image_url
 from .models import Hofladen
 from .opening_hours import is_open
+from .discovery import enrich as discovery_enrich
 from .discovery import overpass as discovery_overpass
 from .discovery import scoring as discovery_scoring
 from .osm_info import (
@@ -69,6 +70,7 @@ WS_IMPORT_COMMIT = "hofkarte/management/import_commit"
 WS_WEBSEITE_INFO = "hofkarte/management/webseite_info"
 WS_OSM_INFO = "hofkarte/management/osm_info"
 WS_DISCOVER = "hofkarte/management/discover"
+WS_ENRICH = "hofkarte/management/enrich"
 WS_SETTINGS = "hofkarte/management/settings"
 WS_UPLOAD_IMAGE = "hofkarte/management/upload_image"
 
@@ -774,6 +776,78 @@ async def ws_discover(
     )
 
 
+_KANDIDAT_SCHEMA = vol.Schema(
+    {
+        vol.Optional("refs", default=list): [vol.All(str, vol.Length(max=64))],
+        vol.Optional("name"): vol.Any(None, vol.All(str, vol.Length(max=300))),
+        vol.Optional("weitere_namen", default=list): [vol.All(str, vol.Length(max=300))],
+        vol.Required("latitude"): vol.Coerce(float),
+        vol.Required("longitude"): vol.Coerce(float),
+        vol.Optional("entfernung_meter"): vol.Any(None, vol.Coerce(float)),
+        vol.Optional("typ", default=list): [vol.All(str, vol.Length(max=100))],
+        vol.Optional("adresse"): vol.Any(None, vol.All(str, vol.Length(max=300))),
+        vol.Optional("plz"): vol.Any(None, vol.All(str, vol.Length(max=300))),
+        vol.Optional("ort"): vol.Any(None, vol.All(str, vol.Length(max=300))),
+        vol.Optional("website"): vol.Any(None, vol.All(str, vol.Length(max=500))),
+        vol.Optional("telefon"): vol.Any(None, vol.All(str, vol.Length(max=300))),
+        vol.Optional("email"): vol.Any(None, vol.All(str, vol.Length(max=300))),
+        vol.Optional("oeffnungszeiten"): vol.Any(None, vol.All(str, vol.Length(max=300))),
+        # Bewertungsfelder aus ``discover`` werden akzeptiert und ignoriert.
+        vol.Optional("score"): object,
+        vol.Optional("konfidenz"): object,
+        vol.Optional("signale"): object,
+    }
+)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): WS_ENRICH,
+        vol.Optional("kandidat"): _KANDIDAT_SCHEMA,
+        vol.Optional("website"): vol.All(str, vol.Length(max=500)),
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_enrich(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Kandidaten anreichern (Subscription, deterministisch, ohne KI).
+
+    Mindestens ``kandidat`` (Ergebnis von ``discover``) oder ``website``
+    ist erforderlich. Das Ergebnis des Befehls bestätigt die Subscription;
+    danach folgen Ereignisse ``{"phase": "osm"|"website"|"fertig", ...}``
+    (``fertig`` trägt den ``vorschlag`` mit ``daten``, ``quellen`` und
+    ``abweichungen``). Probleme bei der Website (robots.txt, nicht
+    erreichbar, ...) stehen als ``status`` im Ereignis ``website`` und
+    brechen die Anreicherung nicht ab. Gespeichert wird nichts.
+    Fehlercodes: ``not_ready``, ``invalid_format``."""
+    try:
+        _get_coordinator(hass)
+    except ValueError as err:
+        connection.send_error(msg["id"], "not_ready", str(err))
+        return
+    if not msg.get("kandidat") and not (msg.get("website") or "").strip():
+        connection.send_error(
+            msg["id"], "invalid_format", "Kandidat oder Website ist erforderlich."
+        )
+        return
+
+    kandidat = (
+        discovery_overpass.kandidat_aus_dict(msg["kandidat"]) if msg.get("kandidat") else None
+    )
+    msg_id = msg["id"]
+    connection.subscriptions[msg_id] = lambda: None  # Abmelden ist ein No-op
+    connection.send_result(msg_id)
+
+    def melde(ereignis: dict) -> None:
+        connection.send_message(websocket_api.event_message(msg_id, ereignis))
+
+    await discovery_enrich.async_anreichern(
+        hass, kandidat, website_url=msg.get("website"), fortschritt=melde
+    )
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): WS_UPLOAD_IMAGE,
@@ -870,5 +944,6 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_webseite_info)
     websocket_api.async_register_command(hass, ws_osm_info)
     websocket_api.async_register_command(hass, ws_discover)
+    websocket_api.async_register_command(hass, ws_enrich)
     websocket_api.async_register_command(hass, ws_settings)
     websocket_api.async_register_command(hass, ws_upload_image)

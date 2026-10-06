@@ -15,6 +15,34 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Hinzugefügt (2026.10.1-dev.3, Hofladen-Discovery Phase 3: Anreicherung)
+
+- **WebSocket-Befehl `hofkarte/management/enrich`** (nur Administratoren,
+  Subscription, deterministisch, ohne KI): reichert einen Kandidaten
+  (Ergebnis von `discover`) und/oder eine Website-Adresse an. Das
+  Ergebnis bestätigt die Subscription, danach folgen Ereignisse
+  `osm` → `website` → `fertig`; `fertig` enthält den Vorschlag im
+  bestehenden Hofladen-Format mit `quellen` je Feld und `abweichungen`.
+  Gespeichert wird nichts. Probleme bei der Website stehen als `status`
+  im Ereignis `website` und brechen nichts ab. Fehlercodes `not_ready`,
+  `invalid_format`.
+- **`discovery/website.py`:** konservativer Mehrseiten-Abruf. `robots.txt`
+  wird vor jedem Abruf ausgewertet (RFC 9309: 4xx = erlaubt, 5xx oder
+  Netzwerkfehler = nichts abrufen, `Disallow` für `HofKarte`/`*`
+  respektiert), eigener User-Agent mit Projekt-URL, höchstens 4 Seiten
+  (Startseite plus Kontakt-/Öffnungszeiten-/Laden-Links desselben Hosts,
+  eine Ebene), Pause zwischen Seiten, keine Dateien/Logins. SSRF-Schutz
+  und Extraktion von `webseite_info.py` werden wiederverwendet.
+- **`discovery/provenance.py`:** Zusammenführung von OSM und Website mit
+  Quellenpriorität je Feld (OSM-Angaben tragen „© OpenStreetMap-
+  Mitwirkende (ODbL)“). Beschreibungstexte werden nicht übernommen.
+- `webseite_info._hole_html` akzeptiert optional `headers` und
+  `erlaubte_typen`; `WebseiteNichtErreichbarError.status` trägt den
+  HTTP-Status. Ohne diese Angaben unverändertes Verhalten.
+- Noch nicht enthalten: das persistente Feld `quellen` im gespeicherten
+  Hofladen-Modell (folgt als eigener Schritt, zusammen mit der
+  Oberfläche).
+
 ### Hinzugefügt (2026.10.1-dev.2, Hofladen-Discovery Phase 2: Bewertung)
 
 - **`discovery/scoring.py`:** Kandidaten werden mit einem Score (0..1) und
