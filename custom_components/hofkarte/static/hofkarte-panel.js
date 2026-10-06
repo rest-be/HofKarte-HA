@@ -37,6 +37,10 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Umkreis des Dialogs "Hofladen finden" (Discovery) - Werte wie in
 // discovery/overpass.py (STANDARD_/MIN_/MAX_RADIUS_METER); das Backend
 // begrenzt serverseitig zusätzlich.
+// Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
+// Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
+// hat (muss mit manifest.json uebereinstimmen, siehe Test).
+const PANEL_BUILD = "2026.10.1-dev.5";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -1553,7 +1557,7 @@ class HofkartePanel extends HTMLElement {
         </div>`
       : "";
 
-    return `<div class="top"><div><h1>HofKarte</h1><div class="muted">Hofläden verwalten</div></div><div class="top-aktionen"><button type="button" class="secondary" data-finden-open>🔎 Hofladen finden</button><button data-new>+ Neuer Hofladen</button></div></div>${this.message ? `<div class="notice">${this.esc(this.message)}</div>` : ""}${this.error ? `<div class="notice error">${this.esc(this.error)}${this._loadFailed ? ` <button type="button" class="secondary" data-erneut-laden>Erneut versuchen</button>` : ""}</div>` : ""}${this.items.length ? umschalter : ""}${exportImportLeiste}${inhalt}`;
+    return `<div class="top"><div><h1>HofKarte</h1><div class="muted">Hofläden verwalten · Panel ${PANEL_BUILD}</div></div><div class="top-aktionen"><button type="button" class="secondary" data-finden-open>🔎 Hofladen finden</button><button data-new>+ Neuer Hofladen</button></div></div>${this.message ? `<div class="notice">${this.esc(this.message)}</div>` : ""}${this.error ? `<div class="notice error">${this.esc(this.error)}${this._loadFailed ? ` <button type="button" class="secondary" data-erneut-laden>Erneut versuchen</button>` : ""}</div>` : ""}${this.items.length ? umschalter : ""}${exportImportLeiste}${inhalt}`;
   }
 
   listGrid() {

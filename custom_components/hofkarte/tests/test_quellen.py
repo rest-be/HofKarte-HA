@@ -98,3 +98,16 @@ async def test_ungueltige_quellen_beim_speichern_invalid_data(hass: HomeAssistan
             break
         await asyncio.sleep(0.01)
     assert c.errors[0][1] == "invalid_data"
+
+
+def test_panel_build_entspricht_manifest_version():
+    """Die im Panel angezeigte Build-Kennung muss zur Manifest-Version passen."""
+    import json
+    import re
+    from pathlib import Path
+
+    basis = Path(__file__).resolve().parent.parent
+    version = json.loads((basis / "manifest.json").read_text())["version"]
+    js = (basis / "static" / "hofkarte-panel.js").read_text()
+    treffer = re.search(r'const PANEL_BUILD = "([^"]+)"', js)
+    assert treffer and treffer.group(1) == version

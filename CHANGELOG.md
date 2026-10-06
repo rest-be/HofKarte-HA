@@ -15,6 +15,14 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Geändert (2026.10.1-dev.5)
+
+- Die Kopfzeile des Verwaltungs-Panels zeigt die geladene Panel-Fassung
+  („Panel 2026.10.1-dev.5“). So lässt sich ohne Entwicklerwerkzeuge
+  prüfen, ob der Browser/die App das aktuelle Panel-Skript verwendet
+  (veralteter Cache). Neue Versionsnummer erzwingt zugleich eine neue
+  Skript-URL (`?v=`).
+
 ### Hinzugefügt (2026.10.1-dev.4, Hofladen-Discovery Phase 5: Oberfläche)
 
 - **Dialog „🔎 Hofladen finden“** im Verwaltungs-Panel (Listenansicht,
