@@ -42,6 +42,7 @@ from .images import get_main_image_url
 from .models import Hofladen
 from .opening_hours import is_open
 from .discovery import overpass as discovery_overpass
+from .discovery import scoring as discovery_scoring
 from .osm_info import (
     MAX_RADIUS_METER,
     MIN_RADIUS_METER,
@@ -714,6 +715,9 @@ async def ws_osm_info(
             ),
         ),
         vol.Optional("erweitert", default=False): bool,
+        # Was über den gesuchten Hofladen bereits bekannt ist (Bewertung).
+        vol.Optional("name"): vol.All(str, vol.Length(max=200)),
+        vol.Optional("website"): vol.All(str, vol.Length(max=500)),
     }
 )
 @websocket_api.require_admin
@@ -725,7 +729,10 @@ async def ws_discover(
     (Hofladen-Discovery, Phase 1; ohne KI, nur OpenStreetMap/Overpass).
 
     Liefert ausschliesslich **Vorschläge zur Überprüfung**; es wird nichts
-    gespeichert. Fehlercodes: ``not_ready`` (HofKarte nicht eindeutig
+    gespeichert. Die Kandidaten sind bewertet (``score`` 0..1,
+    ``konfidenz``, ``signale``) und nach Score absteigend sortiert; optional
+    angegebene ``name``/``website`` fliessen als Signale ein (siehe
+    ``discovery/scoring.py``). Fehlercodes: ``not_ready`` (HofKarte nicht eindeutig
     eingerichtet), ``invalid_coordinates``, ``unreachable``. Keine Treffer
     sind kein Fehler: das Ergebnis enthält dann eine leere Liste, damit die
     Oberfläche die manuelle Erfassung anbieten kann."""
@@ -754,7 +761,15 @@ async def ws_discover(
         msg["id"],
         {
             "radius": msg["radius"],
-            "kandidaten": [k.als_dict() for k in kandidaten],
+            "kandidaten": [
+                b.als_dict()
+                for b in discovery_scoring.bewerte(
+                    kandidaten,
+                    discovery_scoring.Anfrage(
+                        name=msg.get("name") or None, website=msg.get("website") or None
+                    ),
+                )
+            ],
         },
     )
 

@@ -15,6 +15,21 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Hinzugefügt (2026.10.1-dev.2, Hofladen-Discovery Phase 2: Bewertung)
+
+- **`discovery/scoring.py`:** Kandidaten werden mit einem Score (0..1) und
+  einer Konfidenz („hoch“/„mittel“/„niedrig“) bewertet. Signale: Nähe
+  (bis 25 m volle Punktzahl, danach glatter Abfall), Namensähnlichkeit
+  (nur eines von mehreren Signalen, da OSM-Namen oft vom Betriebsnamen
+  abweichen), Website-Domain (stark, namensunabhängig). Bei ≤ 25 m
+  mindestens 0,85; unbenannte Kandidaten werden nicht abgewertet.
+  Schwellen sind Startwerte, kalibriert an den Messdaten (Phase 0);
+  der Name verbessert bei grossem Koordinatenversatz die Trefferlage
+  gegenüber reiner Distanz.
+- `hofkarte/management/discover` nimmt optional `name` und `website`
+  entgegen und liefert pro Kandidat `score`, `konfidenz` und `signale`;
+  die Liste ist nach Score sortiert (ohne Angaben: nach Nähe).
+
 ### Hinzugefügt (2026.10.1-dev.1, Hofladen-Discovery Phase 1)
 
 - **Hofladen-Discovery (Open-Source-Variante, ohne KI):** neues Paket

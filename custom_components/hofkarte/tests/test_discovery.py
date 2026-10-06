@@ -406,3 +406,31 @@ async def test_ws_discover_reicht_erweitert_durch(hass: HomeAssistant) -> None:
     with patch("custom_components.hofkarte.osm_info._rufe_overpass_ab", fake):
         await _discover(hass, _msg(erweitert=True))
     assert fake.await_args.args[1].count("nwr(") > 1
+
+
+async def test_ws_discover_bewertet_und_sortiert_nach_score(hass: HomeAssistant) -> None:
+    await _setup_mit_coordinator(hass)
+    antwort = {
+        "elements": [
+            _node(1, 0.0049, 0, shop="farm", name="Wochenmarkt Belp"),  # ~545 m
+            _node(2, 0.0135, 0, shop="farm", name="Rohrer"),  # ~1500 m
+        ]
+    }
+    with patch(
+        "custom_components.hofkarte.osm_info._rufe_overpass_ab", AsyncMock(return_value=antwort)
+    ):
+        c = await _discover(hass, _msg(name="Hofladen Rohrer Gemüse"))
+    ks = c.results[0][1]["kandidaten"]
+    assert [k["name"] for k in ks] == ["Rohrer", "Wochenmarkt Belp"]
+    assert ks[0]["score"] > ks[1]["score"] and ks[0]["konfidenz"] in {"hoch", "mittel", "niedrig"}
+    assert ks[0]["signale"]["name"] is not None
+
+
+async def test_ws_discover_ohne_name_signal_ist_none(hass: HomeAssistant) -> None:
+    await _setup_mit_coordinator(hass)
+    antwort = {"elements": [_node(1, 0.0001, 0, shop="farm", name="Hof A")]}
+    with patch(
+        "custom_components.hofkarte.osm_info._rufe_overpass_ab", AsyncMock(return_value=antwort)
+    ):
+        c = await _discover(hass, _msg())
+    assert c.results[0][1]["kandidaten"][0]["signale"]["name"] is None
