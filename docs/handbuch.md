@@ -214,6 +214,12 @@ Upload zur Verfügung:
    eintragen („Oder externe Bild-Adresse manuell hinzufügen“) – beide
    Wege können auch kombiniert werden.
 
+> **Hinweis (Mobile PWA):** Die PWA ab Version 1.11.0 lädt Fotos über
+> den WebSocket-Befehl `hofkarte/management/upload_image` hoch (nur
+> Admin; JPEG, PNG, GIF bis 3 MiB). Dafür ist keine
+> `cors_allowed_origins`-Einstellung nötig. Nur sehr grosse Fotos
+> (über ca. 2.5 MB) laufen über den REST-Upload, der CORS braucht.
+
 Das **erste Bild in der Liste** ist stets das Hauptbild und erscheint
 als `image`-Entity des Hofladens (siehe Kapitel 5). Wird ein
 hochgeladenes Bild entfernt, wird die zugrunde liegende Datei ebenfalls

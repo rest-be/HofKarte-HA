@@ -10,11 +10,18 @@ einzigen Stelle, statt sie hier zu duplizieren.
 
 from __future__ import annotations
 
+import base64
+import binascii
+import io
+import logging
+import re
 from datetime import date, datetime, time
 from typing import Any
 from uuid import uuid4
 
 import voluptuous as vol
+from aiohttp.web_request import FileField
+from multidict import CIMultiDict, CIMultiDictProxy
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import dt as dt_util
@@ -50,6 +57,8 @@ from .webseite_info import (
     async_ermittle_webseite_info,
 )
 
+_LOGGER = logging.getLogger(__name__)
+
 WS_LIST = "hofkarte/management/list"
 WS_SAVE = "hofkarte/management/save"
 WS_DELETE = "hofkarte/management/delete"
@@ -58,6 +67,15 @@ WS_IMPORT_COMMIT = "hofkarte/management/import_commit"
 WS_WEBSEITE_INFO = "hofkarte/management/webseite_info"
 WS_OSM_INFO = "hofkarte/management/osm_info"
 WS_SETTINGS = "hofkarte/management/settings"
+WS_UPLOAD_IMAGE = "hofkarte/management/upload_image"
+
+# Foto-Upload per WebSocket (ohne CORS): erlaubte Typen und Grössen. Das
+# WebSocket-Nachrichtenlimit von Home Assistant beträgt 4 MiB; Base64 bläht
+# die Daten um 4/3 auf, daher begrenzen wir die Rohdaten auf 3 MiB. Die PWA
+# weicht ab ca. 2.5 MB ohnehin auf den REST-Weg aus.
+UPLOAD_ERLAUBTE_TYPEN = ("image/jpeg", "image/png", "image/gif")
+UPLOAD_MAX_BYTES = 3 * 1024 * 1024
+UPLOAD_MAX_BASE64_ZEICHEN = ((UPLOAD_MAX_BYTES + 2) // 3) * 4
 
 # Gültige Werte für "aktion" in einem einzelnen Eintrag von
 # WS_IMPORT_COMMIT (siehe ws_import_commit()).
@@ -681,6 +699,92 @@ async def ws_osm_info(
     )
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): WS_UPLOAD_IMAGE,
+        vol.Optional("filename", default="foto.jpg"): vol.All(
+            str, vol.Length(max=255)
+        ),
+        vol.Required("content_type"): str,
+        vol.Required("data"): vol.All(
+            str, vol.Length(min=1, max=UPLOAD_MAX_BASE64_ZEICHEN)
+        ),
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_upload_image(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Foto eines Hofladens hochladen - ohne CORS-Konfiguration.
+
+    Die Mobile PWA läuft auf einer fremden Origin; ein REST-Upload nach
+    ``/api/image/upload`` scheitert dort ohne ``cors_allowed_origins``.
+    WebSocket-Verbindungen unterliegen keiner CORS-Prüfung, daher nimmt
+    dieser Befehl das Bild Base64-kodiert entgegen und legt es über die
+    ``image_upload``-Komponente von Home Assistant ab (identisches Ergebnis
+    wie der REST-Upload, Auslieferung via ``/api/image/serve/<id>/original``).
+
+    Fehlercodes: ``not_ready`` (``image_upload`` nicht geladen),
+    ``invalid_data`` (Typ/Base64/Grösse/Bildinhalt ungültig),
+    ``upload_failed`` (sonstiger Fehler beim Ablegen).
+    """
+    content_type = msg["content_type"].strip().lower()
+    if content_type not in UPLOAD_ERLAUBTE_TYPEN:
+        connection.send_error(
+            msg["id"],
+            "invalid_data",
+            "Nur JPEG-, PNG- und GIF-Bilder sind erlaubt.",
+        )
+        return
+
+    try:
+        roh = base64.b64decode(msg["data"], validate=True)
+    except (binascii.Error, ValueError):
+        connection.send_error(msg["id"], "invalid_data", "Ungültige Base64-Daten.")
+        return
+    if not roh:
+        connection.send_error(msg["id"], "invalid_data", "Leeres Bild.")
+        return
+    if len(roh) > UPLOAD_MAX_BYTES:
+        connection.send_error(
+            msg["id"],
+            "invalid_data",
+            "Bild zu gross (max. %d MB)." % (UPLOAD_MAX_BYTES // (1024 * 1024)),
+        )
+        return
+
+    sammlung = hass.data.get("image_upload")
+    if sammlung is None:
+        connection.send_error(
+            msg["id"], "not_ready", "Die Komponente image_upload ist nicht geladen."
+        )
+        return
+
+    # Dateiname bereinigen: nur der Basisname, keine Steuer-/Pfadzeichen.
+    name = re.sub(r"[^\w.\- ]", "_", msg["filename"].replace("\\", "/").split("/")[-1])
+    name = name.strip(" .")[:100] or "foto.jpg"
+
+    feld = FileField(
+        name="file",
+        filename=name,
+        file=io.BytesIO(roh),  # type: ignore[arg-type]  # aiohttp typt BufferedReader
+        content_type=content_type,
+        headers=CIMultiDictProxy(CIMultiDict()),
+    )
+    try:
+        item = await sammlung.async_create_item({"file": feld})
+    except vol.Invalid as err:
+        connection.send_error(msg["id"], "invalid_data", str(err))
+        return
+    except Exception as err:  # noqa: BLE001 - Fehler an die Oberfläche melden
+        _LOGGER.warning("HofKarte-Foto-Upload fehlgeschlagen: %s", err)
+        connection.send_error(msg["id"], "upload_failed", "Upload fehlgeschlagen.")
+        return
+
+    connection.send_result(msg["id"], {"id": item["id"]})
+
+
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """HofKarte-WebSocket-Befehle registrieren (einmalig, Domain-Ebene)."""
     websocket_api.async_register_command(hass, ws_list)
@@ -691,3 +795,4 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_webseite_info)
     websocket_api.async_register_command(hass, ws_osm_info)
     websocket_api.async_register_command(hass, ws_settings)
+    websocket_api.async_register_command(hass, ws_upload_image)

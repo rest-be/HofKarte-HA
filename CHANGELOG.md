@@ -13,6 +13,33 @@ Entwicklung, vor der ersten offiziellen Veröffentlichung, einer an
 Semantic Versioning angelehnten, fortlaufenden Nummerierung und sind
 unten als historische Entwicklungsdokumentation erhalten.
 
+## [2026.10.0-rc.1] - Release Candidate (develop)
+
+Release Candidate für `2026.10.0`: fasst die Entwicklungsstände
+`dev.4`–`dev.7` (Code-Review-Umsetzung, Blöcke A–D) und den Abschnitt
+„Unveröffentlicht“ zusammen und ergänzt den Foto-Upload per WebSocket.
+
+### Hinzugefügt
+
+- **WebSocket-Befehl `hofkarte/management/upload_image`
+  (Foto-Upload ohne CORS):** Die Mobile PWA (ab 1.11.0) lädt Fotos
+  Base64-kodiert über die bereits bestehende WebSocket-Verbindung
+  hoch. Dadurch ist für den Foto-Upload **kein
+  `cors_allowed_origins`** mehr nötig. Der Befehl ist nur für
+  Administratoren zugelassen, nimmt `filename`, `content_type`
+  (nur `image/jpeg`, `image/png`, `image/gif`) und `data` entgegen,
+  begrenzt die Rohdaten auf 3 MiB (WebSocket-Limit von Home Assistant:
+  4 MiB), bereinigt den Dateinamen und legt das Bild über die
+  `image_upload`-Komponente von Home Assistant ab (identisch zum
+  REST-Upload; Auslieferung via `/api/image/serve/<id>/original`).
+  Antwort: `{"id": "<Bild-ID>"}`. Fehlercodes: `invalid_data`,
+  `not_ready`, `upload_failed`. Grössere Dateien nutzt die PWA weiter
+  über den REST-Weg (dort ist CORS weiterhin nötig).
+
+### Geändert
+
+- Version `2026.10.0-rc.1`; neue Datei `RELEASE_NOTES_2026.10.0.md`.
+
 ## [2026.10.0-dev.7] - Entwicklungsversion (develop)
 
 Kein produktiver Release. Setzt Block D der Code-Review-Befunde zu

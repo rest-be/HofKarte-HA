@@ -630,7 +630,13 @@ unabhängig von der PWA selbst sinnvolle Voraussetzungen zu schaffen:
   persönlichen Kontos oder eines gemeinsamen Passworts.
 - **`cors_allowed_origins`** in `configuration.yaml`, damit der Browser
   Anfragen von der die PWA ausliefernden Origin (z. B. GitHub Pages)
-  akzeptiert – siehe Home-Assistant-Dokumentation zu `http:`.
+  akzeptiert – siehe Home-Assistant-Dokumentation zu `http:`. Für den
+  **Foto-Upload** ist das seit `2026.10.0` nicht mehr nötig: Die PWA
+  (ab 1.11.0) nutzt den WebSocket-Befehl
+  `hofkarte/management/upload_image` (nur Admin, JPEG/PNG/GIF, bis
+  3 MiB). Nur Fotos über ca. 2.5 MB weichen auf den REST-Upload aus,
+  der CORS weiterhin braucht (die PWA verkleinert Fotos vorher auf
+  max. 1600 px).
 - **Interner HTTPS-Zugriff** auf diese Home-Assistant-Instanz (z. B.
   über eine eigene DuckDNS-Domain mit Let's-Encrypt-Zertifikat per
   DNS-01-Challenge): Eine über `https://` ausgelieferte PWA darf aus

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
@@ -41,6 +42,7 @@ from custom_components.hofkarte.management import (
     ws_osm_info,
     ws_save,
     ws_settings,
+    ws_upload_image,
     ws_webseite_info,
 )
 from custom_components.hofkarte.models import Hofladen, Oeffnungszeit
@@ -1713,3 +1715,200 @@ async def test_coordinator_ueberspringt_hofladen_mit_ungueltiger_id_ohne_abbruch
     await coordinator.async_config_entry_first_refresh()
 
     assert list(coordinator.data) == ["ok-1"]
+
+
+# ---------------------------------------------------------------------------
+# Foto-Upload per WebSocket (ws_upload_image)
+# ---------------------------------------------------------------------------
+
+
+class _FakeBildSammlung:
+    """Ersatz für ImageStorageCollection: merkt sich das FileField."""
+
+    def __init__(self, fehler: Exception | None = None) -> None:
+        self.aufrufe: list[Any] = []
+        self.fehler = fehler
+
+    async def async_create_item(self, data: dict) -> dict:
+        feld = data["file"]
+        self.aufrufe.append(
+            (feld.name, feld.filename, feld.content_type, feld.file.read())
+        )
+        if self.fehler is not None:
+            raise self.fehler
+        return {"id": "abc123", "filesize": 3}
+
+
+def _upload_msg(msg_id: int = 70, **extra: Any) -> dict:
+    import base64
+
+    msg = {
+        "id": msg_id,
+        "type": "hofkarte/management/upload_image",
+        "filename": "foto.jpg",
+        "content_type": "image/jpeg",
+        "data": base64.b64encode(b"\xff\xd8\xff").decode(),
+    }
+    msg.update(extra)
+    return msg
+
+
+async def _upload(hass: HomeAssistant, msg: dict) -> _FakeConnection:
+    connection = _FakeConnection()
+    ws_upload_image(hass, connection, msg)
+    await hass.async_block_till_done()
+    # async_response startet einen Hintergrund-Task; bei echter Datei-E/A
+    # (Executor) wartet block_till_done nicht zwingend darauf.
+    for _ in range(200):
+        if connection.results or connection.errors:
+            break
+        await asyncio.sleep(0.01)
+    return connection
+
+
+async def test_ws_upload_image_legt_bild_ab_und_liefert_id(
+    hass: HomeAssistant,
+) -> None:
+    sammlung = _FakeBildSammlung()
+    hass.data["image_upload"] = sammlung
+
+    connection = await _upload(hass, _upload_msg())
+
+    assert connection.results == [(70, {"id": "abc123"})]
+    assert sammlung.aufrufe == [("file", "foto.jpg", "image/jpeg", b"\xff\xd8\xff")]
+
+
+async def test_ws_upload_image_bereinigt_dateinamen(hass: HomeAssistant) -> None:
+    sammlung = _FakeBildSammlung()
+    hass.data["image_upload"] = sammlung
+
+    await _upload(hass, _upload_msg(filename="../../etc/pa<ss>wd.jpg"))
+
+    assert sammlung.aufrufe[0][1] == "pa_ss_wd.jpg"
+
+
+@pytest.mark.parametrize("typ", ["image/svg+xml", "text/html", "application/pdf", ""])
+async def test_ws_upload_image_lehnt_unerlaubten_typ_ab(
+    hass: HomeAssistant, typ: str
+) -> None:
+    sammlung = _FakeBildSammlung()
+    hass.data["image_upload"] = sammlung
+
+    connection = await _upload(hass, _upload_msg(content_type=typ))
+
+    assert connection.errors[0][1] == "invalid_data"
+    assert sammlung.aufrufe == []
+
+
+async def test_ws_upload_image_lehnt_ungueltiges_base64_ab(
+    hass: HomeAssistant,
+) -> None:
+    sammlung = _FakeBildSammlung()
+    hass.data["image_upload"] = sammlung
+
+    connection = await _upload(hass, _upload_msg(data="!!!kein-base64!!!"))
+
+    assert connection.errors[0][1] == "invalid_data"
+    assert sammlung.aufrufe == []
+
+
+async def test_ws_upload_image_lehnt_zu_grosses_bild_ab(hass: HomeAssistant) -> None:
+    import base64
+
+    from custom_components.hofkarte.management import UPLOAD_MAX_BYTES
+
+    sammlung = _FakeBildSammlung()
+    hass.data["image_upload"] = sammlung
+    gross = base64.b64encode(b"x" * (UPLOAD_MAX_BYTES + 1)).decode()
+
+    connection = await _upload(hass, _upload_msg(data=gross))
+
+    assert connection.errors[0][1] == "invalid_data"
+    assert sammlung.aufrufe == []
+
+
+async def test_ws_upload_image_ohne_image_upload_sendet_not_ready(
+    hass: HomeAssistant,
+) -> None:
+    hass.data.pop("image_upload", None)
+
+    connection = await _upload(hass, _upload_msg())
+
+    assert connection.errors[0][1] == "not_ready"
+
+
+async def test_ws_upload_image_bildinhalt_ungueltig_wird_invalid_data(
+    hass: HomeAssistant,
+) -> None:
+    import voluptuous as vol
+
+    hass.data["image_upload"] = _FakeBildSammlung(fehler=vol.Invalid("kein Bild"))
+
+    connection = await _upload(hass, _upload_msg())
+
+    assert connection.errors[0][1] == "invalid_data"
+
+
+async def test_ws_upload_image_sonstiger_fehler_wird_upload_failed(
+    hass: HomeAssistant,
+) -> None:
+    hass.data["image_upload"] = _FakeBildSammlung(fehler=OSError("Platte voll"))
+
+    connection = await _upload(hass, _upload_msg())
+
+    assert connection.errors[0][1] == "upload_failed"
+    assert "Platte" not in connection.errors[0][2]
+
+
+async def test_ws_upload_image_erfordert_admin(hass: HomeAssistant) -> None:
+    hass.data["image_upload"] = _FakeBildSammlung()
+    connection = _FakeConnection()
+    connection.user = SimpleNamespace(is_admin=False)
+
+    with pytest.raises(Unauthorized):
+        ws_upload_image(hass, connection, _upload_msg())
+
+    assert connection.results == [] and connection.errors == []
+
+
+async def test_ws_upload_image_ist_registriert(hass: HomeAssistant) -> None:
+    await _setup_mit_coordinator(hass)
+    assert "hofkarte/management/upload_image" in hass.data["websocket_api"]
+
+
+async def test_ws_upload_image_mit_echter_image_upload_komponente(
+    hass: HomeAssistant, tmp_path
+) -> None:
+    """Integrationstest gegen die echte ``image_upload``-Komponente: ein
+    echtes PNG wird abgelegt, ein Nicht-Bild wird als ``invalid_data``
+    abgewiesen."""
+    import base64
+    import io
+
+    from homeassistant.setup import async_setup_component
+    from PIL import Image
+
+    hass.config.config_dir = str(tmp_path)
+    assert await async_setup_component(hass, "image_upload", {})
+
+    puffer = io.BytesIO()
+    Image.new("RGB", (8, 8), "green").save(puffer, "PNG")
+    ok = await _upload(
+        hass,
+        _upload_msg(
+            71,
+            filename="hof.png",
+            content_type="image/png",
+            data=base64.b64encode(puffer.getvalue()).decode(),
+        ),
+    )
+    assert ok.errors == []
+    bild_id = ok.results[0][1]["id"]
+    assert bild_id in hass.data["image_upload"].data
+
+    kaputt = await _upload(
+        hass,
+        _upload_msg(72, data=base64.b64encode(b"kein bild").decode()),
+    )
+    assert kaputt.results == []
+    assert kaputt.errors[0][1] in ("invalid_data", "upload_failed")
