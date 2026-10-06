@@ -175,9 +175,19 @@ def test_panel_js_geraete_entfernung_ist_vollstaendig_entfernt() -> None:
         )
 
 
-def test_panel_js_verwendet_keine_geolocation_api_mehr() -> None:
-    """Ohne die Geräte-Entfernungs-Funktion gibt es keinen verbleibenden
-    Grund mehr, die Browser-Geolocation-API zu verwenden."""
+def test_panel_js_verwendet_geolocation_nur_fuer_den_finden_dialog() -> None:
+    """Die Geräte-Entfernungs-Funktion (Issue #3) bleibt entfernt. Die
+    Browser-Geolocation-API wird seit dem Dialog "Hofladen finden"
+    (Discovery, ausdrücklicher Wunsch: aktuellen Standort übernehmen)
+    ausschliesslich in ``ermittleGeraeteStandort()`` verwendet - nirgends
+    sonst (insbesondere nicht in Detail-/Listenansicht)."""
     quelltext = _lade_panel_js()
-    assert "navigator.geolocation" not in quelltext
-    assert "isSecureContext" not in quelltext
+    anfang = quelltext.index("  ermittleGeraeteStandort() {")
+    ende = quelltext.index("  setzeFindenStandortText(", anfang)
+    rest = quelltext[:anfang] + quelltext[ende:]
+    assert "navigator.geolocation" not in rest
+    assert "isSecureContext" not in rest
+    assert "navigator.geolocation" in quelltext[anfang:ende]
+    # unsicherer Kontext wird ausdrücklich behandelt (Browser lehnen sonst
+    # ohne Freigabe-Dialog ab, siehe CHANGELOG 0.18.0)
+    assert "isSecureContext" in quelltext[anfang:ende]

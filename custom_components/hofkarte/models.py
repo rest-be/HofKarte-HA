@@ -65,6 +65,26 @@ class Bild:
 
 
 @dataclass(frozen=True, slots=True)
+class Quelle:
+    """Herkunft der Angabe eines Hofladen-Feldes (Hofladen-Discovery).
+
+    ``feld`` ist der Name des Hofladen-Feldes (z. B. ``"oeffnungszeiten"``),
+    ``quelle`` die Art der Quelle (``"openstreetmap"``, ``"website"``,
+    ``"angabe"``), ``status`` ``"confirmed"`` (steht ausdrücklich in der
+    Quelle) bzw. - für eine spätere KI-Extraktion - ``"inferred"``.
+    ``url`` verweist auf die konkrete Fundstelle, ``lizenz`` trägt den
+    Lizenzhinweis (OpenStreetMap: ODbL). Rein informativ: das Feld
+    beeinflusst weder Entitäten noch Öffnungsstatus.
+    """
+
+    feld: str
+    quelle: str
+    status: str = "confirmed"
+    url: str | None = None
+    lizenz: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Oeffnungszeit:
     """Eine regelmässige wöchentliche Öffnungszeit (ein Intervall an einem
     Wochentag).
@@ -139,6 +159,9 @@ class Hofladen:
     angebote: tuple[Angebot, ...] = ()
     zahlungsarten: tuple[Zahlungsart, ...] = ()
     bilder: tuple[Bild, ...] = ()
+    # Optionale Herkunft einzelner Felder (Hofladen-Discovery); leer bei
+    # allen manuell erfassten und bestehenden Hofläden (abwärtskompatibel).
+    quellen: tuple[Quelle, ...] = ()
     # Bewertung (0-5 Sterne, 0 = unbewertet). Bewusst ein einfacher Integer
     # statt eines eigenen Typs: Der Wertebereich ist klein und fest, eine
     # eigene Klasse würde hier keinen zusätzlichen Nutzen bringen (siehe

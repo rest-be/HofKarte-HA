@@ -15,6 +15,37 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Hinzugefügt (2026.10.1-dev.4, Hofladen-Discovery Phase 5: Oberfläche)
+
+- **Dialog „🔎 Hofladen finden“** im Verwaltungs-Panel (Listenansicht,
+  neben „+ Neuer Hofladen“), drei Schritte:
+  1. *Suchen:* Name und Website optional, Koordinaten, Umkreis (50 m bis
+     5 km, Standard 2 km), erweiterte Suche. Beim Öffnen wird der
+     **aktuelle Standort des Geräts** übernommen (Browser-Geolocation, mit
+     Freigabe-Abfrage); ohne Freigabe/HTTPS bleibt der Standort der
+     Home-Assistant-Installation eingetragen. Gesucht wird nie
+     automatisch, sondern erst auf „Suchen“.
+  2. *Kandidat wählen:* sortiert nach Score mit Konfidenz und Gründen
+     (Nähe, Name, Website); Hinweis, wenn der Hofladen schon erfasst sein
+     könnte; „Manuell erfassen“ und – bei angegebener Website – „Nur
+     Website auswerten“ als Ausweg bei Lücken in OpenStreetMap.
+  3. *Angaben prüfen:* Live-Fortschritt der Anreicherung, je Feld Quelle
+     (mit Link), Hinweis bei abweichenden Quellen, Auswahl per Häkchen;
+     „In Formular übernehmen“ öffnet das normale Bearbeitungsformular.
+     Der Dialog speichert nichts.
+- **Neues optionales Feld `quellen`** im Hofladen (Herkunft je Feld:
+  `feld`, `quelle`, `status`, `url`, `lizenz`), validiert (bekannte
+  Felder, nur http(s)-URLs, höchstens eine Angabe je Feld, höchstens 20),
+  abwärtskompatibel (leer bei allen bestehenden Hofläden). Das Panel
+  behält die Herkunft eines Feldes nur, solange es nach der Übernahme
+  nicht von Hand geändert wurde. Die Detailansicht zeigt einen Abschnitt
+  „Herkunft der Angaben“ (mit ODbL-Hinweis für OpenStreetMap).
+- Geändert: Der Regressionstest `test_panel_js_verwendet_keine_geolocation_api_mehr`
+  (Issue #3, Geräte-Entfernung bleibt entfernt) wurde zu
+  `…_nur_fuer_den_finden_dialog`: die Browser-Geolocation darf jetzt
+  ausschliesslich in `ermittleGeraeteStandort()` vorkommen, inklusive
+  ausdrücklicher Prüfung auf einen sicheren Kontext (HTTPS/localhost).
+
 ### Hinzugefügt (2026.10.1-dev.3, Hofladen-Discovery Phase 3: Anreicherung)
 
 - **WebSocket-Befehl `hofkarte/management/enrich`** (nur Administratoren,

@@ -34,6 +34,13 @@ const OSM_STANDARD_RADIUS_METER = 200;
 const OSM_MIN_RADIUS_METER = 20;
 const OSM_MAX_RADIUS_METER = 2000;
 
+// Umkreis des Dialogs "Hofladen finden" (Discovery) - Werte wie in
+// discovery/overpass.py (STANDARD_/MIN_/MAX_RADIUS_METER); das Backend
+// begrenzt serverseitig zusätzlich.
+const FINDEN_STANDARD_RADIUS_METER = 2000;
+const FINDEN_MIN_RADIUS_METER = 50;
+const FINDEN_MAX_RADIUS_METER = 5000;
+
 // Anzahl Symbole der Bewertungsdarstellung (Editor und Detailansicht) -
 // Wertebereich 0-5, siehe models.Hofladen.bewertung.
 const BEWERTUNG_MAX = 5;
@@ -342,6 +349,11 @@ class HofkartePanel extends HTMLElement {
     this.osmRadius = OSM_STANDARD_RADIUS_METER; // Im Formular eingestellter Suchradius für OpenStreetMap (Issue #11) - wird wie alle übrigen Formularfelder über erfasseFormularZustand() vor jedem Re-Render gesichert, damit ein bereits geänderter Wert nicht verloren geht. Initialisiert aus den dauerhaft gespeicherten Einstellungen (Options Flow, siehe ladeEinstellungen()), OSM_STANDARD_RADIUS_METER dient nur als Absicherung, bis diese geladen sind.
     this._osmRadiusVorgabe = OSM_STANDARD_RADIUS_METER; // Dauerhaft gespeicherter Vorgabewert (Options Flow) - im Unterschied zu this.osmRadius, das pro Formularsitzung geändert werden kann, ist dies der Wert, auf den start() jedes neue Formular zurücksetzt.
     this._einstellungenGeladen = false; // Verhindert, dass ein bereits von der Nutzerin/dem Nutzer geänderter Sortier-/Radius-Wert durch einen erneuten load() (z. B. nach dem Speichern) überschrieben wird.
+    this.finden = null; // Zustand des Dialogs "Hofladen finden" (Discovery, Phase 5); null = geschlossen
+    this._findenUnsub = null; // Abmeldefunktion der laufenden enrich-Subscription
+    this._findenTimer = null; // Zeitlimit der Anreicherung
+    this._findenStandortToken = 0; // verwirft veraltete Geolocation-Antworten
+    this._quellenSchnappschuss = {}; // Feld -> Wert bei der Übernahme (erkennt spätere manuelle Änderungen, siehe bereinigteQuellen())
     this._wartendesWebseiteErgebnis = null; // Zwischengespeichertes Website-Ergebnis, während die OSM-Trefferauswahl (mehrere Treffer) noch offen ist (Issue #11, siehe ermittleAutomatisch()/waehleOsmOrt()).
     this.attachShadow({ mode: "open" });
     // Das Stylesheet wird genau einmal angelegt (Befund F10); render()
@@ -453,7 +465,7 @@ class HofkartePanel extends HTMLElement {
   }
 
   empty() {
-    return { id: "", name: "", beschreibung: "", bemerkung: "", adresse: "", plz: "", ort: "", land: "", website: "", mobilnummer: "", email: "", latitude: "", longitude: "", oeffnungszeiten: [], sonderoeffnungszeiten: [], angebote: [], zahlungsarten: [], bilder: [], bewertung: 0 };
+    return { id: "", name: "", beschreibung: "", bemerkung: "", adresse: "", plz: "", ort: "", land: "", website: "", mobilnummer: "", email: "", latitude: "", longitude: "", oeffnungszeiten: [], sonderoeffnungszeiten: [], angebote: [], zahlungsarten: [], bilder: [], quellen: [], bewertung: 0 };
   }
 
   clone(item) { return JSON.parse(JSON.stringify(item)); }
@@ -1029,6 +1041,7 @@ class HofkartePanel extends HTMLElement {
     const koordinaten = this.resolveCoordinates(f);
     data.latitude = koordinaten.latitude; data.longitude = koordinaten.longitude;
     data.bilder = this.leseBilderBeschreibungen(f, this.editing?.bilder);
+    data.quellen = this.bereinigteQuellen(data);
     return data;
   }
 
@@ -1113,7 +1126,9 @@ class HofkartePanel extends HTMLElement {
     this.autoErmittlungStatusText = ""; this.autoErmittlungStatusKind = "";
     this.osmOrteAuswahl = null; this._wartendesWebseiteErgebnis = null;
     this.osmRadius = this._osmRadiusVorgabe;
-    this.editing = item ? this.clone(item) : this.empty(); this.render();
+    this.editing = item ? this.clone(item) : this.empty();
+    this.merkeQuellenSchnappschuss();
+    this.render();
   }
   cancel() {
     this.editing = null; this.error = "";
@@ -1141,7 +1156,7 @@ class HofkartePanel extends HTMLElement {
     const inKarte = this.istKartenansicht();
     if (!inKarte) this.teardownKarte();
     // <style> existiert dauerhaft (Konstruktor) - hier wird nur <main> ersetzt.
-    this._mainEl.innerHTML = this.currentView();
+    this._mainEl.innerHTML = this.currentView() + (this.finden ? this.findenDialog() : "");
     this.bind();
     if (inKarte) this.initKarte();
     // Barrierefreiheit (Issue #9, 5.2): Fokus beim Öffnen des
@@ -1154,6 +1169,12 @@ class HofkartePanel extends HTMLElement {
     }
     if (this.osmOrteAuswahl) {
       this.shadowRoot.querySelector("[data-osm-orte-dialog]")?.focus();
+    }
+    if (this.finden && !this._findenFokusGesetzt) {
+      this._findenFokusGesetzt = true;
+      this.shadowRoot.querySelector("[data-finden-dialog]")?.focus();
+    } else if (!this.finden) {
+      this._findenFokusGesetzt = false;
     }
   }
 
@@ -1467,6 +1488,21 @@ class HofkartePanel extends HTMLElement {
       .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px;z-index:1000}
       .modal{background:var(--ha-card-background,var(--card-background-color));border-radius:12px;padding:20px;max-width:480px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 4px 24px rgba(0,0,0,.4)}
       .modal h2{margin-top:0}
+      .modal.breit{max-width:640px}
+      .top-aktionen{display:flex;gap:8px;flex-wrap:wrap}
+      .finden-form{display:flex;flex-direction:column;gap:10px;margin:12px 0}
+      .finden-form label{display:flex;flex-direction:column;gap:4px;font-size:.9em}
+      .finden-form input[type=text],.finden-form input[type=url]{width:100%;box-sizing:border-box}
+      .finden-koordinaten{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+      .finden-koordinaten label{flex:1 1 120px}
+      .finden-form .finden-check{flex-direction:row;align-items:center;gap:8px}
+      .finden-kandidat,.finden-zeile{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--divider-color);border-radius:8px;cursor:pointer}
+      .finden-kandidat.gewaehlt{border-color:var(--primary-color);background:var(--secondary-background-color)}
+      .finden-kandidat-text,.finden-zeile-text{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+      .finden-zeilen{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+      .finden-warnung{color:var(--warning-color,#ff9800);font-size:.9em}
+      .finden-fortschritt{margin:8px 0}
+      .finden-aktionen{flex-wrap:wrap}
       .osm-orte-liste{display:flex;flex-direction:column;gap:8px;margin-top:12px}
       .osm-orte-eintrag{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;width:100%;padding:10px 12px;border-radius:8px}
       .osm-orte-name{font-weight:bold}
@@ -1517,7 +1553,7 @@ class HofkartePanel extends HTMLElement {
         </div>`
       : "";
 
-    return `<div class="top"><div><h1>HofKarte</h1><div class="muted">Hofläden verwalten</div></div><button data-new>+ Neuer Hofladen</button></div>${this.message ? `<div class="notice">${this.esc(this.message)}</div>` : ""}${this.error ? `<div class="notice error">${this.esc(this.error)}${this._loadFailed ? ` <button type="button" class="secondary" data-erneut-laden>Erneut versuchen</button>` : ""}</div>` : ""}${this.items.length ? umschalter : ""}${exportImportLeiste}${inhalt}`;
+    return `<div class="top"><div><h1>HofKarte</h1><div class="muted">Hofläden verwalten</div></div><div class="top-aktionen"><button type="button" class="secondary" data-finden-open>🔎 Hofladen finden</button><button data-new>+ Neuer Hofladen</button></div></div>${this.message ? `<div class="notice">${this.esc(this.message)}</div>` : ""}${this.error ? `<div class="notice error">${this.esc(this.error)}${this._loadFailed ? ` <button type="button" class="secondary" data-erneut-laden>Erneut versuchen</button>` : ""}</div>` : ""}${this.items.length ? umschalter : ""}${exportImportLeiste}${inhalt}`;
   }
 
   listGrid() {
@@ -1957,7 +1993,25 @@ class HofkartePanel extends HTMLElement {
         <h3>Bewertung</h3>
         ${this.bewertungSterne(d.bewertung || 0, false)}
       </section>
+
+      ${this.detailQuellenSection(d.quellen)}
     `;
+  }
+
+  /** Herkunft einzelner Angaben (aus "Hofladen finden"), samt Lizenzhinweis
+   * für OpenStreetMap-Daten; nur anzeigen, wenn vorhanden. */
+  detailQuellenSection(quellen) {
+    if (!Array.isArray(quellen) || !quellen.length) return "";
+    const labels = { name: "Name", beschreibung: "Beschreibung", adresse: "Adresse", plz: "PLZ", ort: "Ort", land: "Land", website: "Webseite", mobilnummer: "Telefon", email: "E-Mail", latitude: "Latitude", longitude: "Longitude", oeffnungszeiten: "Öffnungszeiten", angebote: "Angebote", zahlungsarten: "Zahlungsarten" };
+    const zeilen = quellen.map((q) => {
+      const art = HofkartePanel.FINDEN_QUELLEN_LABEL[q.quelle] || q.quelle;
+      const text = this.istHttpUrl(q.url)
+        ? `<a class="website-link" href="${this.escAttr(q.url)}" target="_blank" rel="noopener noreferrer">${this.esc(art)}</a>`
+        : this.esc(art);
+      return `<tr><td>${this.esc(labels[q.feld] || q.feld)}</td><td>${text}</td></tr>`;
+    }).join("");
+    const osm = quellen.some(q => q.quelle === "openstreetmap");
+    return `<section class="card detail-section"><h3>Herkunft der Angaben</h3><table class="opening-table">${zeilen}</table>${osm ? `<div class="muted">© OpenStreetMap-Mitwirkende (ODbL)</div>` : ""}</section>`;
   }
 
   /** Webseite als anklickbarer Link – kein UI-Block, wenn keine/keine
@@ -2457,6 +2511,7 @@ class HofkartePanel extends HTMLElement {
         img.src = img.dataset.original;
       }
     }, true);
+    this.bindFindenDelegiert();
   }
 
   bind() {
@@ -2612,6 +2667,530 @@ class HofkartePanel extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-bewertung-stern]").forEach(b =>
       b.addEventListener("click", () => this.setBewertung(Number(b.dataset.bewertungStern)))
     );
+  }
+
+  // --- Hofladen finden (Discovery, Phase 5) ------------------------------
+  //
+  // Eigener Dialog in drei Schritten: (1) Suchen, (2) Kandidat wählen,
+  // (3) Angaben prüfen. Der Dialog speichert nichts; "In Formular
+  // übernehmen" öffnet das normale Bearbeitungsformular, gespeichert wird
+  // wie gewohnt dort. Zustand: this.finden (null = Dialog geschlossen).
+  // Eingaben des Dialogs werden vor jedem Re-Render aus dem DOM gesichert
+  // (erfasseFindenEingaben()), analog zum Formular (erfasseFormularZustand()).
+
+  static FINDEN_FEHLERMELDUNGEN = {
+    invalid_coordinates: "Bitte gültige Latitude-/Longitude-Werte eintragen.",
+    unreachable: "Die Overpass API (OpenStreetMap) konnte nicht erreicht werden. Bitte später erneut versuchen.",
+    not_ready: "HofKarte ist noch nicht bereit.",
+    invalid_format: "Es fehlen Angaben für die Anreicherung.",
+  };
+
+  static FINDEN_WEBSITE_STATUS = {
+    ok: "Website ausgewertet",
+    robots_gesperrt: "Die Website verbietet automatisches Auslesen (robots.txt) – nicht abgerufen",
+    robots_nicht_lesbar: "robots.txt der Website nicht lesbar – Website nicht abgerufen",
+    nicht_erreichbar: "Website nicht erreichbar",
+    keine_informationen: "Auf der Website wurde nichts Verwertbares gefunden",
+    ungueltige_url: "Ungültige Website-Adresse",
+    uebersprungen: "Keine Website angegeben",
+  };
+
+  /** Zeilen der Prüf-Ansicht (Schritt 3): Beschriftung und die von der Zeile
+   * abgedeckten Hofladen-Felder. */
+  static FINDEN_ZEILEN = [
+    { key: "name", label: "Name", felder: ["name"] },
+    { key: "adresse", label: "Adresse", felder: ["adresse", "plz", "ort"] },
+    { key: "land", label: "Land", felder: ["land"] },
+    { key: "website", label: "Webseite", felder: ["website"] },
+    { key: "mobilnummer", label: "Telefon", felder: ["mobilnummer"] },
+    { key: "email", label: "E-Mail", felder: ["email"] },
+    { key: "oeffnungszeiten", label: "Öffnungszeiten", felder: ["oeffnungszeiten"] },
+    { key: "angebote", label: "Angebote", felder: ["angebote"] },
+    { key: "zahlungsarten", label: "Zahlungsarten", felder: ["zahlungsarten"] },
+    { key: "koordinaten", label: "Koordinaten", felder: ["latitude", "longitude"] },
+  ];
+
+  static FINDEN_QUELLEN_LABEL = { openstreetmap: "OpenStreetMap", website: "Website", angabe: "Eigene Angabe" };
+
+  oeffneFinden() {
+    const ha = this.hass?.config;
+    const haLat = Number.isFinite(Number(ha?.latitude)) ? ha.latitude : "";
+    const haLon = Number.isFinite(Number(ha?.longitude)) ? ha.longitude : "";
+    this.finden = {
+      schritt: 1, name: "", website: "", latitude: haLat, longitude: haLon,
+      radius: FINDEN_STANDARD_RADIUS_METER, erweitert: false,
+      standortText: "", standortKind: "", busy: false, fehler: "",
+      kandidaten: [], gewaehlt: null, ereignisse: {}, vorschlag: null, felder: {},
+    };
+    this.render();
+    this.ermittleGeraeteStandort();
+  }
+
+  schliesseFinden() {
+    this.beendeFindenAbo();
+    this._findenStandortToken++;
+    this.finden = null;
+    this.render();
+  }
+
+  /** Aktuellen Standort des Geräts übernehmen (Browser-Geolocation; fragt
+   * beim ersten Mal nach der Freigabe). Schlägt das fehl (verweigert, keine
+   * HTTPS-Verbindung, kein GPS), bleibt der Standort der Home-Assistant-
+   * Installation eingetragen. Die Koordinaten verlassen den Browser erst
+   * mit "Suchen" (dann gehen sie an Home Assistant und von dort an
+   * OpenStreetMap/Overpass). Aktualisiert nur die betroffenen DOM-Elemente,
+   * damit laufende Eingaben (Fokus) nicht durch einen Re-Render gestört
+   * werden. */
+  ermittleGeraeteStandort() {
+    const f = this.finden;
+    if (!f) return;
+    const token = ++this._findenStandortToken;
+    const hatHa = f.latitude !== "" && f.longitude !== "";
+    const fallback = hatHa
+      ? "Gerätestandort nicht verfügbar (Freigabe verweigert oder keine HTTPS-Verbindung) – Standort von Home Assistant eingetragen."
+      : "Gerätestandort nicht verfügbar – bitte Koordinaten eintragen.";
+    // Browser geben Geolocation nur in einem sicheren Kontext (HTTPS oder
+    // localhost) frei und lehnen sonst OHNE Freigabe-Dialog ab (siehe
+    // CHANGELOG 0.18.0) - das wird hier ausdrücklich benannt.
+    if (typeof window !== "undefined" && window.isSecureContext === false) {
+      this.setzeFindenStandortText(
+        hatHa
+          ? "Gerätestandort braucht eine sichere Verbindung (HTTPS oder localhost) – Standort von Home Assistant eingetragen."
+          : "Gerätestandort braucht eine sichere Verbindung (HTTPS oder localhost) – bitte Koordinaten eintragen.",
+        "",
+      );
+      return;
+    }
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      this.setzeFindenStandortText(fallback, "");
+      return;
+    }
+    this.setzeFindenStandortText("Standort des Geräts wird ermittelt …", "");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (token !== this._findenStandortToken || !this.finden) return;
+        const lat = Number(pos.coords.latitude.toFixed(6));
+        const lon = Number(pos.coords.longitude.toFixed(6));
+        this.finden.latitude = lat;
+        this.finden.longitude = lon;
+        const genau = Number.isFinite(pos.coords.accuracy) ? ` (±${Math.round(pos.coords.accuracy)} m)` : "";
+        for (const [name, wert] of [["latitude", lat], ["longitude", lon]]) {
+          const el = this.shadowRoot.querySelector(`[data-finden-feld="${name}"]`);
+          if (el) el.value = String(wert);
+        }
+        this.setzeFindenStandortText(`Standort des Geräts übernommen${genau}.`, "success");
+      },
+      () => {
+        if (token !== this._findenStandortToken || !this.finden) return;
+        this.setzeFindenStandortText(fallback, "");
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  }
+
+  setzeFindenStandortText(text, kind) {
+    if (!this.finden) return;
+    this.finden.standortText = text;
+    this.finden.standortKind = kind;
+    const el = this.shadowRoot.querySelector("[data-finden-standort-text]");
+    if (el) { el.textContent = text; el.className = `muted${kind ? " " + kind : ""}`; }
+  }
+
+  /** Eingaben des Dialogs (Schritt 1) aus dem DOM in this.finden sichern. */
+  erfasseFindenEingaben() {
+    const f = this.finden;
+    if (!f) return;
+    for (const name of ["name", "website", "latitude", "longitude"]) {
+      const el = this.shadowRoot.querySelector(`[data-finden-feld="${name}"]`);
+      if (el) f[name] = el.value;
+    }
+    const radius = this.shadowRoot.querySelector("[data-finden-radius]");
+    if (radius) f.radius = Number(radius.value) || FINDEN_STANDARD_RADIUS_METER;
+    const erweitert = this.shadowRoot.querySelector("[data-finden-erweitert]");
+    if (erweitert) f.erweitert = !!erweitert.checked;
+  }
+
+  static koordinatenZahl(wert) {
+    return String(wert ?? "").trim() === "" ? NaN : Number(String(wert).replace(",", "."));
+  }
+
+  async sucheFinden() {
+    this.erfasseFindenEingaben();
+    const f = this.finden;
+    if (!f || f.busy) return;
+    const lat = HofkartePanel.koordinatenZahl(f.latitude);
+    const lon = HofkartePanel.koordinatenZahl(f.longitude);
+    if (!isValidWgs84(lat, lon)) {
+      f.fehler = HofkartePanel.FINDEN_FEHLERMELDUNGEN.invalid_coordinates;
+      this.render();
+      return;
+    }
+    f.fehler = "";
+    f.busy = true;
+    this.render();
+    const nachricht = { latitude: lat, longitude: lon, radius: f.radius, erweitert: f.erweitert };
+    if (f.name.trim()) nachricht.name = f.name.trim();
+    if (f.website.trim()) nachricht.website = f.website.trim();
+    try {
+      const ergebnis = await this.call("hofkarte/management/discover", nachricht);
+      if (this.finden !== f) return; // Dialog wurde inzwischen geschlossen
+      f.kandidaten = ergebnis.kandidaten || [];
+      const erster = f.kandidaten[0];
+      f.gewaehlt = erster && erster.konfidenz === "hoch" ? 0 : null;
+      f.schritt = 2;
+    } catch (err) {
+      if (this.finden !== f) return;
+      f.fehler = HofkartePanel.FINDEN_FEHLERMELDUNGEN[err?.code] || err?.message || "Die Suche ist fehlgeschlagen.";
+    }
+    f.busy = false;
+    this.render();
+  }
+
+  beendeFindenAbo() {
+    if (this._findenTimer) { clearTimeout(this._findenTimer); this._findenTimer = null; }
+    const unsub = this._findenUnsub;
+    this._findenUnsub = null;
+    if (unsub) { Promise.resolve().then(() => unsub()).catch(() => {}); }
+  }
+
+  /** Reichert den gewählten Kandidaten (und/oder die Website) über die
+   * Subscription "enrich" an; die Fortschrittsereignisse füllen
+   * this.finden.ereignisse, "fertig" liefert den Vorschlag. */
+  async reichereFindenAn({ ohneKandidat = false } = {}) {
+    const f = this.finden;
+    if (!f || f.busy) return;
+    const kandidat = ohneKandidat ? null : f.kandidaten[f.gewaehlt];
+    const website = (f.website || "").trim();
+    if (!kandidat && !website) return;
+    f.fehler = ""; f.busy = true; f.ereignisse = {}; f.vorschlag = null; f.schritt = 3;
+    this.render();
+    const nachricht = { type: "hofkarte/management/enrich" };
+    if (kandidat) nachricht.kandidat = kandidat;
+    if (website) nachricht.website = website;
+    const aufEreignis = (ereignis) => {
+      if (this.finden !== f || !ereignis) return;
+      if (ereignis.phase === "fertig") {
+        f.vorschlag = ereignis.vorschlag || { daten: {}, quellen: {}, abweichungen: {} };
+        f.felder = {};
+        for (const zeile of HofkartePanel.FINDEN_ZEILEN) f.felder[zeile.key] = this.findenZeileWert(zeile, f.vorschlag.daten) !== "";
+        f.busy = false;
+        this.beendeFindenAbo();
+      } else if (ereignis.phase) {
+        f.ereignisse[ereignis.phase] = ereignis;
+      }
+      this.render();
+    };
+    try {
+      this._findenUnsub = await this.hass.connection.subscribeMessage(aufEreignis, nachricht);
+      this._findenTimer = setTimeout(() => {
+        if (this.finden === f && f.busy) {
+          f.busy = false;
+          f.fehler = "Die Anreicherung hat zu lange gedauert.";
+          this.beendeFindenAbo();
+          this.render();
+        }
+      }, 90000);
+    } catch (err) {
+      if (this.finden !== f) return;
+      f.busy = false;
+      f.fehler = HofkartePanel.FINDEN_FEHLERMELDUNGEN[err?.code] || err?.message || "Die Anreicherung ist fehlgeschlagen.";
+      this.render();
+    }
+  }
+
+  /** Lesbarer Text der Werte einer Prüfzeile ("" = nichts gefunden). */
+  findenZeileWert(zeile, daten) {
+    const d = daten || {};
+    if (zeile.key === "adresse") {
+      return [d.adresse, [d.plz, d.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    }
+    if (zeile.key === "koordinaten") {
+      return Number.isFinite(Number(d.latitude)) && d.latitude != null && d.longitude != null
+        ? `${Number(d.latitude).toFixed(5)}, ${Number(d.longitude).toFixed(5)}` : "";
+    }
+    if (zeile.key === "oeffnungszeiten") {
+      const eintraege = Array.isArray(d.oeffnungszeiten) ? d.oeffnungszeiten : [];
+      const proTag = new Map();
+      for (const z of eintraege) {
+        const text = `${z.beginn}–${z.ende}`;
+        proTag.set(z.wochentag, [...(proTag.get(z.wochentag) || []), text]);
+      }
+      return [...proTag.entries()].sort((a, b) => a[0] - b[0])
+        .map(([tag, zeiten]) => `${(WEEKDAYS[tag - 1] || "").slice(0, 2)} ${zeiten.join(", ")}`).join("; ");
+    }
+    const wert = d[zeile.key];
+    if (Array.isArray(wert)) return wert.map(x => x.name || x).join(", ");
+    return wert ? String(wert) : "";
+  }
+
+  /** Gibt es schon einen Hofladen mit gleichem Namen oder (<= 100 m) an
+   * derselben Stelle? Rein informativ, verhindert nichts. */
+  findeBestehenden(kandidat) {
+    const norm = (s) => String(s || "").trim().toLowerCase();
+    const namen = [kandidat.name, ...(kandidat.weitere_namen || [])].map(norm).filter(Boolean);
+    return (this.items || []).find((item) => {
+      if (namen.includes(norm(item.name))) return true;
+      const lat = Number(item.latitude), lon = Number(item.longitude);
+      if (item.latitude == null || item.longitude == null || !Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+      const dLat = (lat - kandidat.latitude) * 111195;
+      const dLon = (lon - kandidat.longitude) * 111195 * Math.cos(kandidat.latitude * Math.PI / 180);
+      return Math.hypot(dLat, dLon) <= 100;
+    }) || null;
+  }
+
+  findenGruende(k) {
+    const s = k.signale || {};
+    const teile = [];
+    const m = Math.round(k.entfernung_meter ?? 0);
+    teile.push(m <= 25 ? `sehr nah (${m} m)` : `${m} m entfernt`);
+    if (s.name != null) teile.push(s.name >= 0.85 ? "Name stimmt" : s.name >= 0.5 ? "Name ähnlich" : "Name weicht ab");
+    if (s.website) teile.push("Website stimmt überein");
+    return teile.join(" · ");
+  }
+
+  istHttpUrl(url) { return /^https?:\/\//i.test(String(url || "")); }
+
+  /** Übernimmt die angehakten Zeilen in ein neues Bearbeitungsformular. */
+  uebernehmeFindenVorschlag() {
+    const f = this.finden;
+    if (!f?.vorschlag) return;
+    const daten = f.vorschlag.daten || {};
+    const quellenListe = Array.isArray(f.vorschlag.quellen) ? f.vorschlag.quellen : Object.entries(f.vorschlag.quellen || {}).map(([feld, q]) => ({ feld, ...q }));
+    const info = {};
+    const uebernommeneFelder = [];
+    for (const zeile of HofkartePanel.FINDEN_ZEILEN) {
+      if (!f.felder[zeile.key]) continue;
+      for (const feld of zeile.felder) {
+        if (daten[feld] != null && daten[feld] !== "" && !(Array.isArray(daten[feld]) && !daten[feld].length)) {
+          info[feld] = daten[feld];
+          uebernommeneFelder.push(feld);
+        }
+      }
+    }
+    const name = f.name.trim();
+    const website = f.website.trim();
+    this.finden = null;
+    this.beendeFindenAbo();
+    this.start();
+    if (!info.name && name) this.editing.name = name;
+    if (!info.website && website) this.editing.website = website;
+    this.uebernehmeWebseiteInfo(info);
+    if (info.latitude != null && info.longitude != null) {
+      this.editing.latitude = info.latitude;
+      this.editing.longitude = info.longitude;
+    }
+    this.editing.quellen = quellenListe.filter(q => uebernommeneFelder.includes(q.feld)).map(q => ({
+      feld: q.feld, quelle: q.quelle, status: q.status || "confirmed", url: q.url || null, lizenz: q.lizenz || null,
+    }));
+    this.merkeQuellenSchnappschuss();
+    this.render();
+  }
+
+  /** Leeres Formular mit den bisher im Dialog eingegebenen Angaben. */
+  findenLeerAnlegen() {
+    this.erfasseFindenEingaben();
+    const f = this.finden;
+    const lat = HofkartePanel.koordinatenZahl(f.latitude);
+    const lon = HofkartePanel.koordinatenZahl(f.longitude);
+    const name = f.name.trim(), website = f.website.trim();
+    this.finden = null;
+    this.beendeFindenAbo();
+    this.start();
+    if (name) this.editing.name = name;
+    if (website) this.editing.website = website;
+    if (isValidWgs84(lat, lon)) { this.editing.latitude = lat; this.editing.longitude = lon; }
+    this.render();
+  }
+
+  // --- Herkunft ("quellen") im Formular ----------------------------------
+
+  /** Vergleichswert eines Feldes, um zu erkennen, ob es nach der
+   * Übernahme von Hand geändert wurde. */
+  quellenWert(feld, daten) {
+    const v = daten?.[feld];
+    if (feld === "angebote" || feld === "zahlungsarten") return JSON.stringify((v || []).map(x => this.slug(x.name || x)).sort());
+    if (feld === "oeffnungszeiten") return JSON.stringify((v || []).map(z => [Number(z.wochentag), z.beginn, z.ende]).sort());
+    if (feld === "latitude" || feld === "longitude") return v === null || v === undefined || v === "" ? "" : String(Number(v));
+    return String(v ?? "").trim();
+  }
+
+  merkeQuellenSchnappschuss() {
+    this._quellenSchnappschuss = {};
+    for (const q of (this.editing?.quellen || [])) this._quellenSchnappschuss[q.feld] = this.quellenWert(q.feld, this.editing);
+  }
+
+  /** Behält nur die Herkunftsangaben von Feldern, die seit der Übernahme
+   * unverändert sind (sonst wäre die Angabe falsch). */
+  bereinigteQuellen(daten) {
+    const snap = this._quellenSchnappschuss || {};
+    return (daten.quellen || []).filter(q => !(q.feld in snap) || snap[q.feld] === this.quellenWert(q.feld, daten));
+  }
+
+  /** Dialog-HTML (wird über die aktuelle Ansicht gelegt). */
+  findenDialog() {
+    const f = this.finden;
+    const kopf = (titel) => `<h2 id="finden-titel">${this.esc(titel)}</h2>`;
+    let inhalt = "";
+    if (f.schritt === 1) {
+      inhalt = `${kopf("Hofladen finden")}
+        <p class="muted">Sucht in OpenStreetMap nach Hofläden in der Nähe und liest, falls vorhanden, deren Website aus. Es wird nichts gespeichert.</p>
+        <div class="finden-form">
+          <label>Name (optional)<input type="text" data-finden-feld="name" value="${this.escAttr(f.name)}" autocomplete="off"></label>
+          <label>Website (optional)<input type="url" data-finden-feld="website" value="${this.escAttr(f.website)}" placeholder="https://…" autocomplete="off"></label>
+          <div class="finden-koordinaten">
+            <label>Latitude<input type="text" inputmode="decimal" data-finden-feld="latitude" value="${this.escAttr(f.latitude)}"></label>
+            <label>Longitude<input type="text" inputmode="decimal" data-finden-feld="longitude" value="${this.escAttr(f.longitude)}"></label>
+            <button type="button" class="secondary" data-finden-standort title="Aktuellen Standort des Geräts übernehmen">📍 Mein Standort</button>
+          </div>
+          <div class="muted ${this.esc(f.standortKind)}" data-finden-standort-text>${this.esc(f.standortText)}</div>
+          <label>Umkreis: <span data-finden-radius-anzeige>${this.esc(HofkartePanel.findenRadiusText(f.radius))}</span>
+            <input type="range" min="${FINDEN_MIN_RADIUS_METER}" max="${FINDEN_MAX_RADIUS_METER}" step="50" value="${this.escAttr(f.radius)}" data-finden-radius></label>
+          <label class="finden-check"><input type="checkbox" data-finden-erweitert ${f.erweitert ? "checked" : ""}> Erweiterte Suche (mehr Tags, langsamer, noch wenig getestet)</label>
+        </div>
+        ${f.fehler ? `<div class="notice error">${this.esc(f.fehler)}</div>` : ""}
+        <div class="actions">
+          <button type="button" class="secondary" data-finden-abbrechen>Abbrechen</button>
+          <button type="button" data-finden-suchen ${f.busy ? "disabled" : ""}>${f.busy ? "Suche läuft …" : "Suchen"}</button>
+        </div>`;
+    } else if (f.schritt === 2) {
+      const eintraege = f.kandidaten.map((k, i) => {
+        const konf = { hoch: "✔ hohe Sicherheit", mittel: "• mittlere Sicherheit", niedrig: "○ niedrige Sicherheit" }[k.konfidenz] || "";
+        const adresse = [k.adresse, [k.plz, k.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+        const bestehend = this.findeBestehenden(k);
+        return `<label class="finden-kandidat ${f.gewaehlt === i ? "gewaehlt" : ""}">
+          <input type="radio" name="finden-kandidat" value="${i}" data-finden-kandidat ${f.gewaehlt === i ? "checked" : ""}>
+          <span class="finden-kandidat-text">
+            <span class="osm-orte-name">${this.esc(k.name || "(ohne Namen)")}</span> <span class="muted">${this.esc(konf)}</span>
+            ${adresse ? `<span class="muted">${this.esc(adresse)}</span>` : ""}
+            <span class="muted">${this.esc(this.findenGruende(k))}</span>
+            ${bestehend ? `<span class="finden-warnung">⚠ Möglicherweise schon erfasst: ${this.esc(bestehend.name)}</span>` : ""}
+          </span></label>`;
+      }).join("");
+      const websiteVorhanden = !!f.website.trim();
+      inhalt = `${kopf(f.kandidaten.length ? `${f.kandidaten.length} Treffer` : "Keine Treffer")}
+        ${f.kandidaten.length
+          ? `<p class="muted">Bitte den passenden Hofladen wählen. Sortiert nach Übereinstimmung.</p><div class="osm-orte-liste">${eintraege}</div>`
+          : `<p class="muted">In OpenStreetMap wurde im Umkreis nichts gefunden. Du kannst die Website direkt auswerten lassen oder den Hofladen von Hand erfassen.</p>`}
+        ${f.fehler ? `<div class="notice error">${this.esc(f.fehler)}</div>` : ""}
+        <div class="actions finden-aktionen">
+          <button type="button" class="secondary" data-finden-zurueck>Zurück</button>
+          <button type="button" class="secondary" data-finden-leer>Manuell erfassen</button>
+          ${websiteVorhanden ? `<button type="button" class="secondary" data-finden-nur-website>Nur Website auswerten</button>` : ""}
+          <button type="button" data-finden-weiter ${f.gewaehlt === null ? "disabled" : ""}>Weiter</button>
+        </div>`;
+    } else {
+      const ev = f.ereignisse || {};
+      const statusText = (phase, titel) => {
+        const e = ev[phase];
+        if (!e) return f.busy ? `⏳ ${titel} …` : "";
+        const text = phase === "website" ? (HofkartePanel.FINDEN_WEBSITE_STATUS[e.status] || e.status) : "OpenStreetMap-Daten übernommen";
+        const ok = phase === "osm" ? e.status === "ok" : e.status === "ok";
+        return `${ok ? "✔" : "ℹ"} ${text}`;
+      };
+      const fortschritt = [statusText("osm", "OpenStreetMap"), statusText("website", "Website")].filter(Boolean)
+        .map(t => `<div class="muted">${this.esc(t)}</div>`).join("");
+      let zeilen = "";
+      let osmDabei = false;
+      if (f.vorschlag) {
+        const quellenListe = Array.isArray(f.vorschlag.quellen) ? f.vorschlag.quellen : Object.entries(f.vorschlag.quellen || {}).map(([feld, q]) => ({ feld, ...q }));
+        const quelleVon = (feld) => quellenListe.find(q => q.feld === feld);
+        const abweichungen = f.vorschlag.abweichungen || {};
+        for (const zeile of HofkartePanel.FINDEN_ZEILEN) {
+          const wert = this.findenZeileWert(zeile, f.vorschlag.daten);
+          if (!wert) continue;
+          const q = zeile.felder.map(quelleVon).find(Boolean);
+          if (q?.quelle === "openstreetmap") osmDabei = true;
+          const label = q ? (HofkartePanel.FINDEN_QUELLEN_LABEL[q.quelle] || q.quelle) : "";
+          const badge = q ? (this.istHttpUrl(q.url)
+            ? `<a class="website-link" href="${this.escAttr(q.url)}" target="_blank" rel="noopener noreferrer">${this.esc(label)}</a>`
+            : this.esc(label)) : "";
+          const abwFeld = zeile.felder.find(x => abweichungen[x]);
+          const abw = abwFeld ? `<div class="finden-warnung">⚠ weicht von ${this.esc(HofkartePanel.FINDEN_QUELLEN_LABEL[abweichungen[abwFeld]] || "der anderen Quelle")} ab</div>` : "";
+          zeilen += `<label class="finden-zeile"><input type="checkbox" data-finden-feldwahl="${this.escAttr(zeile.key)}" ${f.felder[zeile.key] ? "checked" : ""}>
+            <span class="finden-zeile-text"><span class="webseite-info-label">${this.esc(zeile.label)}</span> ${this.esc(wert)}
+            <span class="muted quelle-badge">${badge}</span>${abw}</span></label>`;
+        }
+        if (!zeilen) zeilen = `<p class="muted">Es wurden keine verwertbaren Angaben gefunden.</p>`;
+      }
+      inhalt = `${kopf("Angaben prüfen")}
+        <div class="finden-fortschritt">${fortschritt}</div>
+        ${f.vorschlag ? `<p class="muted">Gewählte Angaben werden in ein neues Formular übernommen. Gespeichert wird erst dort.</p><div class="finden-zeilen">${zeilen}</div>
+          ${osmDabei ? `<p class="muted">© OpenStreetMap-Mitwirkende (ODbL)</p>` : ""}` : ""}
+        ${f.fehler ? `<div class="notice error">${this.esc(f.fehler)}</div>` : ""}
+        <div class="actions">
+          <button type="button" class="secondary" data-finden-zurueck>Zurück</button>
+          <button type="button" data-finden-uebernehmen ${f.vorschlag ? "" : "disabled"}>In Formular übernehmen</button>
+        </div>`;
+    }
+    return `<div class="modal-overlay" data-finden-overlay>
+      <div class="modal breit" role="dialog" aria-modal="true" aria-labelledby="finden-titel" tabindex="-1" data-finden-dialog>${inhalt}</div>
+    </div>`;
+  }
+
+  static findenRadiusText(meter) {
+    return meter >= 1000 ? `${(meter / 1000).toFixed(meter % 1000 ? 1 : 0)} km` : `${meter} m`;
+  }
+
+  /** Ereignis-Delegation des Dialogs (einmalig auf <main> gebunden). */
+  bindFindenDelegiert() {
+    const main = this._mainEl;
+    main.addEventListener("click", (e) => {
+      const ziel = e.target instanceof Element ? e.target : null;
+      if (!ziel) return;
+      if (ziel.closest("[data-finden-open]")) { this.oeffneFinden(); return; }
+      if (!this.finden) return;
+      if (ziel.closest("[data-finden-abbrechen]")) { this.schliesseFinden(); return; }
+      if (ziel.closest("[data-finden-standort]")) { this.ermittleGeraeteStandort(); return; }
+      if (ziel.closest("[data-finden-suchen]")) { this.sucheFinden(); return; }
+      if (ziel.closest("[data-finden-zurueck]")) {
+        this.beendeFindenAbo();
+        this.finden.busy = false; this.finden.fehler = "";
+        this.finden.schritt = Math.max(1, this.finden.schritt - 1);
+        this.render();
+        return;
+      }
+      if (ziel.closest("[data-finden-leer]")) { this.findenLeerAnlegen(); return; }
+      if (ziel.closest("[data-finden-weiter]")) { this.reichereFindenAn(); return; }
+      if (ziel.closest("[data-finden-nur-website]")) { this.reichereFindenAn({ ohneKandidat: true }); return; }
+      if (ziel.closest("[data-finden-uebernehmen]")) { this.uebernehmeFindenVorschlag(); return; }
+      if (ziel.matches("[data-finden-overlay]")) { /* Klick daneben schliesst bewusst nicht (Eingaben nicht verlieren) */ }
+    });
+    main.addEventListener("change", (e) => {
+      const ziel = e.target instanceof Element ? e.target : null;
+      if (!ziel || !this.finden) return;
+      if (ziel.matches("[data-finden-kandidat]")) {
+        this.finden.gewaehlt = Number(ziel.value);
+        const weiter = this.shadowRoot.querySelector("[data-finden-weiter]");
+        if (weiter) weiter.disabled = false;
+        this.shadowRoot.querySelectorAll(".finden-kandidat").forEach((el) => {
+          el.classList.toggle("gewaehlt", !!el.querySelector("input")?.checked);
+        });
+      } else if (ziel.matches("[data-finden-feldwahl]")) {
+        this.finden.felder[ziel.dataset.findenFeldwahl] = ziel.checked;
+      } else if (ziel.matches("[data-finden-erweitert]")) {
+        this.finden.erweitert = ziel.checked;
+      }
+    });
+    main.addEventListener("input", (e) => {
+      const ziel = e.target instanceof Element ? e.target : null;
+      if (!ziel || !this.finden) return;
+      if (ziel.matches("[data-finden-radius]")) {
+        this.finden.radius = Number(ziel.value) || FINDEN_STANDARD_RADIUS_METER;
+        const anzeige = this.shadowRoot.querySelector("[data-finden-radius-anzeige]");
+        if (anzeige) anzeige.textContent = HofkartePanel.findenRadiusText(this.finden.radius);
+      } else if (ziel.matches("[data-finden-feld]")) {
+        this.finden[ziel.dataset.findenFeld] = ziel.value;
+      }
+    });
+    main.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && this.finden && e.target instanceof Element && e.target.closest("[data-finden-overlay]")) {
+        e.stopPropagation();
+        this.schliesseFinden();
+      } else if (e.key === "Enter" && this.finden?.schritt === 1 && e.target instanceof Element && e.target.matches("input[type=text], input[type=url]")) {
+        e.preventDefault();
+        this.sucheFinden();
+      }
+    });
   }
 
   esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c])); }

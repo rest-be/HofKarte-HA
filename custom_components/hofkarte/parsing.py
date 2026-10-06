@@ -31,6 +31,7 @@ from .const import (
     MAX_ANZAHL_ANGEBOTE,
     MAX_ANZAHL_BILDER,
     MAX_ANZAHL_OEFFNUNGSZEITEN,
+    MAX_ANZAHL_QUELLEN,
     MAX_ANZAHL_SONDEROEFFNUNGSZEITEN,
     MAX_ANZAHL_ZAHLUNGSARTEN,
     MAX_LAENGE_ADRESSFELD,
@@ -46,6 +47,7 @@ from .models import (
     Bild,
     Hofladen,
     Oeffnungszeit,
+    Quelle,
     Sonderoeffnungszeit,
     Zahlungsart,
 )
@@ -395,6 +397,64 @@ def _parse_bild(
     )
 
 
+_QUELLEN_FELDER = frozenset(
+    {
+        "name", "beschreibung", "adresse", "plz", "ort", "land", "website",
+        "mobilnummer", "email", "latitude", "longitude", "oeffnungszeiten",
+        "angebote", "zahlungsarten",
+    }
+)
+_QUELLEN_STATUS = frozenset({"confirmed", "inferred"})
+_MAX_LAENGE_QUELLE = 40
+
+
+def _quellen_text(raw: Mapping[str, Any], key: str, context: str, maximum: int) -> str | None:
+    wert = raw.get(key)
+    if wert is None:
+        return None
+    if not isinstance(wert, str):
+        raise HofladenValidationError(f"{context}: '{key}' muss eine Zeichenkette sein.")
+    wert = wert.strip()
+    if len(wert) > maximum:
+        raise HofladenValidationError(
+            f"{context}: '{key}' darf höchstens {maximum} Zeichen lang sein."
+        )
+    return wert or None
+
+
+def _parse_quelle(raw: Any, index: int) -> Quelle:
+    context = f"Quelle #{index}"
+    if not isinstance(raw, Mapping):
+        raise HofladenValidationError(f"{context}: muss ein Mapping (dict) sein.")
+    feld = _quellen_text(raw, "feld", context, 40)
+    if feld not in _QUELLEN_FELDER:
+        raise HofladenValidationError(f"{context}: unbekanntes Feld '{feld}'.")
+    art = _quellen_text(raw, "quelle", context, _MAX_LAENGE_QUELLE)
+    if not art:
+        raise HofladenValidationError(f"{context}: 'quelle' fehlt.")
+    status = _quellen_text(raw, "status", context, 20) or "confirmed"
+    if status not in _QUELLEN_STATUS:
+        raise HofladenValidationError(f"{context}: ungültiger 'status'.")
+    url = _quellen_text(raw, "url", context, MAX_LAENGE_URL)
+    # Die URL wird in der Oberfläche als Link angezeigt: nur http(s).
+    if url is not None and not url.lower().startswith(("http://", "https://")):
+        raise HofladenValidationError(f"{context}: 'url' muss mit http:// oder https:// beginnen.")
+    return Quelle(
+        feld=feld,
+        quelle=art,
+        status=status,
+        url=url,
+        lizenz=_quellen_text(raw, "lizenz", context, 100),
+    )
+
+
+def _parse_quellen(raw: Mapping[str, Any]) -> tuple[Quelle, ...]:
+    quellen = _parse_list(raw, "quellen", _parse_quelle, MAX_ANZAHL_QUELLEN)
+    if len({q.feld for q in quellen}) != len(quellen):
+        raise HofladenValidationError("Feld 'quellen' darf je Feld höchstens eine Angabe enthalten.")
+    return quellen
+
+
 def _pruefe_anzahl(items: Any, field_name: str, maximum: int) -> None:
     if isinstance(items, (list, tuple)) and len(items) > maximum:
         raise HofladenValidationError(
@@ -539,6 +599,7 @@ def parse_hofladen(
         angebote=angebote,
         zahlungsarten=zahlungsarten,
         bilder=bilder,
+        quellen=_parse_quellen(raw),
         bewertung=bewertung,
         version=version,
     )
