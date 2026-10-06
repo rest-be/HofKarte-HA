@@ -13,11 +13,15 @@ Entwicklung, vor der ersten offiziellen Veröffentlichung, einer an
 Semantic Versioning angelehnten, fortlaufenden Nummerierung und sind
 unten als historische Entwicklungsdokumentation erhalten.
 
-## [2026.10.0-rc.1] - Release Candidate (develop)
+## [Unreleased]
 
-Release Candidate für `2026.10.0`: fasst die Entwicklungsstände
-`dev.4`–`dev.7` (Code-Review-Umsetzung, Blöcke A–D) und den Abschnitt
-„Unveröffentlicht“ zusammen und ergänzt den Foto-Upload per WebSocket.
+## [2026.10.0] - 2026-10-06
+
+Enthält die in den Entwicklungsversionen `2026.10.0-dev.4` bis `-dev.7`
+(Code-Review-Umsetzung, Blöcke A–D) und den bisher unveröffentlichten
+Änderungen (Abschnitt „Fortsetzung“ unten) entwickelten und im Release
+Candidate `2026.10.0-rc.1` abschliessend geprüften Änderungen; ergänzt
+um den Foto-Upload per WebSocket.
 
 ### Hinzugefügt
 
@@ -38,7 +42,7 @@ Release Candidate für `2026.10.0`: fasst die Entwicklungsstände
 
 ### Geändert
 
-- Version `2026.10.0-rc.1`; neue Datei `RELEASE_NOTES_2026.10.0.md`.
+- Neue Datei `RELEASE_NOTES_2026.10.0.md`.
 
 ## [2026.10.0-dev.7] - Entwicklungsversion (develop)
 
@@ -206,7 +210,7 @@ beschriebenen Änderungen (`dev.1`–`dev.3`) bleiben unverändert gültig.
   `DuplicateHofladenIdError`/`HofladenNotFoundError` als `duplicate_id`
   bzw. `not_found` statt unbehandelt.
 
-## [Unreleased]
+## [2026.10.0] - Fortsetzung (vormals „Unveröffentlicht“)
 
 ### Hinzugefügt
 
