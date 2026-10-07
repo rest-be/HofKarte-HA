@@ -41,6 +41,8 @@ STANDARD_ZAHLUNGSARTEN: tuple[str, ...] = (
 CONF_LISTEN_SORT_SPALTE = "listen_sort_spalte"
 CONF_LISTEN_SORT_RICHTUNG = "listen_sort_richtung"
 CONF_OSM_RADIUS_METER = "osm_radius_meter"
+# Optionale KI-Entität (Domain ``ai_task``) für "Hofladen finden"; leer = aus.
+CONF_KI_ENTITAET = "ki_entitaet"
 
 DEFAULT_LISTEN_SORT_SPALTE = "name"
 DEFAULT_LISTEN_SORT_RICHTUNG = "asc"

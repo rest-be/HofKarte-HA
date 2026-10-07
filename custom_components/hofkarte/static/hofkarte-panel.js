@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1-dev.7";
+const PANEL_BUILD = "2026.10.1-dev.8";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -352,6 +352,7 @@ class HofkartePanel extends HTMLElement {
     this.osmOrteAuswahl = null; // Liste der von der Overpass API gefundenen Treffer, solange mehr als einer gefunden wurde und noch keiner ausgewählt ist (Issue #10, "Ort in der Nähe suchen"); bei genau einem Treffer wird die Auswahlliste übersprungen und direkt this.webseiteInfoVorschlag gesetzt.
     this.osmRadius = OSM_STANDARD_RADIUS_METER; // Im Formular eingestellter Suchradius für OpenStreetMap (Issue #11) - wird wie alle übrigen Formularfelder über erfasseFormularZustand() vor jedem Re-Render gesichert, damit ein bereits geänderter Wert nicht verloren geht. Initialisiert aus den dauerhaft gespeicherten Einstellungen (Options Flow, siehe ladeEinstellungen()), OSM_STANDARD_RADIUS_METER dient nur als Absicherung, bis diese geladen sind.
     this._osmRadiusVorgabe = OSM_STANDARD_RADIUS_METER; // Dauerhaft gespeicherter Vorgabewert (Options Flow) - im Unterschied zu this.osmRadius, das pro Formularsitzung geändert werden kann, ist dies der Wert, auf den start() jedes neue Formular zurücksetzt.
+    this._kiEntitaet = null; // gewählte ai_task-Entität (Options Flow) oder null = KI aus
     this._einstellungenGeladen = false; // Verhindert, dass ein bereits von der Nutzerin/dem Nutzer geänderter Sortier-/Radius-Wert durch einen erneuten load() (z. B. nach dem Speichern) überschrieben wird.
     this.finden = null; // Zustand des Dialogs "Hofladen finden" (Discovery, Phase 5); null = geschlossen
     this._findenUnsub = null; // Abmeldefunktion der laufenden enrich-Subscription
@@ -409,6 +410,7 @@ class HofkartePanel extends HTMLElement {
     try {
       const result = await this.call("hofkarte/management/settings");
       const einstellungen = result.einstellungen || {};
+      this._kiEntitaet = typeof result.ki_entitaet === "string" && result.ki_entitaet ? result.ki_entitaet : null;
       this.listenSortSpalte = einstellungen.listen_sort_spalte || this.listenSortSpalte;
       this.listenSortRichtung = einstellungen.listen_sort_richtung || this.listenSortRichtung;
       if (typeof einstellungen.osm_radius_meter === "number") {
@@ -1513,6 +1515,8 @@ class HofkartePanel extends HTMLElement {
       .finden-warnung{color:var(--warning-color,#ff9800);font-size:.9em}
       .finden-fortschritt{margin:8px 0}
       .finden-aktionen{flex-wrap:wrap}
+      .finden-vermutung{border-style:dashed}
+      .finden-vermutung-titel{margin:12px 0 4px;font-size:1em}
       .osm-orte-liste{display:flex;flex-direction:column;gap:8px;margin-top:12px}
       .osm-orte-eintrag{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;width:100%;padding:10px 12px;border-radius:8px}
       .osm-orte-name{font-weight:bold}
@@ -2720,14 +2724,30 @@ class HofkartePanel extends HTMLElement {
     { key: "koordinaten", label: "Koordinaten", felder: ["latitude", "longitude"] },
   ];
 
-  static FINDEN_QUELLEN_LABEL = { openstreetmap: "OpenStreetMap", website: "Website", angabe: "Eigene Angabe" };
+  static FINDEN_QUELLEN_LABEL = { openstreetmap: "OpenStreetMap", website: "Website", website_ki: "Website (KI-gestützt)", ki: "KI-Vermutung, nicht belegt", angabe: "Eigene Angabe" };
+
+  static FINDEN_KI_STATUS = {
+    ok: "KI-Auswertung abgeschlossen",
+    keine_ergebnisse: "Die KI hat nichts Belegbares gefunden",
+    keine_texte: "Kein Seitentext für die KI vorhanden",
+    zeitueberschreitung: "Die KI hat zu lange gebraucht – ohne KI fortgefahren",
+    fehler: "Die KI-Entität ist fehlgeschlagen – ohne KI fortgefahren",
+    ungueltige_antwort: "Unbrauchbare Antwort der KI – ohne KI fortgefahren",
+    nicht_konfiguriert: "Keine KI-Entität gewählt",
+  };
+
+  /** Zeilen für KI-Vermutungen (im Text nicht belegt, nie vorausgewählt). */
+  static FINDEN_VERMUTUNGEN = [
+    { key: "angebote", label: "Angebote" },
+    { key: "zahlungsarten", label: "Zahlungsarten" },
+  ];
 
   oeffneFinden() {
     const ha = this.hass?.config;
     const haLat = Number.isFinite(Number(ha?.latitude)) ? ha.latitude : "";
     const haLon = Number.isFinite(Number(ha?.longitude)) ? ha.longitude : "";
     this.finden = {
-      schritt: 1, name: "", website: "", latitude: haLat, longitude: haLon,
+      schritt: 1, ki: false, name: "", website: "", latitude: haLat, longitude: haLon,
       radius: FINDEN_STANDARD_RADIUS_METER, erweitert: false,
       standortText: "", standortKind: "", busy: false, fehler: "",
       kandidaten: [], gewaehlt: null, ereignisse: {}, vorschlag: null, felder: {},
@@ -2818,6 +2838,8 @@ class HofkartePanel extends HTMLElement {
     if (radius) f.radius = Number(radius.value) || FINDEN_STANDARD_RADIUS_METER;
     const erweitert = this.shadowRoot.querySelector("[data-finden-erweitert]");
     if (erweitert) f.erweitert = !!erweitert.checked;
+    const ki = this.shadowRoot.querySelector("[data-finden-ki]");
+    if (ki) f.ki = !!ki.checked;
   }
 
   static koordinatenZahl(wert) {
@@ -2877,12 +2899,15 @@ class HofkartePanel extends HTMLElement {
     const nachricht = { type: "hofkarte/management/enrich" };
     if (kandidat) nachricht.kandidat = kandidat;
     if (website) nachricht.website = website;
+    if (f.ki && this._kiEntitaet) nachricht.ki = true;
     const aufEreignis = (ereignis) => {
       if (this.finden !== f || !ereignis) return;
       if (ereignis.phase === "fertig") {
         f.vorschlag = ereignis.vorschlag || { daten: {}, quellen: {}, abweichungen: {} };
         f.felder = {};
         for (const zeile of HofkartePanel.FINDEN_ZEILEN) f.felder[zeile.key] = this.findenZeileWert(zeile, f.vorschlag.daten) !== "";
+        // KI-Vermutungen sind nie vorausgewählt.
+        for (const v of HofkartePanel.FINDEN_VERMUTUNGEN) f.felder[`vermutung:${v.key}`] = false;
         f.busy = false;
         this.beendeFindenAbo();
       } else if (ereignis.phase) {
@@ -2977,6 +3002,14 @@ class HofkartePanel extends HTMLElement {
         }
       }
     }
+    const vermutungen = f.vorschlag.vermutungen || {};
+    const vermutetFelder = [];
+    for (const v of HofkartePanel.FINDEN_VERMUTUNGEN) {
+      const werte = Array.isArray(vermutungen[v.key]) ? vermutungen[v.key] : [];
+      if (!f.felder[`vermutung:${v.key}`] || !werte.length) continue;
+      info[v.key] = [...new Set([...(Array.isArray(info[v.key]) ? info[v.key] : []), ...werte])];
+      vermutetFelder.push(v.key);
+    }
     const name = f.name.trim();
     const website = f.website.trim();
     this.finden = null;
@@ -2989,9 +3022,13 @@ class HofkartePanel extends HTMLElement {
       this.editing.latitude = info.latitude;
       this.editing.longitude = info.longitude;
     }
-    this.editing.quellen = quellenListe.filter(q => uebernommeneFelder.includes(q.feld)).map(q => ({
+    this.editing.quellen = quellenListe.filter(q => uebernommeneFelder.includes(q.feld) && !vermutetFelder.includes(q.feld)).map(q => ({
       feld: q.feld, quelle: q.quelle, status: q.status || "confirmed", url: q.url || null, lizenz: q.lizenz || null,
     }));
+    // Wurden unbelegte KI-Vermutungen übernommen, gilt das Feld insgesamt als vermutet.
+    for (const feld of vermutetFelder) {
+      this.editing.quellen.push({ feld, quelle: "ki", status: "inferred", url: null, lizenz: null });
+    }
     this.merkeQuellenSchnappschuss();
     this.render();
   }
@@ -3056,6 +3093,7 @@ class HofkartePanel extends HTMLElement {
           <label>Umkreis: <span data-finden-radius-anzeige>${this.esc(HofkartePanel.findenRadiusText(f.radius))}</span>
             <input type="range" min="${FINDEN_MIN_RADIUS_METER}" max="${FINDEN_MAX_RADIUS_METER}" step="50" value="${this.escAttr(f.radius)}" data-finden-radius></label>
           <label class="finden-check"><input type="checkbox" data-finden-erweitert ${f.erweitert ? "checked" : ""}> Erweiterte Suche (mehr Tags, langsamer, noch wenig getestet)</label>
+          ${this._kiEntitaet ? `<label class="finden-check"><input type="checkbox" data-finden-ki ${f.ki ? "checked" : ""}> <span>Website-Text mit KI auswerten (Angebote, Zahlungsarten, Öffnungszeiten)<br><span class="muted">Der Text der Website wird an <b>${this.esc(this._kiEntitaet)}</b> gesendet – je nach Anbieter verlässt er dein Netzwerk. Die KI schlägt nur vor; Belegtes und Vermutetes wird getrennt angezeigt.</span></span></label>` : ""}
         </div>
         ${f.fehler ? `<div class="notice error">${this.esc(f.fehler)}</div>` : ""}
         <div class="actions">
@@ -3097,7 +3135,8 @@ class HofkartePanel extends HTMLElement {
         const ok = phase === "osm" ? e.status === "ok" : e.status === "ok";
         return `${ok ? "✔" : "ℹ"} ${text}`;
       };
-      const fortschritt = [statusText("osm", "OpenStreetMap"), statusText("website", "Website")].filter(Boolean)
+      const kiText = !f.ki ? "" : (ev.ki ? `${ev.ki.status === "ok" ? "✔" : "ℹ"} ${HofkartePanel.FINDEN_KI_STATUS[ev.ki.status] || ev.ki.status}` : (f.busy ? "⏳ KI …" : ""));
+      const fortschritt = [statusText("osm", "OpenStreetMap"), statusText("website", "Website"), kiText].filter(Boolean)
         .map(t => `<div class="muted">${this.esc(t)}</div>`).join("");
       let zeilen = "";
       let osmDabei = false;
@@ -3120,6 +3159,16 @@ class HofkartePanel extends HTMLElement {
             <span class="finden-zeile-text"><span class="webseite-info-label">${this.esc(zeile.label)}</span> ${this.esc(wert)}
             <span class="muted quelle-badge">${badge}</span>${abw}</span></label>`;
         }
+        const vermutungen = f.vorschlag.vermutungen || {};
+        let vermutetHtml = "";
+        for (const v of HofkartePanel.FINDEN_VERMUTUNGEN) {
+          const werte = Array.isArray(vermutungen[v.key]) ? vermutungen[v.key] : [];
+          if (!werte.length) continue;
+          vermutetHtml += `<label class="finden-zeile finden-vermutung"><input type="checkbox" data-finden-feldwahl="vermutung:${this.escAttr(v.key)}" ${f.felder[`vermutung:${v.key}`] ? "checked" : ""}>
+            <span class="finden-zeile-text"><span class="webseite-info-label">${this.esc(v.label)} (vermutet)</span> ${this.esc(werte.join(", "))}
+            <span class="finden-warnung">⚠ Von der KI genannt, steht aber nicht im Text der Website. Bitte selbst prüfen.</span></span></label>`;
+        }
+        if (vermutetHtml) zeilen += `<h3 class="finden-vermutung-titel">Vermutungen der KI (nicht belegt)</h3>${vermutetHtml}`;
         if (!zeilen) zeilen = `<p class="muted">Es wurden keine verwertbaren Angaben gefunden.</p>`;
       }
       inhalt = `${kopf("Angaben prüfen")}

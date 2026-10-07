@@ -36,7 +36,7 @@ const KANDIDAT = (extra = {}) => ({
   typ: ["shop=farm"], adresse: "Chemin 4", plz: "1070", ort: "Puidoux", website: "https://martin.example", telefon: null,
   email: null, oeffnungszeiten: null, score: 0.95, konfidenz: "hoch", signale: { distanz: 1, name: 0.3, website: false }, ...extra,
 });
-function bauen({ geo = "fehler", items = [], discover = null, haConfig = { latitude: 46.948, longitude: 7.4474 }, unsicher = false } = {}) {
+function bauen({ geo = "fehler", items = [], discover = null, haConfig = { latitude: 46.948, longitude: 7.4474 }, unsicher = false, ki = null } = {}) {
   const dom = new JSDOM("<!doctype html><body></body>", { runScripts: "outside-only", url: "https://ha.example/", pretendToBeVisual: true });
   const w = dom.window;
   const log = { calls: [], subs: [], unsubs: 0, geoAufrufe: 0 };
@@ -55,7 +55,7 @@ function bauen({ geo = "fehler", items = [], discover = null, haConfig = { latit
     connection: {
       sendMessagePromise: async (m) => {
         log.calls.push(m);
-        if (m.type.endsWith("settings")) return { einstellungen: {} };
+        if (m.type.endsWith("settings")) return { einstellungen: {}, ki_entitaet: ki };
         if (m.type.endsWith("/list")) return { hoflaeden: items };
         if (m.type.endsWith("/discover")) { if (discover instanceof Error) throw discover; return discover || { kandidaten: [KANDIDAT()], radius: m.radius }; }
         if (m.type.endsWith("/save")) return { konflikt: false, hofladen: m.hofladen };
@@ -402,3 +402,123 @@ def test_button_mein_standort_fragt_erneut() -> None:
     process.exit(0);
     """)
     assert e["geo"] == 2 and e["lat"] == "46.123457"
+
+
+# --- Optionale KI (Phase 4) ---------------------------------------------------------------------
+
+
+@braucht_jsdom
+def test_ki_checkbox_nur_mit_gewaehlter_entitaet_und_nie_vorangekreuzt() -> None:
+    e = _node(r"""
+    const aus = bauen({ ki: null });
+    await sleep(50); await aus.klick("[data-finden-open]", 20);
+    const ohne = aus.q("[data-finden-ki]") !== null;
+    const an = bauen({ ki: "ai_task.lokal" });
+    await sleep(50); await an.klick("[data-finden-open]", 20);
+    const cb = an.q("[data-finden-ki]");
+    console.log(JSON.stringify({ ohne, mit: cb !== null, vorangekreuzt: cb.checked, hinweis: cb.parentElement.textContent }));
+    process.exit(0);
+    """)
+    assert e["ohne"] is False and e["mit"] is True and e["vorangekreuzt"] is False
+    assert "ai_task.lokal" in e["hinweis"] and "verlässt" in e["hinweis"]
+
+
+@braucht_jsdom
+def test_enrich_sendet_ki_nur_wenn_angehakt() -> None:
+    e = _node(r"""
+    const nachrichten = [];
+    for (const haken of [false, true]) {
+      const t = bauen({ ki: "ai_task.lokal" });
+      await sleep(50); await t.klick("[data-finden-open]", 20);
+      if (haken) await t.wahl("[data-finden-ki]", true);
+      await t.klick("[data-finden-suchen]", 40); await t.klick("[data-finden-weiter]", 30);
+      nachrichten.push(t.log.subs[0].m);
+    }
+    console.log(JSON.stringify({ nachrichten }));
+    process.exit(0);
+    """)
+    ohne, mit = e["nachrichten"]
+    assert "ki" not in ohne and mit["ki"] is True
+
+
+@braucht_jsdom
+def test_enrich_ohne_entitaet_sendet_nie_ki() -> None:
+    e = _node(r"""
+    const t = bauen({ ki: null });
+    await sleep(50); await t.klick("[data-finden-open]", 20);
+    t.el.finden.ki = true;  // selbst ein manipulierter Zustand darf nichts senden
+    await t.klick("[data-finden-suchen]", 40); await t.klick("[data-finden-weiter]", 30);
+    console.log(JSON.stringify({ m: t.log.subs[0].m }));
+    process.exit(0);
+    """)
+    assert "ki" not in e["m"]
+
+
+@braucht_jsdom
+def test_vermutungen_getrennt_nicht_vorgewaehlt_und_als_inferred_uebernommen() -> None:
+    e = _node(r"""
+    const t = bauen({ ki: "ai_task.lokal" });
+    await sleep(50); await t.klick("[data-finden-open]", 20);
+    await t.wahl("[data-finden-ki]", true);
+    await t.klick("[data-finden-suchen]", 40); await t.klick("[data-finden-weiter]", 30);
+    const sub = t.log.subs[0];
+    await t.ereignis(sub, { phase: "ki", status: "ok", entitaet: "ai_task.lokal" });
+    const fortschritt = t.q("[data-finden-dialog]").textContent;
+    await t.ereignis(sub, { phase: "fertig", vorschlag: {
+      daten: { name: "Famille Martin", angebote: ["Eier"] },
+      quellen: { name: { quelle: "openstreetmap", status: "confirmed" }, angebote: { quelle: "website_ki", status: "confirmed", url: "https://martin.example/" } },
+      abweichungen: {}, vermutungen: { angebote: ["Trüffel", "<img src=x onerror=window.__xss=1>"] } } });
+    const zeile = t.q('[data-finden-feldwahl="vermutung:angebote"]');
+    const vorgewaehlt = zeile.checked;
+    const text = t.q(".finden-vermutung").textContent;
+    const imgs = t.sr.querySelectorAll("[data-finden-dialog] img").length;
+    const quelleLabel = t.q("[data-finden-dialog]").textContent.includes("Website (KI-gestützt)");
+    // 1) ohne Haken übernehmen
+    await t.klick("[data-finden-uebernehmen]", 30);
+    t.log.calls.length = 0; await t.el.save(); await sleep(30);
+    const ohne = t.log.calls.find(c => c.type.endsWith("/save")).hofladen;
+    console.log(JSON.stringify({ fortschritt, vorgewaehlt, text, imgs, xss: t.w.__xss === undefined, quelleLabel,
+      ohneAngebote: ohne.angebote.map(a => a.name || a), ohneQuellen: ohne.quellen.map(q => [q.feld, q.quelle, q.status]) }));
+    process.exit(0);
+    """)
+    assert "KI-Auswertung abgeschlossen" in e["fortschritt"]
+    assert e["vorgewaehlt"] is False and "nicht im Text" in e["text"] and "Trüffel" in e["text"]
+    assert e["imgs"] == 0 and e["xss"] and e["quelleLabel"]
+    assert e["ohneAngebote"] == ["Eier"], "Vermutungen dürfen ohne Haken nie ins Formular"
+    assert ["angebote", "website_ki", "confirmed"] in e["ohneQuellen"]
+
+
+@braucht_jsdom
+def test_angehakte_vermutung_wird_uebernommen_und_feld_gilt_als_vermutet() -> None:
+    e = _node(r"""
+    const t = bauen({ ki: "ai_task.lokal" });
+    await sleep(50); await t.klick("[data-finden-open]", 20);
+    await t.wahl("[data-finden-ki]", true);
+    await t.klick("[data-finden-suchen]", 40); await t.klick("[data-finden-weiter]", 30);
+    await t.ereignis(t.log.subs[0], { phase: "fertig", vorschlag: {
+      daten: { name: "Famille Martin", angebote: ["Eier"] },
+      quellen: { name: { quelle: "openstreetmap", status: "confirmed" }, angebote: { quelle: "website_ki", status: "confirmed" } },
+      abweichungen: {}, vermutungen: { angebote: ["Trüffel"] } } });
+    await t.wahl('[data-finden-feldwahl="vermutung:angebote"]', true);
+    await t.klick("[data-finden-uebernehmen]", 30);
+    t.log.calls.length = 0; await t.el.save(); await sleep(30);
+    const h = t.log.calls.find(c => c.type.endsWith("/save")).hofladen;
+    console.log(JSON.stringify({ angebote: h.angebote.map(a => a.name || a), quellen: h.quellen.filter(q => q.feld === "angebote").map(q => [q.quelle, q.status]) }));
+    process.exit(0);
+    """)
+    assert e["angebote"] == ["Eier", "Trüffel"]
+    assert e["quellen"] == [["ki", "inferred"]]
+
+
+@braucht_jsdom
+def test_ki_fehlerstatus_wird_lesbar_angezeigt() -> None:
+    e = _node(r"""
+    const t = bauen({ ki: "ai_task.lokal" });
+    await sleep(50); await t.klick("[data-finden-open]", 20);
+    await t.wahl("[data-finden-ki]", true);
+    await t.klick("[data-finden-suchen]", 40); await t.klick("[data-finden-weiter]", 30);
+    await t.ereignis(t.log.subs[0], { phase: "ki", status: "zeitueberschreitung" });
+    console.log(JSON.stringify({ text: t.q("[data-finden-dialog]").textContent }));
+    process.exit(0);
+    """)
+    assert "zu lange gebraucht" in e["text"]

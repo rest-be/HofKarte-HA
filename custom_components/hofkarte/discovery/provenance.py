@@ -41,6 +41,9 @@ OSM = "openstreetmap"
 WEBSITE = "website"
 OSM_LIZENZ = "© OpenStreetMap-Mitwirkende (ODbL)"
 BESTAETIGT = "confirmed"  # steht ausdrücklich in der Quelle (kein Schluss/keine KI)
+VERMUTET = "inferred"  # KI-Vermutung ohne wörtlichen Beleg im Text
+WEBSITE_KI = "website_ki"  # Text stammt von der Website, ein Teil wurde per KI gefunden
+KI = "ki"
 
 
 @dataclass(frozen=True)
@@ -64,13 +67,20 @@ class Vorschlag:
     daten: dict[str, Any] = field(default_factory=dict)
     quellen: dict[str, Herkunft] = field(default_factory=dict)
     abweichungen: dict[str, str] = field(default_factory=dict)  # Feld -> abweichende Quelle
+    # Nur bei aktivierter KI: Werte, die die KI nannte, die aber im Text der
+    # Website nicht wörtlich stehen. Nie in ``daten``; die Oberfläche zeigt sie
+    # getrennt und nicht vorausgewählt (Status ``inferred``).
+    vermutungen: dict[str, list[str]] = field(default_factory=dict)
 
     def als_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "daten": self.daten,
             "quellen": {k: v.als_dict() for k, v in self.quellen.items()},
             "abweichungen": self.abweichungen,
         }
+        if self.vermutungen:
+            d["vermutungen"] = self.vermutungen
+        return d
 
 
 def _osm_herkunft(kandidat: Kandidat) -> Herkunft:
@@ -196,3 +206,35 @@ def baue_vorschlag(
         _setze(v, "latitude", kandidat.latitude, osm_h)  # type: ignore[arg-type]
         _setze(v, "longitude", kandidat.longitude, osm_h)  # type: ignore[arg-type]
     return v
+
+
+def ergaenze_mit_ki(v: Vorschlag, ki: Any) -> None:
+    """Ergänzt ``v`` um das Ergebnis der optionalen KI-Extraktion
+    (``llm.KiErgebnis``). Die deterministischen Werte bleiben unverändert
+    vorn; die KI ergänzt nur.
+
+    - Belegte Listenwerte (wörtlich im Text) kommen zu ``angebote``/
+      ``zahlungsarten``; war die Liste schon aus der Website, bleibt deren
+      Quelle, sonst ``website_ki``.
+    - Unbelegte Werte landen ausschliesslich in ``vermutungen``.
+    - Öffnungszeiten (belegt und vom Parser verstanden) ersetzen die der
+      OSM, nie die bereits von der Website gelesenen.
+    """
+    for feld in ("angebote", "zahlungsarten"):
+        vorhanden = list(v.daten.get(feld) or [])
+        bekannt = {str(x).casefold() for x in vorhanden}
+        belegt = [w.text for w in getattr(ki, feld) if w.belegt and w.text.casefold() not in bekannt]
+        unbelegt = [w.text for w in getattr(ki, feld) if not w.belegt and w.text.casefold() not in bekannt]
+        if belegt:
+            v.daten[feld] = vorhanden + belegt
+            if feld not in v.quellen:
+                v.quellen[feld] = Herkunft(WEBSITE_KI, BESTAETIGT, url=ki.url)
+        if unbelegt:
+            v.vermutungen[feld] = unbelegt
+    if ki.oeffnungszeiten:
+        bisher = v.quellen.get("oeffnungszeiten")
+        if bisher is None or bisher.quelle == OSM:
+            if bisher is not None:
+                v.abweichungen["oeffnungszeiten"] = OSM
+            v.daten["oeffnungszeiten"] = list(ki.oeffnungszeiten)
+            v.quellen["oeffnungszeiten"] = Herkunft(WEBSITE_KI, BESTAETIGT, url=ki.url)

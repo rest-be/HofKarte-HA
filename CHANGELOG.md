@@ -15,6 +15,26 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Hinzugefügt (2026.10.1-dev.8, Hofladen-Discovery Phase 4: optionale KI)
+
+- **Optionale KI-Auswertung** in „Hofladen finden“ über Home Assistants
+  `ai_task.generate_data` (kein eigenes Provider-System, keine
+  Zugangsdaten). Aktivierung zweistufig: Options-Flow-Feld
+  **KI-Entität** (leer = aus) und Kästchen „Website-Text mit KI
+  auswerten“ je Suche (nie vorangekreuzt, nennt die Entität und den
+  Datenabfluss).
+- Die KI ergänzt nur Angebote, Zahlungsarten und Öffnungszeiten. **Grounding
+  durch HofKarte:** nur wörtlich im Seitentext stehende Werte gelten als
+  belegt (`website_ki`, `confirmed`); unbelegte erscheinen getrennt als
+  „Vermutungen“, nicht vorausgewählt, und werden als `ki`/`inferred`
+  gespeichert. Öffnungszeiten nur mit belegtem Ausschnitt, den der
+  bestehende Parser versteht.
+- Schutz: festes Schema (drei Felder), Eingabelimits, entschärfter
+  Seitentext (6 000/15 000 Zeichen), keine Werkzeuge, 60 s Zeitlimit,
+  Ausfall ohne Folgen. Test für Prompt-Injection.
+- `ws_enrich` akzeptiert `ki`; `ws_settings` liefert `ki_entitaet`;
+  neues Ereignis `ki`.
+
 ### Dokumentation (2026.10.1-dev.7, Phase 6)
 
 - `SECURITY.md`: neuer Abschnitt „Hofladen finden“ mit den beiden neuen

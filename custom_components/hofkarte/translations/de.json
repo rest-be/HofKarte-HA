@@ -24,7 +24,11 @@
         "data": {
           "listen_sort_spalte": "Standard-Sortierfeld",
           "listen_sort_richtung": "Sortierrichtung",
-          "osm_radius_meter": "Suchradius OpenStreetMap (Meter)"
+          "osm_radius_meter": "Suchradius OpenStreetMap (Meter)",
+          "ki_entitaet": "KI-Entität (AI Task) für „Hofladen finden“ (optional; leer = aus)"
+        },
+        "data_description": {
+          "ki_entitaet": "Wenn gesetzt, kann „Hofladen finden“ den Text der Website eines Hofladens optional an diese KI-Entität senden, um Angebote, Zahlungsarten und Öffnungszeiten zu finden. Je nach Anbieter verlässt der Text dein Netzwerk."
         }
       }
     }

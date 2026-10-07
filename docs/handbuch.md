@@ -353,6 +353,19 @@ Quelle und kannst sie abwählen. Weichen die Quellen voneinander ab, steht
 ein Hinweis dabei. „In Formular übernehmen“ öffnet ein **neues Formular**;
 erst dort speicherst du. Eine Beschreibung wird nie automatisch erzeugt.
 
+**Optional: KI-Auswertung.** Unter Einstellungen → Geräte & Dienste →
+HofKarte → Konfigurieren kannst du eine „AI Task“-Entität wählen (leer =
+aus). Danach erscheint in Schritt 1 das Kästchen „Website-Text mit KI
+auswerten“. Es ist nie vorangekreuzt, und der Dialog nennt die Entität:
+Der Text der Website wird dorthin gesendet und verlässt je nach Anbieter
+dein Netzwerk (bei lokalen Modellen wie Ollama nicht). In Schritt 3 steht
+die KI-Auswertung im Fortschritt. Was die KI nennt und **wörtlich auf der
+Seite steht**, erscheint bei den normalen Angaben mit dem Vermerk „Website
+(KI-gestützt)“. Was sie nennt, aber nicht belegt ist, steht getrennt unter
+„Vermutungen der KI (nicht belegt)“, ist **nicht vorausgewählt** und wird,
+wenn du es übernimmst, als „vermutet“ vermerkt. Antwortet die KI nicht,
+zu langsam oder unbrauchbar, bleibt das Ergebnis ohne KI.
+
 **Hinweise.** Die Website wird nur gelesen, wenn ihre `robots.txt` das
 erlaubt (höchstens 4 Seiten, mit Pause). Die Quellen der übernommenen
 Angaben stehen später in der Detailansicht unter „Quellen“.
@@ -795,7 +808,7 @@ unverändert (siehe Kapitel 14).
 ## 14. Datenschutz
 
 - **Keine Cloud, kein externer Dienst:** HofKarte kommuniziert nicht mit
-  externen Servern – mit sechs Ausnahmen (zwei davon betreffen „Hofladen finden“, siehe unten): Wird für einen Hofladen ein
+  externen Servern – mit sieben Ausnahmen (drei davon betreffen „Hofladen finden“, siehe unten): Wird für einen Hofladen ein
   Hauptbild über eine externe URL hinterlegt, ruft Home Assistant diese
   URL beim Anzeigen des Bildes ab (siehe Kapitel 5, „Hauptbild“); und
   öffnet man in der Übersicht die Kartenansicht „🗺️ Karte“, lädt der
@@ -823,8 +836,10 @@ unverändert (siehe Kapitel 14).
   freien OpenStreetMap-Overpass-Instanzen gesendet, und die Website des
   gewählten Hofladens wird – unter Beachtung ihrer `robots.txt` –
   gelesen. Dein **Browser** fragt dafür nach Freigabe den Gerätestandort
-  ab; er wird nicht gespeichert.
-  Ausserhalb dieser sechs Fälle findet keine Telemetrie und keine
+  ab; er wird nicht gespeichert. Nur wenn du eine KI-Entität gewählt und
+  die Option im Dialog angekreuzt hast, wird der Website-Text zusätzlich an
+  diese Entität gesendet (je nach Anbieter ausserhalb deines Netzwerks).
+  Ausserhalb dieser sieben Fälle findet keine Telemetrie und keine
   Datenübertragung an Dritte statt.
 - **Standort (Home-Assistant-Server):** Der Entfernungs-Sensor
   (Kapitel 7) liest ausschliesslich die statische, in Home Assistant

@@ -29,6 +29,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CONF_LISTEN_SORT_RICHTUNG,
     CONF_LISTEN_SORT_SPALTE,
+    CONF_KI_ENTITAET,
     CONF_OSM_RADIUS_METER,
     DEFAULT_LISTEN_SORT_RICHTUNG,
     DEFAULT_LISTEN_SORT_SPALTE,
@@ -226,6 +227,15 @@ def _settings(coordinator: HofKarteUpdateCoordinator) -> dict[str, Any]:
     }
 
 
+def _ki_entitaet(coordinator: HofKarteUpdateCoordinator) -> str | None:
+    """Im Options Flow gewählte ``ai_task``-Entität (leer/ungültig = aus)."""
+    optionen = (coordinator.config_entry.options if coordinator.config_entry else None) or {}
+    wert = optionen.get(CONF_KI_ENTITAET)
+    if isinstance(wert, str) and wert.startswith("ai_task."):
+        return wert
+    return None
+
+
 @websocket_api.websocket_command({vol.Required("type"): WS_SETTINGS})
 @websocket_api.require_admin
 @callback
@@ -243,7 +253,10 @@ def ws_settings(
         connection.send_error(msg["id"], "not_ready", str(err))
         return
 
-    connection.send_result(msg["id"], {"einstellungen": _settings(coordinator)})
+    connection.send_result(
+        msg["id"],
+        {"einstellungen": _settings(coordinator), "ki_entitaet": _ki_entitaet(coordinator)},
+    )
 
 
 @websocket_api.websocket_command({vol.Required("type"): WS_LIST})
@@ -805,6 +818,9 @@ _KANDIDAT_SCHEMA = vol.Schema(
         vol.Required("type"): WS_ENRICH,
         vol.Optional("kandidat"): _KANDIDAT_SCHEMA,
         vol.Optional("website"): vol.All(str, vol.Length(max=500)),
+        # Opt-in je Anfrage: Website-Text an die im Options Flow gewählte
+        # ``ai_task``-Entität senden (ohne Entität: Status "nicht_konfiguriert").
+        vol.Optional("ki", default=False): bool,
     }
 )
 @websocket_api.require_admin
@@ -823,7 +839,7 @@ async def ws_enrich(
     brechen die Anreicherung nicht ab. Gespeichert wird nichts.
     Fehlercodes: ``not_ready``, ``invalid_format``."""
     try:
-        _get_coordinator(hass)
+        coordinator = _get_coordinator(hass)
     except ValueError as err:
         connection.send_error(msg["id"], "not_ready", str(err))
         return
@@ -844,7 +860,12 @@ async def ws_enrich(
         connection.send_message(websocket_api.event_message(msg_id, ereignis))
 
     await discovery_enrich.async_anreichern(
-        hass, kandidat, website_url=msg.get("website"), fortschritt=melde
+        hass,
+        kandidat,
+        website_url=msg.get("website"),
+        fortschritt=melde,
+        ki_angefordert=bool(msg.get("ki")),
+        ki_entitaet=_ki_entitaet(coordinator),
     )
 
 

@@ -279,9 +279,9 @@ Sicherheitsmassnahmen bzw. bewusste Abgrenzungen:
 Der Dialog „🔎 Hofladen finden“ sucht Hofläden in OpenStreetMap, wertet
 auf Wunsch deren Website aus und schlägt die Angaben zur Übernahme in ein
 neues Formular vor. Er erweitert die beiden obigen Funktionen um zwei
-bewusst begrenzte Ausnahmen; es gibt weiterhin **keinen KI-, Cloud- oder
-Scraping-Dienst** (die optionale KI-Anreicherung ist nicht Teil dieser
-Version).
+bewusst begrenzte Ausnahmen und eine dritte, ausschliesslich
+opt-in Ausnahme (optionale KI-Auswertung, siehe unten). Ohne diese Wahl
+bleibt es bei **keinem KI-, Cloud- oder Scraping-Dienst**.
 
 - **Ausdrücklicher Klick, nur Administratoren:** Die WebSocket-Befehle
   `hofkarte/management/discover` und `…/enrich` verlangen
@@ -326,6 +326,36 @@ Version).
   Overpass, und wird nicht gespeichert. Ohne sicheren Kontext (HTTPS) oder
   ohne Freigabe fällt der Dialog auf die in Home Assistant konfigurierte
   Position zurück.
-- **Panel-Härtung:** Alle Werte aus OpenStreetMap und Websites werden vor
-  der Darstellung HTML-escaped (durch einen Test abgesichert), Links nur
+- **Optionale KI-Auswertung (neue, opt-in Ausnahme):** Standardmässig
+  ist **kein** KI-Dienst beteiligt. Wählt die Administratorin im Options
+  Flow eine Entität der Home-Assistant-Integration „AI Task“
+  (`ki_entitaet`, Domain `ai_task`) und kreuzt sie im Dialog **je Suche**
+  ausdrücklich an („Website-Text mit KI auswerten“), sendet HofKarte den
+  sichtbaren Text der bereits abgerufenen Seiten (höchstens 6 000 Zeichen
+  je Seite, 15 000 gesamt, ohne Skripte/Stile) über
+  `ai_task.generate_data` an diese Entität. Je nach Anbieter (lokal, z. B.
+  Ollama, oder Cloud) **verlässt der Website-Text das Netzwerk**; der
+  Dialog nennt die Entität vorab. HofKarte hat weder eigene
+  Anbieteranbindungen noch Zugangsdaten. Schutzmassnahmen:
+  - *Kein Vertrauen in Seitentext (Prompt-Injection):* Die KI erhält nur
+    Text und keine Werkzeuge; die Antwort ist per Schema auf drei Felder
+    begrenzt (`angebote`, `zahlungsarten`, `oeffnungszeiten`), zusätzliche
+    Felder werden ignoriert. Werte werden wie Benutzereingaben begrenzt
+    (Länge, Anzahl, kein HTML) und nie als URL oder Befehl verwendet.
+    Ein Test belegt, dass eine „Ignoriere alle Anweisungen“-Seite keine
+    anderen Felder verändert.
+  - *Grounding statt Selbstauskunft:* Ein Wert gilt nur als belegt, wenn
+    er als ganzes Wort im Seitentext steht (Prüfung durch HofKarte, nicht
+    durch die KI). Unbelegtes erscheint ausschliesslich getrennt als
+    „Vermutung“, nie vorausgewählt, und wird als `inferred` mit Quelle
+    `ki` gespeichert. Öffnungszeiten werden nur übernommen, wenn der
+    wörtliche Ausschnitt belegt ist und der bestehende Parser ihn versteht.
+  - *Ausfall ohne Folgen:* 60 s Zeitlimit; bei Fehler, Zeitüberschreitung
+    oder unbrauchbarer Antwort bleibt das Ergebnis ohne KI unverändert und
+    der Dialog nennt den Grund. Übernommen wird nur per Klick.
+  - *Nur auf Anforderung, nur Administratoren:* Die Option steuert nur die
+    Verfügbarkeit; die KI läuft nur, wenn die Nachricht `ki: true` enthält.
+    Ohne gültige `ai_task`-Entität wird nichts gesendet.
+- **Panel-Härtung:** Alle Werte aus OpenStreetMap, Websites und KI werden
+  vor der Darstellung HTML-escaped (durch einen Test abgesichert), Links nur
   für http(s)-Adressen mit `rel="noopener noreferrer"`.

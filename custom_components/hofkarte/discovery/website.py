@@ -65,6 +65,7 @@ class SeitenErgebnis:
     url: str
     status: str
     info: wi.WebseiteInfo | None = None
+    text: str = ""  # sichtbarer Seitentext, nur mit ``mit_text=True`` (für die optionale KI)
 
 
 @dataclass(frozen=True)
@@ -207,7 +208,12 @@ async def _abrufen(session: Any, url: str) -> str:
 
 
 async def async_hole_website(
-    hass: Any, url: str | None, *, max_seiten: int = MAX_SEITEN, pause: float | None = None
+    hass: Any,
+    url: str | None,
+    *,
+    max_seiten: int = MAX_SEITEN,
+    pause: float | None = None,
+    mit_text: bool = False,
 ) -> WebsiteErgebnis:
     """Ruft die Startseite und bis zu ``max_seiten - 1`` Unterseiten ab und
     extrahiert je Seite die Fakten. Wirft nie wegen einer einzelnen Seite;
@@ -229,7 +235,7 @@ async def async_hole_website(
                     return WebsiteErgebnis(status, url)
 
                 start_html = await _abrufen(session, url)
-                seiten.append(await _auswerten(hass, url, start_html))
+                seiten.append(await _auswerten(hass, url, start_html, mit_text))
                 for folge in waehle_links(start_html, url, max_seiten - 1):
                     if not robots.erlaubt(folge) or not ist_sichere_externe_url(folge):
                         seiten.append(SeitenErgebnis(folge, ROBOTS_GESPERRT))
@@ -240,7 +246,7 @@ async def async_hole_website(
                     except (wi.WebseiteNichtErreichbarError, wi.WebseiteUngueltigeUrlError):
                         seiten.append(SeitenErgebnis(folge, FEHLER))
                         continue
-                    seiten.append(await _auswerten(hass, folge, html_text))
+                    seiten.append(await _auswerten(hass, folge, html_text, mit_text))
     except (wi.WebseiteNichtErreichbarError, wi.WebseiteUngueltigeUrlError):
         return WebsiteErgebnis(FEHLER, url, tuple(seiten))
     except TimeoutError:
@@ -251,12 +257,23 @@ async def async_hole_website(
     return WebsiteErgebnis(gesamt, url, tuple(seiten))
 
 
-async def _auswerten(hass: Any, url: str, html_text: str) -> SeitenErgebnis:
+def _text_aus_html(html_text: str) -> str:
+    """Sichtbarer, begrenzter Seitentext (Skripte/Stile entfernt)."""
+    parser = wi._SeitenParser()
+    try:
+        parser.feed(html_text)
+    except Exception:  # noqa: BLE001 - kaputtes HTML darf nie abstürzen
+        _LOGGER.debug("Seitentext konnte nicht vollständig gelesen werden.")
+    return wi._begrenze_text(parser.sichtbarer_text())
+
+
+async def _auswerten(hass: Any, url: str, html_text: str, mit_text: bool = False) -> SeitenErgebnis:
     try:
         async with asyncio.timeout(wi.EXTRAKTION_TIMEOUT_SEKUNDEN):
             info = await hass.async_add_executor_job(wi._extrahiere_aus_html, html_text)
+            text = await hass.async_add_executor_job(_text_aus_html, html_text) if mit_text else ""
     except TimeoutError:
         return SeitenErgebnis(url, FEHLER)
     if info.ist_leer():
-        return SeitenErgebnis(url, LEER)
-    return SeitenErgebnis(url, OK, info)
+        return SeitenErgebnis(url, LEER, None, text)
+    return SeitenErgebnis(url, OK, info, text)

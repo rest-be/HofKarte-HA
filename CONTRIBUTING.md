@@ -56,7 +56,7 @@ Findings in beiden Werkzeugen).
 pytest custom_components/hofkarte/tests
 ```
 
-Erwartung: alle Tests grün (aktueller Stand: rund 1090 Tests; die JavaScript-Verhaltenstests des Panels laufen mit Node und `jsdom` und werden ohne beides übersprungen). Für neue
+Erwartung: alle Tests grün (aktueller Stand: rund 1120 Tests; die JavaScript-Verhaltenstests des Panels laufen mit Node und `jsdom` und werden ohne beides übersprungen). Für neue
 Funktionalität gilt:
 
 - Jede neue Fach-/Berechnungslogik (z. B. in `opening_hours.py`,

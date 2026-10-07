@@ -286,7 +286,16 @@ In der Übersicht oben rechts auf **„🔎 Hofladen finden“** klicken:
 
 Die Website wird nur gelesen, wenn `robots.txt` es erlaubt (höchstens
 4 Seiten desselben Hosts, 1 s Pause). Beschreibungstexte werden nie
-automatisch übernommen. Die Herkunft der Werte steht danach in der
+automatisch übernommen.
+
+**Optional: KI-Auswertung.** Wählst du in den HofKarte-Einstellungen eine
+Entität von Home Assistants „AI Task“ (z. B. lokal mit Ollama), erscheint
+in Schritt 1 die Option „Website-Text mit KI auswerten“ (nie vorangekreuzt).
+Die KI ergänzt Angebote, Zahlungsarten und Öffnungszeiten, aber nur
+Begriffe, die **wörtlich im Text der Website stehen**, gelten als belegt;
+alles andere erscheint getrennt als „Vermutung“, nicht vorausgewählt. Bei
+Cloud-Anbietern verlässt der Website-Text dein Netzwerk. Ohne Auswahl ist
+keine KI beteiligt; bei einem KI-Fehler bleibt das Ergebnis ohne KI. Die Herkunft der Werte steht danach in der
 Detailansicht unter „Quellen“. OpenStreetMap-Daten: © OpenStreetMap-
 Mitwirkende (ODbL). Technik: [`architecture.md`](docs/architecture.md),
 Sicherheit: [`SECURITY.md`](SECURITY.md).
@@ -906,7 +915,8 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
 
 - „Hofladen finden“ ist auf in OpenStreetMap erfasste Hofläden
   angewiesen (Kern-Tag `shop=farm`); nicht erfasste Läden finden sich nur
-  über „Nur Website auswerten“ oder manuell. Websites mit gesperrter
+  über „Nur Website auswerten“ oder manuell. Die KI-Auswertung ist nur
+  so gut wie das gewählte Modell (kleine lokale Modelle liefern oft wenig). Websites mit gesperrter
   `robots.txt`, reinem JavaScript-Aufbau oder Bildern statt Text liefern
   wenig. Die Standortübernahme benötigt HTTPS.
 - Nur eine Instanz pro Home-Assistant-Installation möglich (Single
@@ -936,7 +946,7 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
 ## Datenschutz- und Standort-Hinweise
 
 - **Keine Cloud, kein externer Dienst:** HofKarte kommuniziert nicht mit
-  externen Servern – mit sechs Ausnahmen (die zwei neuen betreffen „Hofladen finden“, siehe unten): dem Laden von Hofladen-Bildern
+  externen Servern – mit sieben Ausnahmen (die drei neuen betreffen „Hofladen finden“, siehe unten): dem Laden von Hofladen-Bildern
   über die vom Benutzer hinterlegten Bild-URLs (siehe „Bilder“), dem
   Laden der Kartenkacheln von OpenStreetMap (die Kartenbibliothek
   Leaflet selbst liegt lokal im Repository, kein CDN), sobald die Übersichtsansicht „🗺️ Karte“ tatsächlich
@@ -996,8 +1006,10 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
   höchstens 4 Seiten desselben Hosts, 1 s Pause – die Website des
   gewählten Hofladens (Details: [`SECURITY.md`](SECURITY.md)). Dabei fragt
   der **Browser** nach Freigabe den Gerätestandort ab; er wird nicht
-  gespeichert.
-  Ausserhalb dieser sechs Fälle findet keine Telemetrie und keine
+  gespeichert. Nur wenn du in den Einstellungen eine KI-Entität wählst
+  und die Option im Dialog ankreuzt, wird zusätzlich der Website-Text an
+  diese Entität gesendet (je nach Anbieter ausserhalb deines Netzwerks).
+  Ausserhalb dieser sieben Fälle findet keine Telemetrie und keine
   Datenübertragung an Dritte statt.
 - **Standort (Home-Assistant-Server):** Der Entfernungs-Sensor liest
   ausschliesslich die statische, in Home Assistant konfigurierte
