@@ -273,3 +273,59 @@ Sicherheitsmassnahmen bzw. bewusste Abgrenzungen:
   `ws_save`-Befehl. Bei mehreren Treffern wird zunächst eine
   Trefferauswahl gezeigt, bevor der gewählte Treffer im bereits aus
   Issue #9 bekannten Bestätigungs-Popup zur Prüfung erscheint.
+
+### Funktion „Hofladen finden“ (`discovery/`, ab `2026.10.1`)
+
+Der Dialog „🔎 Hofladen finden“ sucht Hofläden in OpenStreetMap, wertet
+auf Wunsch deren Website aus und schlägt die Angaben zur Übernahme in ein
+neues Formular vor. Er erweitert die beiden obigen Funktionen um zwei
+bewusst begrenzte Ausnahmen; es gibt weiterhin **keinen KI-, Cloud- oder
+Scraping-Dienst** (die optionale KI-Anreicherung ist nicht Teil dieser
+Version).
+
+- **Ausdrücklicher Klick, nur Administratoren:** Die WebSocket-Befehle
+  `hofkarte/management/discover` und `…/enrich` verlangen
+  Administratorrechte (`require_admin`). Es läuft nichts im Hintergrund
+  oder automatisch; gespeichert wird erst im bestehenden `ws_save`-Pfad
+  nach Prüfung im Formular.
+- **Overpass (Suche):** Dieselben festen, freien Overpass-Instanzen wie
+  bei „Ort in der Nähe suchen“ (`OVERPASS_URLS`), Zielliste nie durch
+  Benutzereingaben beeinflusst, Radius serverseitig auf 50 m bis 5 km
+  begrenzt (Schema und defensive Klammerung), Antwortgrössen- und
+  Zeitlimit, kurzer Zwischenspeicher (10 Minuten, höchstens 32 Einträge).
+  Eine HTTP-200-Antwort mit leerer Trefferliste und Overpass-Fehlerhinweis
+  (`remark`) wird als Fehler gemeldet, nicht als „keine Treffer“. Dabei
+  werden Koordinaten übertragen, die der Benutzer im Dialog gewählt hat.
+- **Website-Abruf mit `robots.txt` (neue Ausnahme):** Im Gegensatz zu
+  „Infos ermitteln“ (eine vom Benutzer angegebene Seite) liest die
+  Anreicherung höchstens **4 Seiten desselben Hosts**: die Startseite und
+  Links von ihr (eine Ebene tief, nur Seiten wie Kontakt/Öffnungszeiten/
+  Hofladen), nacheinander mit **1 Sekunde Pause**, ohne Dateien (PDF,
+  Bilder), ohne Logins, mit Gesamtzeitlimit. Vor dem ersten Abruf wird
+  `robots.txt` nach RFC 9309 ausgewertet: `Disallow` für `HofKarte`
+  bzw. `*` wird beachtet, 4xx bedeutet „alles erlaubt“, 5xx oder
+  Netzwerkfehler bedeuten konservativ „nichts abrufen“. Die Anfragen
+  tragen den erkennbaren `User-Agent`
+  `HofKarte/HomeAssistant (+https://github.com/rest-be/HofKarte-HA)`.
+- **SSRF-Schutz unverändert:** Alle Abrufe laufen über die gehärtete
+  Session aus `webseite_info.py` (öffentliche Adressen, DNS-Prüfung mit
+  IP-Bindung, Weiterleitungen einzeln geprüft, Grössen-/Typ-/Zeitlimits).
+  Links werden nur innerhalb desselben Hosts verfolgt.
+- **Herkunftsnachweis (`quellen`):** Jeder übernommene Wert trägt seine
+  Quelle (OpenStreetMap oder Website, mit Adresse) und den Status
+  `confirmed`/`inferred`. OpenStreetMap-Werte werden mit „©
+  OpenStreetMap-Mitwirkende (ODbL)“ gekennzeichnet. Das Feld wird beim
+  Einlesen streng bereinigt (bekannte Felder, nur http(s)-URLs, eine
+  Quelle je Feld, höchstens 20 Einträge). Beschreibungstexte werden
+  **nicht** automatisch übernommen.
+- **Standort des Geräts (Browser):** Beim Öffnen des Dialogs fragt der
+  Browser (nach Freigabe durch den Benutzer) den aktuellen Gerätestandort
+  ab, um die Koordinaten vorzubelegen. Das ist die einzige Verwendung der
+  Geolocation-API im Panel; der Wert verlässt das Gerät nur als
+  Suchkoordinaten an den eigenen Home-Assistant-Server und von dort an
+  Overpass, und wird nicht gespeichert. Ohne sicheren Kontext (HTTPS) oder
+  ohne Freigabe fällt der Dialog auf die in Home Assistant konfigurierte
+  Position zurück.
+- **Panel-Härtung:** Alle Werte aus OpenStreetMap und Websites werden vor
+  der Darstellung HTML-escaped (durch einen Test abgesichert), Links nur
+  für http(s)-Adressen mit `rel="noopener noreferrer"`.

@@ -325,6 +325,41 @@ gemeinsam in der Statusanzeige ausgewiesen; liefert nur eine der
 beiden Quellen ein Ergebnis, öffnet sich trotzdem das
 Bestätigungs-Popup mit den Angaben der erfolgreichen Quelle.
 
+### Hofladen finden
+
+Der Button **„🔎 Hofladen finden“** oben in der Übersicht (neben „+ Neuer
+Hofladen“) sucht einen Hofladen und füllt ein neues Formular vor.
+
+**Schritt 1 – Suchen.** Name und Website sind optional und verbessern die
+Trefferqualität. Beim Öffnen werden die Koordinaten vom **aktuellen
+Standort deines Geräts** übernommen; dein Browser fragt dabei um Freigabe.
+Das funktioniert nur über HTTPS; sonst (oder ohne Freigabe) wird die in
+Home Assistant eingestellte Position verwendet, und du kannst die
+Koordinaten von Hand ändern. Mit „📍 Mein Standort“ holst du den Standort
+erneut. Der Umkreis lässt sich von 50 m bis 5 km einstellen (Standard
+2 km). Die „erweiterte Suche“ berücksichtigt mehr OpenStreetMap-Tags, ist
+langsamer und noch wenig getestet.
+
+**Schritt 2 – Treffer wählen.** Die Treffer sind nach Übereinstimmung
+sortiert. „Hohe Sicherheit“ heisst: nah am Standort und/oder passender
+Name bzw. Website. Ein Hinweis „Möglicherweise schon erfasst“ warnt vor
+Doppelerfassung. Ohne Treffer kannst du „Manuell erfassen“ wählen oder,
+wenn eine Website eingetragen ist, „Nur Website auswerten“.
+
+**Schritt 3 – Angaben prüfen.** HofKarte liest die OpenStreetMap-Angaben
+und, falls vorhanden, die Website. Pro Angabe (Name, Adresse, Webseite,
+Telefon, E-Mail, Öffnungszeiten, Angebote, Zahlungsarten) siehst du die
+Quelle und kannst sie abwählen. Weichen die Quellen voneinander ab, steht
+ein Hinweis dabei. „In Formular übernehmen“ öffnet ein **neues Formular**;
+erst dort speicherst du. Eine Beschreibung wird nie automatisch erzeugt.
+
+**Hinweise.** Die Website wird nur gelesen, wenn ihre `robots.txt` das
+erlaubt (höchstens 4 Seiten, mit Pause). Die Quellen der übernommenen
+Angaben stehen später in der Detailansicht unter „Quellen“.
+OpenStreetMap-Angaben stammen von © OpenStreetMap-Mitwirkenden (ODbL).
+Fehlermeldungen („Dienst nicht erreichbar“, „robots.txt sperrt“) erscheinen
+im Dialog; dann hilft ein späterer Versuch oder die manuelle Erfassung.
+
 ## 5. Entities
 
 Für **jeden** Hofladen legt HofKarte automatisch folgende sechs
@@ -760,7 +795,7 @@ unverändert (siehe Kapitel 14).
 ## 14. Datenschutz
 
 - **Keine Cloud, kein externer Dienst:** HofKarte kommuniziert nicht mit
-  externen Servern – mit vier Ausnahmen: Wird für einen Hofladen ein
+  externen Servern – mit sechs Ausnahmen (zwei davon betreffen „Hofladen finden“, siehe unten): Wird für einen Hofladen ein
   Hauptbild über eine externe URL hinterlegt, ruft Home Assistant diese
   URL beim Anzeigen des Bildes ab (siehe Kapitel 5, „Hauptbild“); und
   öffnet man in der Übersicht die Kartenansicht „🗺️ Karte“, lädt der
@@ -783,7 +818,13 @@ unverändert (siehe Kapitel 14).
   bei den Kartenkacheln werden bei der Koordinatensuche tatsächlich
   hofladenspezifische Standortdaten an einen externen Dienst
   übertragen (weiterhin kein kommerzieller Cloud- oder KI-Dienst).
-  Ausserhalb dieser vier Fälle findet keine Telemetrie und keine
+  Beim Dialog „🔎 Hofladen finden“ (Kapitel 4, nur auf ausdrücklichen
+  Klick, nur Administratoren) werden die gewählten Suchkoordinaten an die
+  freien OpenStreetMap-Overpass-Instanzen gesendet, und die Website des
+  gewählten Hofladens wird – unter Beachtung ihrer `robots.txt` –
+  gelesen. Dein **Browser** fragt dafür nach Freigabe den Gerätestandort
+  ab; er wird nicht gespeichert.
+  Ausserhalb dieser sechs Fälle findet keine Telemetrie und keine
   Datenübertragung an Dritte statt.
 - **Standort (Home-Assistant-Server):** Der Entfernungs-Sensor
   (Kapitel 7) liest ausschliesslich die statische, in Home Assistant

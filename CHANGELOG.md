@@ -15,6 +15,16 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Dokumentation (2026.10.1-dev.7, Phase 6)
+
+- `SECURITY.md`: neuer Abschnitt „Hofladen finden“ mit den beiden neuen
+  Ausnahmen (mehrseitiger Website-Abruf mit `robots.txt`, Standort des
+  Geräts im Browser) und den Schutzmassnahmen.
+- `README.md`, `docs/handbuch.md`: Anleitung „Hofladen finden“,
+  Datenschutz-Abschnitt (sechs statt vier Ausnahmen), Einschränkungen.
+- `docs/architecture.md`: Abschnitt „Hofladen-Discovery“.
+- `CONTRIBUTING.md`: Teststand aktualisiert.
+
 ### Behoben (2026.10.1-dev.6)
 
 - Dialog „Hofladen finden“, Schritt 2 und 3: Radio-Button bzw. Checkbox

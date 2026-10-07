@@ -1041,6 +1041,41 @@ Hofladen-Inhalte oder Standortdaten (siehe README, Abschnitt
   eine rein syntaktische, nicht-blockierende Prüfung ersetzt (siehe
   CHANGELOG).
 
+## Hofladen-Discovery (`2026.10.1`)
+
+Paket `custom_components/hofkarte/discovery/`, bewusst frei von Home-Assistant-
+Abhängigkeiten (nur `overpass.async_suche` und die Website-Abrufe greifen auf
+`hass` zu), damit die Logik testbar und für die PWA wiederverwendbar bleibt.
+
+| Modul | Aufgabe |
+|---|---|
+| `profile.py` | `Profil` (Overpass-Filter je Objektart); `FARMSHOP` mit Kernfilter `shop=farm` |
+| `overpass.py` | Query, Antwortprüfung (200 + `remark` = Fehler), Parsen, Zusammenführen von Duplikaten (≤ 30 m), Cache, `async_suche` (nutzt `osm_info._rufe_overpass_ab`) |
+| `scoring.py` | Score aus Distanz, Namensähnlichkeit (`difflib`, tokensortiert), Website-Domain; Konfidenz hoch ≥ 0,75, mittel ≥ 0,45 |
+| `website.py` | `robots.txt` (RFC 9309), Linkauswahl, Abruf von höchstens 4 Seiten desselben Hosts mit Pause |
+| `provenance.py` | Zusammenführen mit Priorität je Feld, `Vorschlag` mit `quellen` und `abweichungen` |
+| `enrich.py` | Ablauf OSM → Website → fertig mit Fortschrittsereignissen |
+
+WebSocket (`management.py`, beide `require_admin`): `hofkarte/management/discover`
+(Antwort `{radius, kandidaten}`) und `hofkarte/management/enrich`
+(Subscription: Bestätigung, dann Ereignisse `osm`, `website`, `fertig`).
+
+**Datenmodell:** `Hofladen.quellen: tuple[Quelle, ...]` (`feld`, `quelle`,
+`status`, `url`, `lizenz`), beim Einlesen in `parsing.py` bereinigt.
+
+**Priorität der Quellen:** Name, Adresse, Telefon, E-Mail: OSM vor Website;
+Webseite: OSM vor Eingabe; Öffnungszeiten: Website vor OSM; Angebote und
+Zahlungsarten: nur Website; Koordinaten: OSM; Beschreibung: nie automatisch.
+
+**Panel:** Dialog in `hofkarte-panel.js` (`findenDialog`, drei Schritte, per
+Ereignisdelegation auf `<main>`); Gerätestandort über
+`navigator.geolocation` nur in `ermittleGeraeteStandort()` mit
+Secure-Context-Prüfung und Rückfall auf `hass.config`. Auswahlelemente
+brauchen eigene Breitenregeln, weil das Panel `input{width:100%}` global setzt.
+Die Kopfzeile zeigt `PANEL_BUILD` (muss zu `manifest.json` passen, Test).
+
+**Offen:** optionale KI-Anreicherung (`ai_task.generate_data`), PWA.
+
 ## Erweiterungspunkte
 
 Für Beitragende, die HofKarte erweitern möchten:

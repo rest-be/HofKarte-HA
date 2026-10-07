@@ -263,6 +263,34 @@ keinen eigenen Backend-Endpunkt: Sie zeigt read-only die über
 `hofkarte/management/list` bereits geladenen Daten des jeweiligen
 Hofladens an.
 
+## Hofladen finden (Discovery)
+
+Statt einen Hofladen von Hand zu erfassen, kann das Panel ihn finden.
+In der Übersicht oben rechts auf **„🔎 Hofladen finden“** klicken:
+
+1. **Suchen:** Name und Website sind optional. Die Koordinaten werden beim
+   Öffnen vom **aktuellen Standort des Geräts** übernommen (Browser fragt
+   um Freigabe; Voraussetzung ist HTTPS, sonst wird die in Home Assistant
+   konfigurierte Position verwendet). „📍 Mein Standort“ holt ihn erneut.
+   Umkreis 50 m bis 5 km (Standard 2 km); die erweiterte Suche nimmt mehr
+   OpenStreetMap-Tags dazu (langsamer, noch wenig getestet).
+2. **Treffer wählen:** Die Treffer aus OpenStreetMap sind nach
+   Übereinstimmung sortiert (Entfernung, Namensähnlichkeit, Website) und mit
+   „hohe/mittlere/niedrige Sicherheit“ gekennzeichnet. Ein Hinweis zeigt
+   mögliche, bereits erfasste Hofläden. Alternativ: „Manuell erfassen“
+   oder „Nur Website auswerten“.
+3. **Angaben prüfen:** Aus OpenStreetMap und – falls vorhanden – der
+   Website werden Name, Adresse, Kontakt, Öffnungszeiten, Angebote und
+   Zahlungsarten vorgeschlagen, je Feld mit Quelle. Gewählte Angaben
+   kommen in ein **neues Formular**; gespeichert wird erst dort.
+
+Die Website wird nur gelesen, wenn `robots.txt` es erlaubt (höchstens
+4 Seiten desselben Hosts, 1 s Pause). Beschreibungstexte werden nie
+automatisch übernommen. Die Herkunft der Werte steht danach in der
+Detailansicht unter „Quellen“. OpenStreetMap-Daten: © OpenStreetMap-
+Mitwirkende (ODbL). Technik: [`architecture.md`](docs/architecture.md),
+Sicherheit: [`SECURITY.md`](SECURITY.md).
+
 ## Bereitgestellte Devices
 
 Jeder Hofladen wird als logisches Device in der
@@ -876,6 +904,11 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
 
 ## Bekannte Einschränkungen
 
+- „Hofladen finden“ ist auf in OpenStreetMap erfasste Hofläden
+  angewiesen (Kern-Tag `shop=farm`); nicht erfasste Läden finden sich nur
+  über „Nur Website auswerten“ oder manuell. Websites mit gesperrter
+  `robots.txt`, reinem JavaScript-Aufbau oder Bildern statt Text liefern
+  wenig. Die Standortübernahme benötigt HTTPS.
 - Nur eine Instanz pro Home-Assistant-Installation möglich (Single
   Instance).
 - Der Options Flow deckt nur die Übersicht-Sortiervorgabe und den
@@ -903,7 +936,7 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
 ## Datenschutz- und Standort-Hinweise
 
 - **Keine Cloud, kein externer Dienst:** HofKarte kommuniziert nicht mit
-  externen Servern – mit vier Ausnahmen: dem Laden von Hofladen-Bildern
+  externen Servern – mit sechs Ausnahmen (die zwei neuen betreffen „Hofladen finden“, siehe unten): dem Laden von Hofladen-Bildern
   über die vom Benutzer hinterlegten Bild-URLs (siehe „Bilder“), dem
   Laden der Kartenkacheln von OpenStreetMap (die Kartenbibliothek
   Leaflet selbst liegt lokal im Repository, kein CDN), sobald die Übersichtsansicht „🗺️ Karte“ tatsächlich
@@ -957,7 +990,14 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
   (rein lokale, deterministische Auswertung bzw. freie
   OpenStreetMap-Community-Dienste). Liefert eine Quelle keine Angaben
   oder schlägt fehl, wird dies in der Statusmeldung offen ausgewiesen.
-  Ausserhalb dieser vier Fälle findet keine Telemetrie und keine
+  Der Dialog „🔎 Hofladen finden“ (nur auf ausdrücklichen Klick, nur
+  Administratoren) sendet die gewählten Suchkoordinaten an die freien
+  OpenStreetMap-Overpass-Instanzen und liest – `robots.txt` beachtend,
+  höchstens 4 Seiten desselben Hosts, 1 s Pause – die Website des
+  gewählten Hofladens (Details: [`SECURITY.md`](SECURITY.md)). Dabei fragt
+  der **Browser** nach Freigabe den Gerätestandort ab; er wird nicht
+  gespeichert.
+  Ausserhalb dieser sechs Fälle findet keine Telemetrie und keine
   Datenübertragung an Dritte statt.
 - **Standort (Home-Assistant-Server):** Der Entfernungs-Sensor liest
   ausschliesslich die statische, in Home Assistant konfigurierte
