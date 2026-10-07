@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1-dev.5";
+const PANEL_BUILD = "2026.10.1-dev.6";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -1499,8 +1499,14 @@ class HofkartePanel extends HTMLElement {
       .finden-form input[type=text],.finden-form input[type=url]{width:100%;box-sizing:border-box}
       .finden-koordinaten{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
       .finden-koordinaten label{flex:1 1 120px}
-      .finden-form .finden-check{flex-direction:row;align-items:center;gap:8px}
-      .finden-kandidat,.finden-zeile{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--divider-color);border-radius:8px;cursor:pointer}
+      .finden-form .finden-check{flex-direction:row;align-items:flex-start;gap:8px}
+      .finden-kandidat,.finden-zeile{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--divider-color);border-radius:8px;cursor:pointer;margin:0;font-size:1em;text-align:left}
+      /* Radio/Checkbox nicht auf 100 % Breite aufziehen (globale input-Regel) */
+      .finden-kandidat input[type=radio],.finden-zeile input[type=checkbox],.finden-check input[type=checkbox]{width:auto;flex:0 0 auto;margin:3px 0 0;padding:0}
+      .finden-kandidat-text,.finden-zeile-text{overflow-wrap:anywhere;line-height:1.35}
+      .finden-zeile-text .quelle-badge{font-size:.85em}
+      .finden-zeile-text .webseite-info-label{display:block}
+      .finden-kandidat-text>.muted:first-of-type{font-size:.85em}
       .finden-kandidat.gewaehlt{border-color:var(--primary-color);background:var(--secondary-background-color)}
       .finden-kandidat-text,.finden-zeile-text{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
       .finden-zeilen{display:flex;flex-direction:column;gap:6px;margin:8px 0}

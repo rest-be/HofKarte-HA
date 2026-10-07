@@ -111,3 +111,15 @@ def test_panel_build_entspricht_manifest_version():
     js = (basis / "static" / "hofkarte-panel.js").read_text()
     treffer = re.search(r'const PANEL_BUILD = "([^"]+)"', js)
     assert treffer and treffer.group(1) == version
+
+
+def test_finden_dialog_auswahlelemente_nicht_volle_breite():
+    """Regression: globale ``input{width:100%}`` zog Radio/Checkbox über die
+    ganze Zeile und drückte den Text an den rechten Rand (Schritt 2/3)."""
+    from pathlib import Path
+
+    js = (Path(__file__).resolve().parent.parent / "static" / "hofkarte-panel.js").read_text()
+    regel = ".finden-kandidat input[type=radio],.finden-zeile input[type=checkbox]"
+    assert regel in js
+    zeile = next(z for z in js.splitlines() if regel in z)
+    assert "width:auto" in zeile and "flex:0 0 auto" in zeile

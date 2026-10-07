@@ -15,6 +15,14 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Behoben (2026.10.1-dev.6)
+
+- Dialog „Hofladen finden“, Schritt 2 und 3: Radio-Button bzw. Checkbox
+  wurden durch die globale Regel `input{width:100%}` auf volle Breite
+  gezogen, der Text rutschte an den rechten Rand und war nicht lesbar.
+  Auswahlelemente haben jetzt feste Breite, der Text nutzt die restliche
+  Zeile (in Chromium bei 1000 und 380 px Breite geprüft).
+
 ### Geändert (2026.10.1-dev.5)
 
 - Die Kopfzeile des Verwaltungs-Panels zeigt die geladene Panel-Fassung
