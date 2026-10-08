@@ -413,13 +413,16 @@ def test_ki_checkbox_nur_mit_gewaehlter_entitaet_und_nie_vorangekreuzt() -> None
     const aus = bauen({ ki: null });
     await sleep(50); await aus.klick("[data-finden-open]", 20);
     const ohne = aus.q("[data-finden-ki]") !== null;
+    const hinweisAus = aus.q("[data-finden-ki-hinweis]")?.textContent || "";
     const an = bauen({ ki: "ai_task.lokal" });
     await sleep(50); await an.klick("[data-finden-open]", 20);
     const cb = an.q("[data-finden-ki]");
-    console.log(JSON.stringify({ ohne, mit: cb !== null, vorangekreuzt: cb.checked, hinweis: cb.parentElement.textContent }));
+    console.log(JSON.stringify({ ohne, hinweisAus, hinweisMit: an.q("[data-finden-ki-hinweis]") !== null, mit: cb !== null, vorangekreuzt: cb.checked, hinweis: cb.parentElement.textContent }));
     process.exit(0);
     """)
     assert e["ohne"] is False and e["mit"] is True and e["vorangekreuzt"] is False
+    assert "AI Task" in e["hinweisAus"] and "Konfigurieren" in e["hinweisAus"], "ohne Entität erklärt ein Hinweis, wie man die KI aktiviert"
+    assert e["hinweisMit"] is False
     assert "ai_task.lokal" in e["hinweis"] and "verlässt" in e["hinweis"]
 
 

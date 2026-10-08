@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1-dev.8";
+const PANEL_BUILD = "2026.10.1-dev.9";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -1515,6 +1515,7 @@ class HofkartePanel extends HTMLElement {
       .finden-warnung{color:var(--warning-color,#ff9800);font-size:.9em}
       .finden-fortschritt{margin:8px 0}
       .finden-aktionen{flex-wrap:wrap}
+      .finden-ki-hinweis{font-size:.9em;line-height:1.35}
       .finden-vermutung{border-style:dashed}
       .finden-vermutung-titel{margin:12px 0 4px;font-size:1em}
       .osm-orte-liste{display:flex;flex-direction:column;gap:8px;margin-top:12px}
@@ -3093,7 +3094,7 @@ class HofkartePanel extends HTMLElement {
           <label>Umkreis: <span data-finden-radius-anzeige>${this.esc(HofkartePanel.findenRadiusText(f.radius))}</span>
             <input type="range" min="${FINDEN_MIN_RADIUS_METER}" max="${FINDEN_MAX_RADIUS_METER}" step="50" value="${this.escAttr(f.radius)}" data-finden-radius></label>
           <label class="finden-check"><input type="checkbox" data-finden-erweitert ${f.erweitert ? "checked" : ""}> Erweiterte Suche (mehr Tags, langsamer, noch wenig getestet)</label>
-          ${this._kiEntitaet ? `<label class="finden-check"><input type="checkbox" data-finden-ki ${f.ki ? "checked" : ""}> <span>Website-Text mit KI auswerten (Angebote, Zahlungsarten, Öffnungszeiten)<br><span class="muted">Der Text der Website wird an <b>${this.esc(this._kiEntitaet)}</b> gesendet – je nach Anbieter verlässt er dein Netzwerk. Die KI schlägt nur vor; Belegtes und Vermutetes wird getrennt angezeigt.</span></span></label>` : ""}
+          ${this._kiEntitaet ? `<label class="finden-check"><input type="checkbox" data-finden-ki ${f.ki ? "checked" : ""}> <span>Website-Text mit KI auswerten (Angebote, Zahlungsarten, Öffnungszeiten)<br><span class="muted">Der Text der Website wird an <b>${this.esc(this._kiEntitaet)}</b> gesendet – je nach Anbieter verlässt er dein Netzwerk. Die KI schlägt nur vor; Belegtes und Vermutetes wird getrennt angezeigt.</span></span></label>` : `<div class="finden-check finden-ki-hinweis muted" data-finden-ki-hinweis>🤖 KI-Auswertung nicht eingerichtet. Zum Aktivieren in Home Assistant unter Einstellungen → Geräte & Dienste → HofKarte → Konfigurieren eine „AI Task“-Entität wählen (setzt eine KI-Integration wie Ollama oder OpenAI voraus).</div>`}
         </div>
         ${f.fehler ? `<div class="notice error">${this.esc(f.fehler)}</div>` : ""}
         <div class="actions">

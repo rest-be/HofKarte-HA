@@ -15,6 +15,12 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Geändert (2026.10.1-dev.9)
+
+- „Hofladen finden“, Schritt 1: Ist keine KI-Entität gewählt, zeigt der
+  Dialog statt nichts einen Hinweis, wie die KI-Auswertung aktiviert wird
+  (zuvor fehlte das Kästchen dann ohne Erklärung).
+
 ### Hinzugefügt (2026.10.1-dev.8, Hofladen-Discovery Phase 4: optionale KI)
 
 - **Optionale KI-Auswertung** in „Hofladen finden“ über Home Assistants
