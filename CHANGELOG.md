@@ -15,6 +15,24 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Geändert (2026.10.1-dev.10) – GUI-Überarbeitung, Phase 1
+
+- Übersicht (Kacheln, Liste, Karte): gemeinsame **Kopfzeile** („Hofladen finden“,
+  „+ Hofladen“, ⋮-Menü mit Import) und gemeinsame **Steuerleiste** mit Suche, Filter
+  „Nur geöffnet“, Sortierung (Spalte + Richtung) und Ansichtsumschalter mit Icons.
+- Suche, „Nur geöffnet“ und Sortierung gelten jetzt in **allen drei Ansichten** und
+  bleiben beim Wechsel der Ansicht erhalten (Karte: filtert die Marker). Der Filter
+  „Nur geöffnet“ der Karte ist damit der gemeinsame Filter; die Suche war bisher nur
+  in der Liste vorhanden. Standardsortierung ist Name aufsteigend (vorher in der Liste
+  unsortiert, solange keine Spalte gewählt war).
+- Export: neue **Kontextleiste** („n ausgewählt · Alle auswählen · Auswahl aufheben ·
+  Export“), nur sichtbar, wenn etwas gewählt ist; „Alle auswählen“ wählt nur die
+  gefilterten Hofläden. Import liegt im ⋮-Menü.
+- Zähler („3 von 8 Hofläden“) und Leerzustand „Keine Treffer“ mit „Filter
+  zurücksetzen“; Teil-Updates beim Tippen (Fokus bleibt erhalten).
+- Touch-Ziele ≥ 44 px, sichtbarer Fokus, ⋮-Menü per Escape/Klick daneben schliessbar.
+- Tests: `tests/test_static_panel_js_uebersicht.py` (7 Verhaltenstests).
+
 ### Geändert (2026.10.1-dev.9)
 
 - „Hofladen finden“, Schritt 1: Ist keine KI-Entität gewählt, zeigt der

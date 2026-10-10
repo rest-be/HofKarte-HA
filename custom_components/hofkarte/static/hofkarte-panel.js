@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1-dev.9";
+const PANEL_BUILD = "2026.10.1-dev.10";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -330,7 +330,8 @@ class HofkartePanel extends HTMLElement {
     this.listenSortSpalte = null; // "name" | "adresse" | "geoeffnet"
     this.listenSortRichtung = "asc"; // "asc" | "desc"
     this.listenFilter = ""; // Freitextfilter in der Listenansicht
-    this.karteNurGeoeffnet = false; // Checkbox "nur aktuell geöffnete Hofläden" (Issue #2)
+    this.karteNurGeoeffnet = false; // Filter "Nur geöffnet" - gemeinsam für Kacheln, Liste und Karte (Issue #2, GUI-Überarbeitung)
+    this.uebersichtMenue = false; // ⋮-Menü der Kopfzeile (Import) geöffnet?
     this.karteFehler = ""; // Fehlermeldung beim Laden der Kartenbibliothek (Issue #2)
     this._leafletMap = null; // aktive Leaflet-Karteninstanz, ausserhalb des normalen Render-Zyklus verwaltet; lebt, solange die Kartenansicht offen ist (Befund F10)
     this._leafletResizeHandler = null;
@@ -1320,7 +1321,7 @@ class HofkartePanel extends HTMLElement {
     const L = window.L;
     if (!map || !L) return;
     const alleMitKoordinaten = this.items.filter((item) => isValidWgs84(item.latitude, item.longitude));
-    const markerItems = this.karteNurGeoeffnet ? alleMitKoordinaten.filter((item) => item.geoeffnet === true) : alleMitKoordinaten;
+    const markerItems = this.gefilterteItems().filter((item) => isValidWgs84(item.latitude, item.longitude));
     const signatur = `${this.karteNurGeoeffnet ? 1 : 0}|` + markerItems.map((i) => `${i.id}:${i.latitude},${i.longitude}:${i.geoeffnet}:${i.name}`).join(";");
     if (signatur === this._markerSignatur) return;
 
@@ -1381,6 +1382,41 @@ class HofkartePanel extends HTMLElement {
       .top{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
       .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:20px}
       .view-toggle{display:flex;gap:8px;margin-top:16px}
+      .ico{flex:0 0 auto;vertical-align:middle}
+      button.mit-icon{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 16px;font-weight:500}
+      button.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0;border-radius:50%;background:transparent;color:var(--primary-text-color)}
+      button.icon-btn:hover{background:var(--secondary-background-color)}
+      button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
+      .menue-bereich{position:relative}
+      .menue{position:absolute;right:0;top:48px;z-index:20;min-width:200px;background:var(--ha-card-background,var(--card-background-color));border-radius:8px;box-shadow:0 4px 18px rgba(0,0,0,.3);padding:6px 0}
+      .menue button{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 16px;border-radius:0;background:transparent;color:var(--primary-text-color);text-align:left}
+      .menue button:hover{background:var(--secondary-background-color)}
+      .steuerleiste{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:16px}
+      .steuerleiste .suche{display:flex;align-items:center;gap:8px;flex:1 1 240px;max-width:460px;min-height:44px;margin:0;padding:0 12px;border:1px solid var(--divider-color);border-radius:8px;background:var(--primary-background-color);font-size:1em}
+      .steuerleiste .suche:focus-within{border-color:var(--primary-color);outline:2px solid color-mix(in srgb,var(--primary-color) 35%,transparent)}
+      .steuerleiste .suche input{border:0;outline:0;background:transparent;padding:0;width:auto;flex:1;min-width:0;font-size:1em}
+      .steuerleiste .suche input:focus-visible{outline:0}
+      .steuerleiste .chip{position:relative;display:inline-flex;align-items:center;min-height:44px;margin:0;padding:0 16px;border:1px solid var(--divider-color);border-radius:22px;background:var(--primary-background-color);cursor:pointer;font-weight:500;font-size:.95em}
+      .steuerleiste .chip input{position:absolute;opacity:0;width:100%;height:100%;inset:0;margin:0;padding:0;cursor:pointer}
+      .steuerleiste .chip span{display:inline-flex;align-items:center;gap:6px}
+      .steuerleiste .chip .ico{display:none}
+      .steuerleiste .chip:has(input:checked){background:color-mix(in srgb,var(--primary-color) 16%,transparent);border-color:var(--primary-color)}
+      .steuerleiste .chip:has(input:checked) .ico{display:inline-block}
+      .steuerleiste .chip:has(input:focus-visible){outline:2px solid var(--primary-color);outline-offset:2px}
+      .sortierung{display:flex;align-items:center;gap:2px}
+      .sort-feld{display:flex;align-items:center;gap:8px;min-height:44px;margin:0;padding:0 8px 0 12px;border:1px solid var(--divider-color);border-radius:8px;background:var(--primary-background-color);font-size:.95em}
+      .sort-feld select{width:auto;border:0;background:transparent;padding:0;font-weight:500}
+      .steuer-abstand{flex:1 1 0}
+      .seg{display:inline-flex;border:1px solid var(--divider-color);border-radius:8px;overflow:hidden}
+      .seg button{display:inline-flex;align-items:center;gap:8px;min-height:42px;padding:0 14px;border-radius:0;background:var(--primary-background-color);color:var(--primary-text-color);font-weight:500}
+      .seg button+button{border-left:1px solid var(--divider-color)}
+      .seg button.aktiv{background:color-mix(in srgb,var(--primary-color) 16%,transparent);color:var(--primary-color)}
+      @media(max-width:560px){.seg button span{display:none}.seg button{padding:0 12px}}
+      .kontextleiste{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;padding:6px 8px 6px 16px;min-height:56px;border-radius:8px;background:color-mix(in srgb,var(--primary-color) 14%,transparent)}
+      .kontextleiste[hidden]{display:none}
+      .kontext-anzahl{font-weight:500;margin-right:auto}
+      .zaehler{margin:16px 4px 4px;font-size:.9em}
+      .leerzustand{grid-column:1/-1;text-align:center;padding:40px 16px}
       .tile-card{display:flex;flex-direction:column;gap:6px}
       .tile-image{width:100%;height:140px;object-fit:cover;border-radius:8px;margin-bottom:4px}
       .tile-image-placeholder{display:flex;align-items:center;justify-content:center;background:var(--secondary-background-color);font-size:2.5em}
@@ -1401,16 +1437,11 @@ class HofkartePanel extends HTMLElement {
       .diff-alt{background:color-mix(in srgb, var(--error-color,#db4437) 12%, transparent)}
       .diff-neu{background:color-mix(in srgb, var(--success-color,#43a047) 12%, transparent)}
       @media(max-width:700px){.import-diff{grid-template-columns:1fr}}
-      .list-filter{margin-top:16px}
-      .list-filter input{max-width:360px}
       .table-scroll{overflow-x:auto;margin-top:12px}
       .hoflaeden-table{width:100%;border-collapse:collapse;background:var(--ha-card-background,var(--card-background-color));border-radius:12px;overflow:hidden}
       .hoflaeden-table th,.hoflaeden-table td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--divider-color)}
       .hoflaeden-table tr:last-child td{border-bottom:0}
       .table-sort{background:none;border:0;padding:0;font:inherit;font-weight:600;color:var(--primary-text-color);cursor:pointer;white-space:nowrap}
-      .karte-filter-row{margin-top:16px}
-      .karte-filter-row label{display:flex;align-items:center;gap:8px;margin:0;font-size:.95em;font-weight:normal}
-      .karte-filter-row input[type=checkbox]{width:auto;padding:0}
       .karte-container{height:480px;border-radius:12px;margin-top:12px;background:var(--secondary-background-color)}
       .karte-empty{margin-top:20px}
       .karte-marker-icon{background:transparent;border:0}
@@ -1545,34 +1576,117 @@ class HofkartePanel extends HTMLElement {
     return `<span class="status-badge status-unknown">Unbekannt</span>`;
   }
 
+  /** Schlichte Linien-Icons (24x24, currentColor) für die Übersicht. */
+  static ICONS = {
+    search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    kacheln: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',
+    liste: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+    karte: '<path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4zM8 2v16M16 6v16"/>',
+    mehr: '<circle cx="12" cy="5" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="19" r="1.6" fill="currentColor"/>',
+    hochladen: '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
+    herunterladen: '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+    haken: '<path d="M5 12l5 5 9-10"/>',
+  };
+
+  icon(name) {
+    return `<svg class="ico" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${HofkartePanel.ICONS[name] || ""}</svg>`;
+  }
+
+  /** Kopfzeile: Titel, Hauptaktionen und ⋮-Menü (Import). */
+  kopfzeileHtml() {
+    const offen = this.uebersichtMenue;
+    return `<div class="top"><div><h1>HofKarte</h1><div class="muted">Hofläden verwalten · Panel ${PANEL_BUILD}</div></div>
+      <div class="top-aktionen">
+        <button type="button" class="secondary mit-icon" data-finden-open>${this.icon("search")}Hofladen finden</button>
+        <button type="button" class="mit-icon" data-new>${this.icon("plus")}Hofladen</button>
+        <div class="menue-bereich" data-menue-bereich>
+          <button type="button" class="icon-btn" data-menue-toggle aria-haspopup="menu" aria-expanded="${offen ? "true" : "false"}" aria-label="Weitere Aktionen">${this.icon("mehr")}</button>
+          <div class="menue" role="menu" data-menue ${offen ? "" : "hidden"}>
+            <button type="button" role="menuitem" data-import-start>${this.icon("hochladen")}Import (JSON)</button>
+          </div>
+        </div>
+      </div></div>`;
+  }
+
+  /** Steuerleiste für alle drei Ansichten: Suche, Filter, Sortierung, Ansicht. */
+  steuerleisteHtml() {
+    const spalte = this.listenSortSpalte || "name";
+    const optionen = [["name", "Name"], ["adresse", "Adresse"], ["geoeffnet", "Status"], ["bewertung", "Bewertung"]]
+      .map(([wert, text]) => `<option value="${wert}" ${wert === spalte ? "selected" : ""}>${text}</option>`).join("");
+    const aufsteigend = this.listenSortRichtung === "asc";
+    const ansichten = [["kacheln", "Kacheln"], ["liste", "Liste"], ["karte", "Karte"]]
+      .map(([wert, text]) => `<button type="button" class="${this.uebersichtsAnsicht === wert ? "aktiv" : ""}" data-ansicht="${wert}" aria-pressed="${this.uebersichtsAnsicht === wert ? "true" : "false"}">${this.icon(wert)}<span>${text}</span></button>`).join("");
+    return `<div class="steuerleiste">
+        <label class="suche">${this.icon("search")}<input type="search" data-listen-filter placeholder="Name oder Ort suchen" aria-label="Hofläden suchen" autocomplete="off" value="${this.escAttr(this.listenFilter)}"></label>
+        <label class="chip"><input type="checkbox" data-karte-nur-geoeffnet ${this.karteNurGeoeffnet ? "checked" : ""}><span>${this.icon("haken")}Nur geöffnet</span></label>
+        <div class="sortierung">
+          <label class="sort-feld"><span class="muted">Sortieren</span><select data-sortierung aria-label="Sortieren nach">${optionen}</select></label>
+          <button type="button" class="icon-btn" data-sortrichtung aria-label="${aufsteigend ? "Aufsteigend sortiert, umkehren" : "Absteigend sortiert, umkehren"}" title="Sortierrichtung umkehren">${aufsteigend ? "▲" : "▼"}</button>
+        </div>
+        <span class="steuer-abstand"></span>
+        <div class="seg" role="group" aria-label="Ansicht">${ansichten}</div>
+      </div>`;
+  }
+
+  /** Kontextleiste zur Mehrfachauswahl (Export). Immer im DOM, nur
+   * sichtbar, wenn etwas gewählt ist (Teil-Update, siehe
+   * aktualisiereAuswahlAnzeige()). */
+  kontextleisteHtml() {
+    const n = this.auswahl.size;
+    const sichtbar = n > 0 && this.uebersichtsAnsicht !== "karte";
+    return `<div class="kontextleiste" data-kontextleiste role="status" ${sichtbar ? "" : "hidden"}>
+        <span class="kontext-anzahl" data-auswahl-anzahl>${n} ausgewählt</span>
+        <button type="button" class="secondary" data-auswahl-alle>Alle auswählen</button>
+        <button type="button" class="secondary" data-auswahl-keine>Auswahl aufheben</button>
+        <button type="button" class="mit-icon" data-export ${n ? "" : "disabled"}>${this.icon("herunterladen")}Export</button>
+      </div>`;
+  }
+
+  zaehlerText() {
+    const gesamt = this.items.length;
+    const sichtbar = this.gefilterteItems().length;
+    const gefiltert = !!this.listenFilter.trim() || this.karteNurGeoeffnet;
+    return gefiltert ? `${sichtbar} von ${gesamt} Hofläden` : `${gesamt} Hofläden`;
+  }
+
   list() {
-    const umschalter = `<div class="view-toggle">
-      <button type="button" class="${this.uebersichtsAnsicht === "kacheln" ? "" : "secondary"}" data-ansicht="kacheln">🔲 Kacheln</button>
-      <button type="button" class="${this.uebersichtsAnsicht === "liste" ? "" : "secondary"}" data-ansicht="liste">📋 Liste</button>
-      <button type="button" class="${this.uebersichtsAnsicht === "karte" ? "" : "secondary"}" data-ansicht="karte">🗺️ Karte</button>
-    </div>`;
     const inhalt = !this.items.length
       ? `<section class="card"><h2>Noch keine Hofläden</h2><p>Erstelle den ersten Hofladen.</p></section>`
       : (this.uebersichtsAnsicht === "liste" ? this.listTable() : this.uebersichtsAnsicht === "karte" ? this.karteAnsicht() : this.listGrid());
-    // Mehrfachauswahl (Checkboxen) sowie Export/Import gibt es bewusst
-    // nur in Kacheln- und Listenansicht (Issue #5) - in der Kartenansicht
-    // fehlt dafür ein sinnvoller Anwendungsfall.
-    const exportImportLeiste = this.items.length && this.uebersichtsAnsicht !== "karte"
-      ? `<div class="export-import-row">
-          <span class="muted" data-auswahl-anzahl>${this.auswahl.size} ausgewählt</span>
-          <button type="button" class="secondary" data-auswahl-alle>Alle auswählen</button>
-          <button type="button" class="secondary" data-auswahl-keine>Auswahl aufheben</button>
-          <button type="button" class="secondary" data-export ${this.auswahl.size ? "" : "disabled"}>⬇️ Export</button>
-          <button type="button" class="secondary" data-import-start>⬆️ Import</button>
-          <input type="file" accept="application/json" data-import-input hidden>
-        </div>`
+    const meldungen = `${this.message ? `<div class="notice">${this.esc(this.message)}</div>` : ""}${this.error ? `<div class="notice error">${this.esc(this.error)}${this._loadFailed ? ` <button type="button" class="secondary" data-erneut-laden>Erneut versuchen</button>` : ""}</div>` : ""}`;
+    const steuerung = this.items.length
+      ? `${this.steuerleisteHtml()}${this.kontextleisteHtml()}<p class="zaehler muted" data-zaehler aria-live="polite">${this.esc(this.zaehlerText())}</p>`
       : "";
+    return `${this.kopfzeileHtml()}${meldungen}<input type="file" accept="application/json" data-import-input hidden>${steuerung}${inhalt}`;
+  }
 
-    return `<div class="top"><div><h1>HofKarte</h1><div class="muted">Hofläden verwalten · Panel ${PANEL_BUILD}</div></div><div class="top-aktionen"><button type="button" class="secondary" data-finden-open>🔎 Hofladen finden</button><button data-new>+ Neuer Hofladen</button></div></div>${this.message ? `<div class="notice">${this.esc(this.message)}</div>` : ""}${this.error ? `<div class="notice error">${this.esc(this.error)}${this._loadFailed ? ` <button type="button" class="secondary" data-erneut-laden>Erneut versuchen</button>` : ""}</div>` : ""}${this.items.length ? umschalter : ""}${exportImportLeiste}${inhalt}`;
+  /** Teil-Updates der Übersicht nach Änderung von Suche/Filter (ohne
+   * vollständigen Render: Eingabefeld, Fokus und Karte bleiben bestehen). */
+  aktualisiereUebersicht() {
+    const zaehler = this._mainEl.querySelector("[data-zaehler]");
+    if (zaehler) zaehler.textContent = this.zaehlerText();
+    if (this.uebersichtsAnsicht === "liste") this.aktualisiereListe();
+    else if (this.uebersichtsAnsicht === "karte") this.aktualisiereMarker();
+    else this.aktualisiereKacheln();
+  }
+
+  aktualisiereKacheln() {
+    const raster = this._mainEl.querySelector("[data-kacheln]");
+    if (raster) raster.innerHTML = this.kachelnInhaltHtml();
+  }
+
+  /** Inhalt des Kachelrasters (auch Leerzustand bei leerem Filterergebnis). */
+  kachelnInhaltHtml() {
+    const zeilen = this.sortierteGefilterteItems();
+    if (!zeilen.length) {
+      return `<section class="card leerzustand"><h2>Keine Treffer</h2><p class="muted">Für diese Suche und diese Filter gibt es keinen Hofladen.</p><button type="button" class="secondary" data-filter-zuruecksetzen>Filter zurücksetzen</button></section>`;
+    }
+    return zeilen.map(item => this.listCard(item)).join("");
   }
 
   listGrid() {
-    return `<div class="grid">${this.items.map(item => this.listCard(item)).join("")}</div>`;
+    return `<div class="grid" data-kacheln>${this.kachelnInhaltHtml()}</div>`;
   }
 
   /** Bild nur rendern, wenn die URL die Sicherheitsprüfung besteht (F12);
@@ -1636,26 +1750,30 @@ class HofkartePanel extends HTMLElement {
 
   /** Sortierte, gefilterte Zeilen für die Listenansicht (rein
    * clientseitig – kein neuer Backend-Endpunkt nötig, siehe Issue #1). */
-  sortierteGefilterteItems() {
+  /** Gefilterte Hofläden (Suche + "Nur geöffnet"), gemeinsam für Kacheln,
+   * Liste und Karte. */
+  gefilterteItems() {
     const filterText = this.listenFilter.trim().toLowerCase();
-    let ergebnis = !filterText ? this.items : this.items.filter(item => {
+    return this.items.filter(item => {
+      if (this.karteNurGeoeffnet && item.geoeffnet !== true) return false;
+      if (!filterText) return true;
       const k = this.sortSchluessel(item);
       return k.name.includes(filterText) || k.adresse.includes(filterText);
     });
+  }
 
-    if (this.listenSortSpalte) {
-      const spalte = this.listenSortSpalte;
-      const richtung = this.listenSortRichtung === "asc" ? 1 : -1;
-      const wert = (item) => {
-        const k = this.sortSchluessel(item);
-        return spalte in k ? k[spalte] : String(item[spalte] || "").toLowerCase();
-      };
-      ergebnis = [...ergebnis].sort((a, b) => {
-        const wa = wert(a), wb = wert(b);
-        return wa < wb ? -richtung : wa > wb ? richtung : 0;
-      });
-    }
-    return ergebnis;
+  sortierteGefilterteItems() {
+    const ergebnis = this.gefilterteItems();
+    const spalte = this.listenSortSpalte || "name";
+    const richtung = this.listenSortRichtung === "asc" ? 1 : -1;
+    const wert = (item) => {
+      const k = this.sortSchluessel(item);
+      return spalte in k ? k[spalte] : String(item[spalte] || "").toLowerCase();
+    };
+    return [...ergebnis].sort((a, b) => {
+      const wa = wert(a), wb = wert(b);
+      return wa < wb ? -richtung : wa > wb ? richtung : 0;
+    });
   }
 
   /** Tabellenzeilen der Listenansicht (auch für das Teil-Update beim
@@ -1689,17 +1807,16 @@ class HofkartePanel extends HTMLElement {
     if (zaehler) zaehler.textContent = `${this.auswahl.size} ausgewählt`;
     const export_ = this._mainEl.querySelector("[data-export]");
     if (export_) export_.disabled = this.auswahl.size === 0;
+    const leiste = this._mainEl.querySelector("[data-kontextleiste]");
+    if (leiste) leiste.hidden = this.auswahl.size === 0 || this.uebersichtsAnsicht === "karte";
     this._mainEl.querySelectorAll("[data-auswahl]").forEach((cb) => { cb.checked = this.auswahl.has(cb.dataset.auswahl); });
   }
 
   listTable() {
     const zeilen = this.sortierteGefilterteItems();
-    const pfeil = (spalte) => this.listenSortSpalte === spalte ? (this.listenSortRichtung === "asc" ? " ▲" : " ▼") : "";
+    const pfeil = (spalte) => (this.listenSortSpalte || "name") === spalte ? (this.listenSortRichtung === "asc" ? " ▲" : " ▼") : "";
 
-    return `<div class="list-filter">
-        <input type="text" data-listen-filter placeholder="Nach Name oder Adresse filtern …" value="${this.escAttr(this.listenFilter)}">
-      </div>
-      <div class="table-scroll">
+    return `<div class="table-scroll">
         <table class="hoflaeden-table">
           <thead>
             <tr>
@@ -1729,15 +1846,12 @@ class HofkartePanel extends HTMLElement {
       return `<section class="card karte-empty"><p class="muted">Keine Hofläden mit hinterlegten Koordinaten vorhanden – es kann keine Karte angezeigt werden.</p></section>`;
     }
 
-    const gefiltert = this.karteNurGeoeffnet ? alleMitKoordinaten.filter((item) => item.geoeffnet === true) : alleMitKoordinaten;
+    const gefiltert = this.gefilterteItems().filter((item) => isValidWgs84(item.latitude, item.longitude));
 
     // Das Leaflet-Stylesheet liegt dauerhaft ausserhalb von <main> (siehe
     // sorgeFuerKarteCss()). Der Platzhalter [data-karte-container] wird in
     // initKarte() durch den dauerhaften Karten-Container ersetzt.
-    return `<div class="karte-filter-row">
-        <label><input type="checkbox" data-karte-nur-geoeffnet ${this.karteNurGeoeffnet ? "checked" : ""}> Nur aktuell geöffnete Hofläden anzeigen</label>
-      </div>
-      <div class="notice error" data-karte-fehler ${this.karteFehler ? "" : "hidden"}><span data-karte-fehler-text>${this.esc(this.karteFehler)}</span> <button type="button" class="secondary" data-karte-erneut>Erneut versuchen</button></div>
+    return `<div class="notice error" data-karte-fehler ${this.karteFehler ? "" : "hidden"}><span data-karte-fehler-text>${this.esc(this.karteFehler)}</span> <button type="button" class="secondary" data-karte-erneut>Erneut versuchen</button></div>
       <div class="karte-container" data-karte-container></div>
       <p class="muted" data-karte-leer style="margin-top:8px" ${gefiltert.length ? "hidden" : ""}>Kein Hofladen entspricht aktuell diesem Filter.</p>`;
   }
@@ -2456,6 +2570,13 @@ class HofkartePanel extends HTMLElement {
 
   // --- Ereignisbindung -----------------------------------------------
 
+  schalteMenue(offen) {
+    this.uebersichtMenue = offen;
+    const menue = this._mainEl.querySelector("[data-menue]");
+    if (menue) menue.hidden = !offen;
+    this._mainEl.querySelector("[data-menue-toggle]")?.setAttribute("aria-expanded", offen ? "true" : "false");
+  }
+
   /** Einmalig im Konstruktor gebundene Event-Delegation auf <main>
    * (Befund F10): <main> bleibt über alle Renders bestehen, es entstehen
    * daher keine Listener pro Kachel/Zeile/Render mehr. */
@@ -2464,6 +2585,23 @@ class HofkartePanel extends HTMLElement {
     main.addEventListener("click", (e) => {
       const ziel = e.target instanceof Element ? e.target : null;
       if (!ziel) return;
+      // ⋮-Menü der Kopfzeile: Klick auf den Knopf schaltet um, Klick
+      // irgendwo sonst schliesst es (ohne Render, nur hidden/aria).
+      const menueKnopf = ziel.closest("[data-menue-toggle]");
+      if (menueKnopf) { this.schalteMenue(!this.uebersichtMenue); return; }
+      if (this.uebersichtMenue && !ziel.closest("[data-menue]")) this.schalteMenue(false);
+      if (ziel.closest("[data-menue] [data-import-start]")) this.schalteMenue(false);
+      if (ziel.closest("[data-filter-zuruecksetzen]")) {
+        this.listenFilter = "";
+        this.karteNurGeoeffnet = false;
+        this.render();
+        return;
+      }
+      if (ziel.closest("[data-sortrichtung]")) {
+        this.listenSortRichtung = this.listenSortRichtung === "asc" ? "desc" : "asc";
+        this.render();
+        return;
+      }
       const a = ziel.closest("[data-ansicht]");
       if (a) {
         this.uebersichtsAnsicht = a.dataset.ansicht;
@@ -2501,7 +2639,10 @@ class HofkartePanel extends HTMLElement {
         this.aktualisiereAuswahlAnzeige();
       } else if (ziel.matches("[data-karte-nur-geoeffnet]")) {
         this.karteNurGeoeffnet = ziel.checked;
-        this.aktualisiereMarker(); // nur die Marker-Ebene tauschen, kein Render
+        this.aktualisiereUebersicht(); // Teil-Update: Kacheln/Zeilen bzw. nur die Marker-Ebene, kein Render
+      } else if (ziel.matches("[data-sortierung]")) {
+        if (this.listenSortSpalte !== ziel.value) { this.listenSortSpalte = ziel.value; this.listenSortRichtung = "asc"; }
+        this.render();
       }
     });
     main.addEventListener("input", (e) => {
@@ -2514,7 +2655,7 @@ class HofkartePanel extends HTMLElement {
       this._filterTimer = setTimeout(() => {
         this._filterTimer = null;
         this.listenFilter = wert;
-        this.aktualisiereListe();
+        this.aktualisiereUebersicht();
       }, 150);
     });
     // Rückfall auf das Original, falls eine 256x256-Vorschau nicht
@@ -2537,7 +2678,7 @@ class HofkartePanel extends HTMLElement {
     // <main> (siehe bindDelegiert(), Befund F10) - hier nicht je Element.
     // --- Export/Import (Issue #5) ---
     this.shadowRoot.querySelector("[data-auswahl-alle]")?.addEventListener("click", () => {
-      this.items.forEach((item) => this.auswahl.add(item.id));
+      this.gefilterteItems().forEach((item) => this.auswahl.add(item.id)); // nur die sichtbaren (gefilterten)
       this.aktualisiereAuswahlAnzeige();
     });
     this.shadowRoot.querySelector("[data-auswahl-keine]")?.addEventListener("click", () => {
@@ -3243,6 +3384,11 @@ class HofkartePanel extends HTMLElement {
       }
     });
     main.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && this.uebersichtMenue) {
+        this.schalteMenue(false);
+        this.shadowRoot.querySelector("[data-menue-toggle]")?.focus();
+        return;
+      }
       if (e.key === "Escape" && this.finden && e.target instanceof Element && e.target.closest("[data-finden-overlay]")) {
         e.stopPropagation();
         this.schliesseFinden();
