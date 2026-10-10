@@ -448,3 +448,54 @@ def test_karte_liste_zeigt_hofladen_ohne_koordinaten_und_maskiert_namen() -> Non
     )
     assert any("keine Koordinaten" in x for x in ergebnis["texte"])
     assert ergebnis["img"] is False and ergebnis["xss"] is False
+
+
+@braucht_jsdom
+def test_menue_wird_beim_oeffnen_deckend_berechnet_und_hebt_die_kachel_an() -> None:
+    ergebnis = _node(
+        r"""
+    const t = bauen({ n: 2 });
+    await sleep(100);
+    const gesehen = [];
+    t.w.HTMLCanvasElement.prototype.getContext = function () {
+      return { set fillStyle(v) { gesehen.push(v); }, fillRect() {}, getImageData: () => ({ data: [10, 20, 30, 255] }) };
+    };
+    await t.klick(t.q("[data-kachel-menue-toggle]"));
+    const menue = t.q("[data-kachel-menue]");
+    const css = t.sr.querySelector("style").textContent;
+    // Kopfzeilen-Menü ebenso
+    await t.klick(t.q("[data-menue-toggle]"));
+    console.log(JSON.stringify({ bg: menue.style.backgroundColor, bild: menue.style.backgroundImage, kopf: t.q("[data-menue]").style.backgroundColor, gesehen: gesehen.length > 1, anheben: css.includes(".tile-card:has([data-kachel-menue]:not([hidden])){z-index:10}") }));
+    process.exit(0);
+    """
+    )
+    assert ergebnis["bg"] == "rgb(10, 20, 30)" and ergebnis["bild"] == "none"
+    assert ergebnis["kopf"] == "rgb(10, 20, 30)"
+    assert ergebnis["gesehen"] and ergebnis["anheben"]
+
+
+@braucht_jsdom
+def test_menue_tastatur_fokus_pfeiltasten_und_escape() -> None:
+    ergebnis = _node(
+        r"""
+    const t = bauen({ n: 2 });
+    await sleep(100);
+    const knopf = t.q("[data-kachel-menue-toggle]");
+    await t.klick(knopf); // Tastatur-Aktivierung (detail 0) -> Fokus auf ersten Eintrag
+    const eintraege = [...t.qa("[data-kachel-menue]")[0].querySelectorAll("[role=menuitem]")];
+    const aktiv = () => eintraege.indexOf(t.sr.activeElement);
+    const start = aktiv();
+    const taste = async (key) => { t.sr.activeElement.dispatchEvent(new t.w.KeyboardEvent("keydown", { key, bubbles: true, composed: true })); await sleep(10); };
+    await taste("ArrowDown"); const nachUnten = aktiv();
+    await taste("End"); const ende = aktiv();
+    await taste("ArrowDown"); const umlauf = aktiv();
+    await taste("ArrowUp"); const zurueck = aktiv();
+    await taste("Escape");
+    console.log(JSON.stringify({ start, nachUnten, ende, umlauf, zurueck, anzahl: eintraege.length, fokusKnopf: t.sr.activeElement === knopf }));
+    process.exit(0);
+    """
+    )
+    n = ergebnis["anzahl"]
+    assert ergebnis["start"] == 0 and ergebnis["nachUnten"] == 1
+    assert ergebnis["ende"] == n - 1 and ergebnis["umlauf"] == 0 and ergebnis["zurueck"] == n - 1
+    assert ergebnis["fokusKnopf"] is True

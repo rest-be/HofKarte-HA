@@ -106,46 +106,57 @@ können Hofläden verwaltet werden:
 
 ### Übersicht: Kacheln, Liste oder Karte
 
-Oben auf der Übersichtsseite steht ein Umschalter
-„🔲 Kacheln“/„📋 Liste“/„🗺️ Karte“ zur Verfügung:
+Die Übersicht hat in allen drei Ansichten dieselbe **Kopf- und
+Steuerleiste**:
+
+- **Kopfzeile:** „Hofladen finden“, „Hofladen“ (neu anlegen) und ein
+  ⋮-Menü mit dem Import (JSON).
+- **Suche** nach Name oder Ort, der Filter **„Nur geöffnet“** (fehlende
+  Öffnungszeiten zählen dabei **nicht** als geöffnet), die **Sortierung**
+  (Name, Adresse, Ort, Status, Bewertung; Pfeil kehrt die Richtung um)
+  und der Umschalter **Kacheln / Liste / Karte**. Suche, Filter und
+  Sortierung gelten gemeinsam für alle drei Ansichten und bleiben beim
+  Wechsel erhalten. Darunter zeigt ein Zähler „x von y Hofläden“ das
+  Ergebnis; ohne Treffer erscheint ein Hinweis mit „Filter
+  zurücksetzen“.
+
+Die drei Ansichten:
 
 - **Kacheln** (Standardansicht): eine Kachel pro Hofladen mit Hauptbild
-  (oder einem neutralen Platzhalter, falls keines hinterlegt ist),
-  Name, Adresse, anklickbarer Webseite (sofern hinterlegt und gültig),
-  einem Hinweis „🟢 Geöffnet“/„🔴 Geschlossen“/„Unbekannt“, einer ggf.
-  vergebenen Sterne-Bewertung neben diesem Status-Hinweis sowie – bei
-  hinterlegter Adresse oder gültigen Koordinaten – einer kompakten
-  Routing-Auswahl (siehe unten).
-- **Liste:** eine Tabelle mit den Spalten Name, Adresse, Status,
-  Bewertung und Route, **jede Spalte einzeln sortierbar** (Klick auf
-  die Kopfzeile, erneuter Klick kehrt die Richtung um). Welches Feld
-  beim Öffnen vorausgewählt ist, lässt sich über den Options Flow
-  dauerhaft vorgeben (siehe Kapitel 3). Ein Freitextfeld oberhalb der
-  Tabelle filtert nach Name oder Adresse; jede Zeile hat ebenfalls die
-  Routing-Auswahl.
-- **Karte:** eine eingebettete Karte mit einer Stecknadel je Hofladen
-  mit hinterlegten Koordinaten – je nach Öffnungsstatus grün
-  (geöffnet) oder grau (geschlossen) eingefärbt, sonst in der
-  bisherigen Standardfarbe. Ein Klick auf eine Stecknadel öffnet
-  ein kleines Fenster mit dem Namen des Hofladens und einem Button
-  „Zur Detailansicht“. Die Karte passt ihren Ausschnitt automatisch so
-  an, dass alle angezeigten Stecknadeln sichtbar sind. Eine Checkbox
-  „Nur aktuell geöffnete Hofläden anzeigen“ blendet Hofläden aus, die
-  gerade nicht geöffnet sind oder deren Status unbekannt ist (fehlende
-  Öffnungszeiten zählen dabei **nicht** als geöffnet). Sind für keinen
-  Hofladen Koordinaten hinterlegt, erscheint statt einer leeren Karte
-  ein entsprechender Hinweis. Die Kartenkacheln werden von
-  OpenStreetMap geladen, sobald diese Ansicht zum ersten Mal geöffnet
-  wird (siehe Kapitel 14, Datenschutz).
+  (oder neutralem Platzhalter), Name, Adresse, Öffnungsstatus
+  („🟢 Geöffnet“/„🔴 Geschlossen“/„Unbekannt“), Sterne-Bewertung und
+  anklickbarer Webseite. **Die ganze Kachel ist anklickbar** und öffnet
+  die Detailansicht. Das **⋮-Menü** der Kachel enthält Route (Google
+  Maps / Apple Maps), Bearbeiten und – zuunterst, rot – Löschen (mit
+  Rückfrage). Checkboxen erscheinen nur im **Auswahlmodus** („Auswählen“
+  in der Steuerleiste, Beenden mit „Auswahl beenden“).
+- **Liste:** eine Tabelle mit Auswahl-Checkbox, Name (mit Adresse
+  darunter), Ort, Status, Bewertung und ⋮-Menü (gleiche Einträge wie
+  bei den Kacheln). Die Spaltenköpfe sind sortierbar (Klick, erneuter
+  Klick kehrt um); die Kopf-Checkbox wählt alle sichtbaren Zeilen. Auf
+  schmalen Bildschirmen entfallen Ort und Bewertung. Welches Feld beim
+  Öffnen vorausgewählt ist, lässt sich über den Options Flow vorgeben
+  (siehe Kapitel 3).
+- **Karte:** links eine Liste aller Treffer, rechts die eingebettete
+  Karte (auf Mobilgeräten Karte oben, Liste darunter) mit einer
+  Stecknadel je Hofladen mit hinterlegten Koordinaten. Die Farben (grün
+  geöffnet, grau geschlossen, sonst Standardfarbe) erklärt eine Legende
+  unter der Karte. Ein Klick auf einen Listeneintrag zentriert die Karte
+  und öffnet die Info-Karte (Name, Adresse, Status, Bewertung,
+  „Details“, „Route“); umgekehrt hebt ein Klick auf eine Stecknadel den
+  Eintrag in der Liste hervor. Hofläden ohne Koordinaten stehen in der
+  Liste („keine Koordinaten“), erscheinen aber nicht auf der Karte. Sind
+  für keinen Hofladen Koordinaten hinterlegt, erscheint statt der Karte
+  ein Hinweis. Die Kartenkacheln werden von OpenStreetMap geladen, sobald
+  diese Ansicht zum ersten Mal geöffnet wird (siehe Kapitel 14,
+  Datenschutz).
 
-In den Ansichten „Kacheln“ und „Liste“ öffnet ein Klick auf den
-**Namen** eines Hofladens direkt dessen Detailansicht (Kapitel 4
-unten) – zusätzlich zu den bestehenden Buttons
-„Details“/„Bearbeiten“/„Löschen“. In der Kartenansicht führt
-stattdessen der Button „Zur Detailansicht“ im Popup einer Stecknadel
-zum selben Ziel. Der Hinweis „Geöffnet“/„Geschlossen“ wird serverseitig
-berechnet und stimmt daher stets mit dem tatsächlichen Zustand der
-Entity „Geöffnet“ (Kapitel 5) überein.
+**Tastatur:** Das ⋮-Menü öffnet sich per Enter/Leertaste mit Fokus auf dem
+ersten Eintrag; Pfeil hoch/runter, Pos1 und Ende bewegen den Fokus,
+Escape schliesst das Menü und setzt den Fokus auf den Knopf zurück.
+
+Der Öffnungsstatus wird serverseitig berechnet und stimmt daher stets
+mit der Entity „Geöffnet“ (Kapitel 5) überein.
 
 - **Neuer Hofladen:** über die Verwaltungsseite anlegen (Name,
   Beschreibung, Bemerkung, Adresse, PLZ/Ort, Land, Koordinaten,
@@ -162,10 +173,12 @@ Entity „Geöffnet“ (Kapitel 5) überein.
 
 ### Hofläden exportieren und importieren
 
-In den Ansichten „Kacheln“ und „Liste“ steht neben jedem Hofladen eine
-Checkbox „Auswählen“ zur Verfügung (in der Listenansicht als eigene
-Spalte). Über der Übersicht erscheinen dazu passend die Buttons
-„Alle auswählen“, „Auswahl aufheben“, „⬇️ Export“ und „⬆️ Import“:
+In der Ansicht „Liste“ steht in jeder Zeile eine Auswahl-Checkbox, in
+den „Kacheln“ erscheinen die Checkboxen nach Klick auf „Auswählen“. Sobald
+etwas gewählt ist (bzw. im Auswahlmodus), zeigt eine Leiste die Anzahl
+und die Buttons „Alle auswählen“ (nur die gerade sichtbaren Treffer),
+„Auswahl aufheben“ und „Export“. Der Import (JSON) liegt im ⋮-Menü der
+Kopfzeile:
 
 - **Export:** Mindestens einen Hofladen auswählen und auf „⬇️ Export“
   klicken – der Browser lädt eine einzelne JSON-Datei mit allen
@@ -474,9 +487,10 @@ Speichern kontrollieren. Der Button ist ausgegraut/deaktiviert, solange
 keine gültigen Koordinaten eingegeben sind. Die Kartenansicht ist rein
 informativ – es lassen sich dort keine Daten verändern.
 
-**Route zum Hofladen öffnen:** In den Ansichten „Kacheln“, „Liste“ und
-„Details“ steht statt dieses Kartenlinks eine kompakte Routing-Auswahl
-mit zwei Icon-Buttons zur Verfügung:
+**Route zum Hofladen öffnen:** In den Kacheln und der Liste liegt die Route
+im ⋮-Menü des Hofladens („Route (Google Maps)“ / „Route (Apple Maps)“), in
+der Detailansicht stehen statt des Kartenlinks zwei Icon-Buttons zur
+Verfügung:
 
 - 🗺️ öffnet eine Wegbeschreibung zum Hofladen in **Google Maps**.
 - 🧭 öffnet dieselbe Wegbeschreibung in **Apple Maps**.

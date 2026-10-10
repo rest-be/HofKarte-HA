@@ -133,16 +133,15 @@ Nach der Einrichtung steht im Home-Assistant-Seitenmenü die
 Verwaltungsseite **HofKarte** zur Verfügung (nur für Administratoren
 sichtbar).
 
-**Übersicht (Kacheln, Liste oder Karte):** Ein Umschalter oberhalb der
-Übersicht wechselt zwischen einer **Kachel-Ansicht** (Hauptbild oder
-Platzhalter, Name, Adresse, anklickbare Webseite, Öffnungsstatus,
-Routing-Auswahl), einer **sortierbaren Listen-/Tabellenansicht** (Name,
-Adresse, Status – jede Spalte einzeln sortierbar, inkl. Freitextfilter
-und Routing-Auswahl je Zeile) und einer **eingebetteten Kartenansicht**
-mit einer Stecknadel je Hofladen mit hinterlegten Koordinaten (Klick
-öffnet ein Popup mit Namen und Button „Zur Detailansicht“; optionale
-Checkbox „Nur aktuell geöffnete Hofläden anzeigen“). In Kacheln und
-Liste öffnet ein Klick auf den Namen direkt die Detailansicht. Der
+**Übersicht (Kacheln, Liste oder Karte):** Eine gemeinsame Steuerleiste
+(Suche, „Nur geöffnet“, Sortierung, Umschalter) gilt für alle drei
+Ansichten. **Kacheln:** ganze Kachel anklickbar (Details), ⋮-Menü mit
+Route, Bearbeiten und Löschen; Auswahl-Checkboxen im Auswahlmodus.
+**Liste:** sortierbare Spalten (Name & Adresse, Ort, Status, Bewertung),
+Kopf-Checkbox, ⋮-Menü je Zeile. **Karte:** Seitenliste neben der
+eingebetteten Karte, abgeglichen mit den Stecknadeln, Info-Karte im Popup
+und Legende der Statusfarben. Ausführlich im Handbuch
+(`docs/handbuch.md`, „Übersicht“). Der
 Öffnungsstatus wird serverseitig über dieselbe Funktion berechnet, die
 auch die Entity „Geöffnet“ verwendet (`opening_hours.is_open`, siehe
 `management.py`) – keine abweichende Berechnung im Browser. Details
@@ -219,9 +218,10 @@ Button ist deaktiviert, solange keine gültigen Koordinaten hinterlegt
 sind. Öffnet nur eine externe, rein lesende Kartenansicht – verändert
 keine Daten.
 
-**Route zum Hofladen (Kacheln, Liste, Details):** In diesen drei
-Ansichten steht statt des Kartenlinks eine kompakte Routing-Auswahl
-mit zwei Icon-Buttons zur Verfügung: 🗺️ öffnet eine Wegbeschreibung
+**Route zum Hofladen (Kacheln, Liste, Details):** In Kacheln und Liste
+liegen beide Routen im ⋮-Menü des Hofladens, in der Detailansicht steht
+statt des Kartenlinks eine kompakte Routing-Auswahl mit zwei
+Icon-Buttons zur Verfügung: 🗺️ öffnet eine Wegbeschreibung
 (Route, nicht nur ein Pin) in Google Maps, 🧭 dieselbe Wegbeschreibung
 in Apple Maps – jeweils in einem neuen Browser-Tab, ausgehend vom
 aktuellen Standort. Ist eine Adresse hinterlegt, wird sie als

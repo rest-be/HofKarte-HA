@@ -15,6 +15,13 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Geändert (2026.10.1-dev.14) – GUI-Überarbeitung, Phase 5 (Feinschliff)
+
+- Behoben: Das ⋮-Menü der Kacheln war weiterhin durchsichtig, wenn das HA-Theme halbtransparente Kartenfarben oder Verläufe als Hintergrund nutzt. Das Menü berechnet beim Öffnen eine deckende Farbe aus den Hintergründen der Elternelemente; ein offenes Kachelmenü liegt zudem über den Nachbarkacheln.
+- Tastatur/Zugänglichkeit: Menüs öffnen per Tastatur mit Fokus auf dem ersten Eintrag; Pfeil hoch/runter, Pos1 und Ende bewegen den Fokus (WAI-ARIA Menu Pattern); Escape schliesst und gibt den Fokus zurück.
+- Doku: README und Handbuch beschreiben die überarbeitete Übersicht (Steuerleiste, Kacheln, Liste, Karte, Auswahlmodus, Tastatur).
+- Tests: 2 neue jsdom-Tests (deckendes Menü, Tastaturbedienung).
+
 ### Geändert (2026.10.1-dev.13) – GUI-Überarbeitung, Phase 4 (Karte)
 
 - Karte: Seitenliste mit allen Treffern (gleiche Suche, «Nur geöffnet» und Sortierung wie Kacheln/Liste) neben der Karte; auf schmalen Bildschirmen Karte oben, Liste darunter.

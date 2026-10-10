@@ -37,4 +37,4 @@ wird der Test in derselben Phase angepasst und im CHANGELOG vermerkt.
 | 2 | Kacheln | dev.11 (erledigt) |
 | 3 | Liste | dev.12 (erledigt) |
 | 4 | Karte | dev.13 (erledigt) |
-| 5 | Feinschliff, Zugänglichkeit, Doku | dev.14 |
+| 5 | Feinschliff, Zugänglichkeit, Doku | dev.14 (erledigt) |

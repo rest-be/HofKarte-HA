@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1-dev.13";
+const PANEL_BUILD = "2026.10.1-dev.14";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -1438,6 +1438,9 @@ class HofkartePanel extends HTMLElement {
       .tile-card .kachel-menue-bereich,.tile-card a{position:relative;z-index:1}
       .tile-card .kachel-auswahl{z-index:1}
       .kachel-menue-bereich{margin:-4px -6px -4px 0;flex:0 0 auto}
+      .tile-card:has([data-kachel-menue]:not([hidden])){z-index:10}
+      .hoflaeden-table tr:has([data-kachel-menue]:not([hidden])){position:relative;z-index:10}
+      .tile-card .kachel-menue-bereich:has([data-kachel-menue]:not([hidden])){z-index:11}
       .kachel-menue-bereich .icon-btn{width:36px;height:36px}
       .kachel-menue-bereich .menue{top:36px;z-index:30;min-width:230px;white-space:nowrap}
       .menue a{display:flex;align-items:center;gap:12px;min-height:44px;padding:0 16px;color:var(--primary-text-color);text-decoration:none}
@@ -2756,21 +2759,65 @@ class HofkartePanel extends HTMLElement {
 
   // --- Ereignisbindung -----------------------------------------------
 
-  schalteMenue(offen) {
+  /** Menü garantiert deckend machen: Manche HA-Themes liefern halbtransparente
+   * oder gar keine einfachen Farbwerte (Verläufe, Bilder, Alpha) – dann wäre ein
+   * Menü per CSS-Variable durchsichtig. Darum werden beim Öffnen die
+   * Hintergrundfarben aller Eltern (über Shadow-Grenzen hinweg) auf Weiss
+   * zu einer deckenden Farbe verrechnet (Canvas normalisiert jede CSS-Farbe). */
+  menueDeckend(menue) {
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return;
+      const kette = [];
+      for (let n = menue.parentNode; n; n = n.parentNode || n.host) {
+        if (n.nodeType === 1) kette.push(n);
+        if (n === document.documentElement) break;
+      }
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, 1, 1);
+      for (const el of kette.reverse()) {
+        const farbe = getComputedStyle(el).backgroundColor;
+        if (!farbe || farbe === "transparent") continue;
+        ctx.fillStyle = "#00000000"; // Zurücksetzen, damit ein ungültiger Wert nicht den vorherigen übernimmt
+        ctx.fillStyle = farbe;
+        ctx.fillRect(0, 0, 1, 1);
+      }
+      const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+      menue.style.backgroundImage = "none";
+      menue.style.backgroundColor = `rgb(${r},${g},${b})`;
+    } catch (_) { /* ohne Canvas bleibt die CSS-Vorgabe */ }
+  }
+
+  /** Fokus auf den ersten Eintrag eines geöffneten Menüs. */
+  fokussiereMenueEintrag(menue, ziel = "erster") {
+    const eintraege = [...menue.querySelectorAll('[role="menuitem"]')];
+    if (!eintraege.length) return;
+    (ziel === "letzter" ? eintraege[eintraege.length - 1] : eintraege[0]).focus();
+  }
+
+  schalteMenue(offen, mitFokus = false) {
     this.uebersichtMenue = offen;
     const menue = this._mainEl.querySelector("[data-menue]");
-    if (menue) menue.hidden = !offen;
+    if (menue) {
+      menue.hidden = !offen;
+      if (offen) { this.menueDeckend(menue); if (mitFokus) this.fokussiereMenueEintrag(menue); }
+    }
     this._mainEl.querySelector("[data-menue-toggle]")?.setAttribute("aria-expanded", offen ? "true" : "false");
   }
 
   /** Kachel-⋮-Menü öffnen/schliessen (nur hidden/aria, kein Render). */
-  schalteKachelMenue(id) {
+  schalteKachelMenue(id, mitFokus = false) {
     this.kachelMenue = id;
     this._mainEl.querySelectorAll("[data-kachel-menue-toggle]").forEach((knopf) => {
       const offen = id !== null && knopf.dataset.kachelMenueToggle === id;
       knopf.setAttribute("aria-expanded", offen ? "true" : "false");
       const menue = knopf.parentElement?.querySelector("[data-kachel-menue]");
-      if (menue) menue.hidden = !offen;
+      if (menue) {
+        menue.hidden = !offen;
+        if (offen) { this.menueDeckend(menue); if (mitFokus) this.fokussiereMenueEintrag(menue); }
+      }
     });
   }
 
@@ -2785,11 +2832,11 @@ class HofkartePanel extends HTMLElement {
       // ⋮-Menü der Kopfzeile: Klick auf den Knopf schaltet um, Klick
       // irgendwo sonst schliesst es (ohne Render, nur hidden/aria).
       const menueKnopf = ziel.closest("[data-menue-toggle]");
-      if (menueKnopf) { this.schalteMenue(!this.uebersichtMenue); return; }
+      if (menueKnopf) { this.schalteMenue(!this.uebersichtMenue, e.detail === 0); return; }
       const kachelKnopf = ziel.closest("[data-kachel-menue-toggle]");
       if (kachelKnopf) {
         const id = kachelKnopf.dataset.kachelMenueToggle;
-        this.schalteKachelMenue(this.kachelMenue === id ? null : id);
+        this.schalteKachelMenue(this.kachelMenue === id ? null : id, e.detail === 0);
         return;
       }
       if (this.kachelMenue !== null) this.schalteKachelMenue(null); // Klick irgendwo sonst (auch auf einen Menüeintrag) schliesst
@@ -3599,6 +3646,17 @@ class HofkartePanel extends HTMLElement {
       }
     });
     main.addEventListener("keydown", (e) => {
+      // Pfeiltasten/Pos1/Ende innerhalb eines geöffneten Menüs (WAI-ARIA Menu Pattern)
+      const menueEl = e.target instanceof Element ? e.target.closest('[role="menu"]') : null;
+      if (menueEl && ["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+        const eintraege = [...menueEl.querySelectorAll('[role="menuitem"]')];
+        const i = eintraege.indexOf(e.target.closest('[role="menuitem"]'));
+        const naechster = e.key === "Home" ? 0 : e.key === "End" ? eintraege.length - 1
+          : e.key === "ArrowDown" ? (i + 1) % eintraege.length : (i - 1 + eintraege.length) % eintraege.length;
+        e.preventDefault();
+        eintraege[naechster]?.focus();
+        return;
+      }
       if (e.key === "Escape" && this.kachelMenue !== null) {
         const id = this.kachelMenue;
         this.schalteKachelMenue(null);
