@@ -15,6 +15,14 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Geändert (2026.10.1-dev.13) – GUI-Überarbeitung, Phase 4 (Karte)
+
+- Karte: Seitenliste mit allen Treffern (gleiche Suche, «Nur geöffnet» und Sortierung wie Kacheln/Liste) neben der Karte; auf schmalen Bildschirmen Karte oben, Liste darunter.
+- Synchronisierung: Eintrag in der Liste wählen zentriert die Karte und öffnet das Popup (bei Clustern wird zum Marker gezoomt); Marker anklicken hebt den Eintrag in der Liste hervor. Hofläden ohne Koordinaten bleiben in der Liste (Details), erscheinen aber nicht auf der Karte.
+- Info-Karte im Popup: Name, Adresse, Status, Bewertung, «Details» und «Route».
+- Legende der Markerfarben (Geöffnet / Geschlossen / Unbekannt); Kartenhöhe 560 px.
+- Tests: 2 neue jsdom-Tests mit echtem Leaflet.
+
 ### Geändert (2026.10.1-dev.12) – GUI-Überarbeitung, Phase 3 (Liste)
 
 - Liste: Spalten Auswahl · Name & Adresse · Ort · Status · Bewertung · ⋮-Aktionen; Sortierköpfe mit `aria-sort`, feststehender Tabellenkopf, Hover- und Auswahl-Hervorhebung. Auf schmalen Bildschirmen entfallen Ort und Bewertung.

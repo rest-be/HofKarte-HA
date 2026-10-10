@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1-dev.12";
+const PANEL_BUILD = "2026.10.1-dev.13";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -339,6 +339,8 @@ class HofkartePanel extends HTMLElement {
     this._leafletResizeHandler = null;
     this._karteHost = null; // dauerhafter Karten-Container (wird bei jedem render() nur in den neuen Platzhalter umgehängt, die Karte selbst bleibt bestehen)
     this._markerLayer = null; // aktuelle Marker-Ebene; bei Filteränderung wird nur sie getauscht
+    this.karteAuswahlId = null; // in Liste/Karte der Kartenansicht markierter Hofladen
+    this._markerById = new Map(); // id -> Leaflet-Marker (für "Eintrag in der Liste -> Popup auf der Karte")
     this._markerSignatur = ""; // erkennt, ob sich die dargestellten Marker überhaupt geändert haben
     this._karteToken = 0; // verwirft Ergebnisse veralteter initKarte()-Läufe
     this._filterTimer = null; // Debounce für den Listenfilter
@@ -1204,6 +1206,7 @@ class HofkartePanel extends HTMLElement {
     this._karteHost?.remove();
     this._karteHost = null;
     this._markerLayer = null;
+    this._markerById = new Map();
     this._markerSignatur = "";
     this._markerIcons = null;
   }
@@ -1297,6 +1300,7 @@ class HofkartePanel extends HTMLElement {
     // neu, der Klick-Listener daran wird mit ihm verworfen.
     map.on("popupopen", (e) => {
       const knopf = e.popup.getElement()?.querySelector("[data-karte-view]");
+      if (knopf) this.karteMarkiere(knopf.dataset.id); // Marker-Klick (oder Listenwahl) -> Eintrag in der Liste hervorheben
       knopf?.addEventListener("click", () => {
         const item = this.items.find((x) => x.id === knopf.dataset.id);
         if (item) this.view(item);
@@ -1342,10 +1346,12 @@ class HofkartePanel extends HTMLElement {
 
     const icons = this._markerIcons;
     const iconFuer = (geoeffnet) => geoeffnet === true ? icons.offen : geoeffnet === false ? icons.geschlossen : icons.unbekannt;
+    this._markerById = new Map();
     const marker = markerItems.map((item) => {
       const m = L.marker([item.latitude, item.longitude], { icon: iconFuer(item.geoeffnet) });
       // Popup-Inhalt erst beim Öffnen erzeugen (Funktion statt String).
-      m.bindPopup(() => `<div class="karte-popup"><strong>${this.esc(item.name)}</strong><br><button type="button" class="link-button" data-karte-view data-id="${this.escAttr(item.id)}">Zur Detailansicht</button></div>`);
+      m.bindPopup(() => this.karteInfoHtml(item));
+      this._markerById.set(item.id, m);
       return m;
     });
     const ebene = cluster ? L.markerClusterGroup({ chunkedLoading: true, showCoverageOnHover: false }) : L.layerGroup();
@@ -1480,7 +1486,27 @@ class HofkartePanel extends HTMLElement {
       @media(max-width:800px){.hoflaeden-table .sp-ort,.hoflaeden-table .sp-bewertung{display:none}}
       @media(max-width:520px){.hoflaeden-table th,.hoflaeden-table td{padding:8px 8px}}
       .table-sort{background:none;border:0;padding:0;font:inherit;font-weight:600;color:var(--primary-text-color);cursor:pointer;white-space:nowrap}
-      .karte-container{height:480px;border-radius:12px;margin-top:12px;background:var(--secondary-background-color)}
+      .karte-layout{display:grid;grid-template-columns:minmax(240px,340px) 1fr;gap:16px;margin-top:12px;align-items:start}
+      .karte-spalte{order:2;min-width:0}
+      .karte-layout .karte-liste{order:1}
+      .karte-container{height:560px;border-radius:12px;background:var(--secondary-background-color);z-index:0}
+      .karte-liste{list-style:none;margin:0;padding:0;max-height:560px;overflow:auto;border-radius:12px;background:var(--card-background-color,#fff);box-shadow:var(--ha-card-box-shadow,0 1px 3px #0002)}
+      .karte-liste li+li{border-top:1px solid var(--divider-color)}
+      .karte-eintrag{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;min-height:56px;padding:10px 14px;border:0;border-radius:0;background:transparent;color:var(--primary-text-color);text-align:left;cursor:pointer;font:inherit}
+      .karte-eintrag:hover{background:var(--secondary-background-color)}
+      .karte-eintrag.aktiv{background:color-mix(in srgb,var(--primary-color) 14%,transparent);box-shadow:inset 3px 0 0 var(--primary-color)}
+      .karte-eintrag-name{font-weight:500}
+      .karte-eintrag-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:.9em}
+      .karte-liste-leer{padding:16px}
+      .karte-legende{display:flex;flex-wrap:wrap;gap:16px;list-style:none;margin:8px 4px 0;padding:0;font-size:.9em;color:var(--secondary-text-color)}
+      .karte-legende li{display:flex;align-items:center;gap:6px}
+      .legende-punkt{width:12px;height:12px;border-radius:50%;display:inline-block}
+      .legende-offen{background:var(--success-color,#43a047)}
+      .legende-geschlossen{background:var(--disabled-text-color,#9e9e9e)}
+      .legende-unbekannt{background:var(--primary-color,#db4437)}
+      .karte-popup-aktionen{display:flex;gap:16px;margin-top:6px}
+      [data-karte-leer]{margin-top:8px}
+      @media(max-width:900px){.karte-layout{grid-template-columns:1fr}.karte-spalte{order:1}.karte-layout .karte-liste{order:2;max-height:none}}
       .karte-empty{margin-top:20px}
       .karte-marker-icon{background:transparent;border:0}
       .karte-marker-svg{display:block}
@@ -1490,7 +1516,8 @@ class HofkartePanel extends HTMLElement {
       .karte-marker-pin-unbekannt{fill:var(--primary-color,#db4437)}
       .karte-marker-glyph{fill:#fff}
       .karte-popup{font-size:.95em}
-      .karte-popup button{margin-top:6px}
+      .karte-popup .muted{color:#616161}
+      
       @media(max-width:700px){.karte-container{height:360px}}
       .card{background:var(--ha-card-background,var(--card-background-color));border-radius:12px;padding:16px;box-shadow:var(--ha-card-box-shadow,0 1px 3px #0002)}
       form > section.card{margin-bottom:20px}
@@ -1717,7 +1744,7 @@ class HofkartePanel extends HTMLElement {
     const zaehler = this._mainEl.querySelector("[data-zaehler]");
     if (zaehler) zaehler.textContent = this.zaehlerText();
     if (this.uebersichtsAnsicht === "liste") this.aktualisiereListe();
-    else if (this.uebersichtsAnsicht === "karte") this.aktualisiereMarker();
+    else if (this.uebersichtsAnsicht === "karte") { this.aktualisiereKarteListe(); this.aktualisiereMarker(); }
     else this.aktualisiereKacheln();
   }
 
@@ -1944,8 +1971,75 @@ class HofkartePanel extends HTMLElement {
     // sorgeFuerKarteCss()). Der Platzhalter [data-karte-container] wird in
     // initKarte() durch den dauerhaften Karten-Container ersetzt.
     return `<div class="notice error" data-karte-fehler ${this.karteFehler ? "" : "hidden"}><span data-karte-fehler-text>${this.esc(this.karteFehler)}</span> <button type="button" class="secondary" data-karte-erneut>Erneut versuchen</button></div>
-      <div class="karte-container" data-karte-container></div>
-      <p class="muted" data-karte-leer style="margin-top:8px" ${gefiltert.length ? "hidden" : ""}>Kein Hofladen entspricht aktuell diesem Filter.</p>`;
+      <div class="karte-layout">
+        <div class="karte-spalte">
+          <div class="karte-container" data-karte-container></div>
+          <ul class="karte-legende" aria-label="Legende">
+            <li><span class="legende-punkt legende-offen"></span>Geöffnet</li>
+            <li><span class="legende-punkt legende-geschlossen"></span>Geschlossen</li>
+            <li><span class="legende-punkt legende-unbekannt"></span>Unbekannt</li>
+          </ul>
+          <p class="muted" data-karte-leer ${gefiltert.length ? "hidden" : ""}>Kein Hofladen entspricht aktuell diesem Filter.</p>
+        </div>
+        <ul class="karte-liste" data-karte-liste aria-label="Hofläden in der Karte">${this.karteListeHtml()}</ul>
+      </div>`;
+  }
+
+  /** Einträge der Seitenliste der Kartenansicht (gleiche Filter und
+   * Sortierung wie Kacheln/Liste). Wahl eines Eintrags öffnet das Popup
+   * des Markers; Einträge ohne Koordinaten bleiben wählbar (Details). */
+  karteListeHtml() {
+    const zeilen = this.sortierteGefilterteItems();
+    if (!zeilen.length) return `<li class="karte-liste-leer muted">Keine Treffer.</li>`;
+    return zeilen.map((item) => {
+      const hatKoord = isValidWgs84(item.latitude, item.longitude);
+      const aktiv = this.karteAuswahlId === item.id;
+      const ort = [item.plz, item.ort].filter(Boolean).join(" ");
+      return `<li><button type="button" class="karte-eintrag${aktiv ? " aktiv" : ""}" data-karte-waehle="${this.escAttr(item.id)}" ${aktiv ? 'aria-current="true"' : ""}>
+          <span class="karte-eintrag-name">${this.esc(item.name)}</span>
+          <span class="karte-eintrag-meta">${this.geoeffnetBadge(item.geoeffnet)}${ort ? ` <span class="muted">${this.esc(ort)}</span>` : ""}${hatKoord ? "" : ` <span class="muted">· keine Koordinaten</span>`}</span>
+        </button></li>`;
+    }).join("");
+  }
+
+  aktualisiereKarteListe() {
+    const liste = this._mainEl.querySelector("[data-karte-liste]");
+    if (!liste) return;
+    if (this.karteAuswahlId && !this.gefilterteItems().some((i) => i.id === this.karteAuswahlId)) this.karteAuswahlId = null;
+    liste.innerHTML = this.karteListeHtml();
+  }
+
+  /** Info-Karte im Marker-Popup: Name, Adresse, Status, Bewertung, Aktionen. */
+  karteInfoHtml(item) {
+    const adresse = [item.adresse, item.plz, item.ort].filter(Boolean).join(", ");
+    const ziel = ermittleRoutingZiel(item);
+    const route = ziel ? `<a class="link-button" href="${this.escAttr(googleMapsRoutenUrl(ziel))}" target="_blank" rel="noopener noreferrer">Route</a>` : "";
+    return `<div class="karte-popup"><strong>${this.esc(item.name)}</strong>
+      ${adresse ? `<div class="muted">${this.esc(adresse)}</div>` : ""}
+      <div>${this.geoeffnetBadge(item.geoeffnet)}${item.bewertung ? ` <span class="bewertung-klein">${"★".repeat(item.bewertung)}</span>` : ""}</div>
+      <div class="karte-popup-aktionen"><button type="button" class="link-button" data-karte-view data-id="${this.escAttr(item.id)}">Details</button>${route}</div></div>`;
+  }
+
+  /** Eintrag in der Seitenliste hervorheben (ohne Render). */
+  karteMarkiere(id) {
+    this.karteAuswahlId = id;
+    this._mainEl.querySelectorAll("[data-karte-waehle]").forEach((knopf) => {
+      const aktiv = knopf.dataset.karteWaehle === id;
+      knopf.classList.toggle("aktiv", aktiv);
+      if (aktiv) { knopf.setAttribute("aria-current", "true"); knopf.scrollIntoView?.({ block: "nearest" }); }
+      else knopf.removeAttribute("aria-current");
+    });
+  }
+
+  /** Wahl in der Seitenliste: Karte zentriert auf den Marker und öffnet das Popup. */
+  karteWaehleAusListe(id) {
+    this.karteMarkiere(id);
+    const marker = this._markerById.get(id);
+    const map = this._leafletMap;
+    if (!marker || !map) return;
+    const ebene = this._markerLayer;
+    if (ebene && typeof ebene.zoomToShowLayer === "function") ebene.zoomToShowLayer(marker, () => marker.openPopup());
+    else { map.panTo(marker.getLatLng()); marker.openPopup(); }
   }
 
   // --- Export/Import (Issue #5) ------------------------------------------
@@ -2737,6 +2831,8 @@ class HofkartePanel extends HTMLElement {
         this.render();
         return;
       }
+      const kartenWahl = ziel.closest("[data-karte-waehle]");
+      if (kartenWahl) { this.karteWaehleAusListe(kartenWahl.dataset.karteWaehle); return; }
       const ansehen = ziel.closest("[data-view]");
       if (ansehen) { this.view(this.items.find(x => x.id === ansehen.dataset.view)); return; }
       const bearbeiten = ziel.closest("[data-edit]");

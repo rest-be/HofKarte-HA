@@ -389,3 +389,62 @@ def test_menue_hat_deckenden_hintergrund() -> None:
     )
     assert "background-color:var(--primary-background-color" in ergebnis["regel"]
     assert "--ha-card-background" not in ergebnis["regel"], "keine (evtl. transparente) Kartenfarbe als einziger Hintergrund"
+
+
+@braucht_jsdom
+def test_karte_seitenliste_legende_und_synchronisierung_mit_den_markern() -> None:
+    ergebnis = _node(
+        r"""
+    const t = bauen({ n: 9, mitLeaflet: true });
+    await sleep(100);
+    await t.klick('[data-ansicht="karte"]', 300);
+    const anzahl0 = t.qa("[data-karte-waehle]").length;
+    const legende = t.qa(".karte-legende li").map((li) => li.textContent.trim());
+    // Liste -> Karte
+    const id = t.qa("[data-karte-waehle]")[2].dataset.karteWaehle;
+    await t.klick(t.qa("[data-karte-waehle]")[2], 100);
+    const marker = t.el._markerById.get(id);
+    const popupOffen = marker.isPopupOpen();
+    const popupText = t.el._leafletMap._container.querySelector(".karte-popup")?.textContent || "";
+    const markiert = t.qa(".karte-eintrag.aktiv").map((b) => b.dataset.karteWaehle);
+    // Karte -> Liste
+    const id2 = t.qa("[data-karte-waehle]")[5].dataset.karteWaehle;
+    t.el._markerById.get(id2).openPopup();
+    await sleep(50);
+    const markiert2 = t.qa(".karte-eintrag.aktiv").map((b) => b.dataset.karteWaehle);
+    // Filter wirkt auf Liste und Marker; Auswahl ausserhalb des Filters verfällt
+    await t.tippe("[data-listen-filter]", "müller");
+    const nachFilter = { eintraege: t.qa("[data-karte-waehle]").length, marker: t.el._markerById.size, aktiv: t.qa(".karte-eintrag.aktiv").length };
+    // Popup-Klick auf Details ruft die Detailansicht
+    let detail = null; t.el.view = (x) => { detail = x.id; };
+    const m = [...t.el._markerById.values()][0]; m.openPopup(); await sleep(50);
+    t.el._leafletMap._container.querySelector("[data-karte-view]").dispatchEvent(new t.w.MouseEvent("click", { bubbles: true }));
+    console.log(JSON.stringify({ anzahl0, legende, popupOffen, popupText, markiert, id, id2, markiert2, nachFilter, detailGesetzt: !!detail }));
+    process.exit(0);
+    """
+    )
+    assert ergebnis["anzahl0"] == 9
+    assert ergebnis["legende"] == ["Geöffnet", "Geschlossen", "Unbekannt"]
+    assert ergebnis["popupOffen"] is True
+    assert "Hof" in ergebnis["popupText"] and "Details" in ergebnis["popupText"]
+    assert ergebnis["markiert"] == [ergebnis["id"]]
+    assert ergebnis["markiert2"] == [ergebnis["id2"]]
+    assert ergebnis["nachFilter"]["eintraege"] == 4 and ergebnis["nachFilter"]["marker"] == 4
+    assert ergebnis["detailGesetzt"] is True
+
+
+@braucht_jsdom
+def test_karte_liste_zeigt_hofladen_ohne_koordinaten_und_maskiert_namen() -> None:
+    ergebnis = _node(
+        r"""
+    const t = bauen({ n: 3, mitLeaflet: true, namen: ['<img src=x onerror=window.xss=1>', 'B', 'C'] });
+    await sleep(60);
+    t.el.items[1].latitude = null; t.el.items[1].longitude = null;
+    await t.klick('[data-ansicht="karte"]', 300);
+    const texte = t.qa("[data-karte-waehle]").map((b) => b.textContent.replace(/\s+/g, " ").trim());
+    console.log(JSON.stringify({ texte, img: !!t.q(".karte-liste img"), xss: !!t.w.xss }));
+    process.exit(0);
+    """
+    )
+    assert any("keine Koordinaten" in x for x in ergebnis["texte"])
+    assert ergebnis["img"] is False and ergebnis["xss"] is False
