@@ -15,6 +15,10 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Geändert (2026.10.1-dev.15)
+
+- «Auswählen» / «Auswahl beenden» liegt jetzt im ⋮-Menü oben rechts (nur in der Kachelansicht) statt in der Steuerleiste; die Steuerleiste ist damit in allen drei Ansichten identisch und spart Platz. Liste und Karte unverändert.
+
 ### Geändert (2026.10.1-dev.14) – GUI-Überarbeitung, Phase 5 (Feinschliff)
 
 - Behoben: Das ⋮-Menü der Kacheln war weiterhin durchsichtig, wenn das HA-Theme halbtransparente Kartenfarben oder Verläufe als Hintergrund nutzt. Das Menü berechnet beim Öffnen eine deckende Farbe aus den Hintergründen der Elternelemente; ein offenes Kachelmenü liegt zudem über den Nachbarkacheln.

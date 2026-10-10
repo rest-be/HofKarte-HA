@@ -136,7 +136,7 @@ sichtbar).
 **Übersicht (Kacheln, Liste oder Karte):** Eine gemeinsame Steuerleiste
 (Suche, „Nur geöffnet“, Sortierung, Umschalter) gilt für alle drei
 Ansichten. **Kacheln:** ganze Kachel anklickbar (Details), ⋮-Menü mit
-Route, Bearbeiten und Löschen; Auswahl-Checkboxen im Auswahlmodus.
+Route, Bearbeiten und Löschen; Auswahl-Checkboxen im Auswahlmodus (⋮-Menü oben rechts).
 **Liste:** sortierbare Spalten (Name & Adresse, Ort, Status, Bewertung),
 Kopf-Checkbox, ⋮-Menü je Zeile. **Karte:** Seitenliste neben der
 eingebetteten Karte, abgeglichen mit den Stecknadeln, Info-Karte im Popup

@@ -499,3 +499,28 @@ def test_menue_tastatur_fokus_pfeiltasten_und_escape() -> None:
     assert ergebnis["start"] == 0 and ergebnis["nachUnten"] == 1
     assert ergebnis["ende"] == n - 1 and ergebnis["umlauf"] == 0 and ergebnis["zurueck"] == n - 1
     assert ergebnis["fokusKnopf"] is True
+
+
+@braucht_jsdom
+def test_auswaehlen_liegt_im_kopfmenue_und_nur_bei_kacheln() -> None:
+    ergebnis = _node(
+        r"""
+    const t = bauen({ n: 4, mitLeaflet: true });
+    await sleep(100);
+    const inSteuerleiste = !!t.q(".steuerleiste [data-auswahlmodus]");
+    const kacheln = { imMenue: !!t.q("[data-menue] [data-auswahlmodus]"), text: t.q("[data-auswahlmodus]").textContent.trim() };
+    await t.klick(t.q("[data-menue-toggle]"));
+    await t.klick(t.q("[data-menue] [data-auswahlmodus]"));
+    const nachWahl = { menueZu: t.q("[data-menue]").hidden, checkboxen: t.qa("[data-auswahl]").length, text: t.q("[data-auswahlmodus]").textContent.trim() };
+    await t.klick('[data-ansicht="liste"]', 100);
+    const liste = !!t.q("[data-auswahlmodus]");
+    await t.klick('[data-ansicht="karte"]', 200);
+    const karte = !!t.q("[data-auswahlmodus]");
+    console.log(JSON.stringify({ inSteuerleiste, kacheln, nachWahl, liste, karte }));
+    process.exit(0);
+    """
+    )
+    assert ergebnis["inSteuerleiste"] is False
+    assert ergebnis["kacheln"] == {"imMenue": True, "text": "Auswählen"}
+    assert ergebnis["nachWahl"] == {"menueZu": True, "checkboxen": 4, "text": "Auswahl beenden"}
+    assert ergebnis["liste"] is False and ergebnis["karte"] is False

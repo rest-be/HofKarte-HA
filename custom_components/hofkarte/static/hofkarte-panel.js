@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1-dev.14";
+const PANEL_BUILD = "2026.10.1-dev.15";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -1675,6 +1675,7 @@ class HofkartePanel extends HTMLElement {
         <div class="menue-bereich" data-menue-bereich>
           <button type="button" class="icon-btn" data-menue-toggle aria-haspopup="menu" aria-expanded="${offen ? "true" : "false"}" aria-label="Weitere Aktionen">${this.icon("mehr")}</button>
           <div class="menue" role="menu" data-menue ${offen ? "" : "hidden"}>
+            ${this.uebersichtsAnsicht === "kacheln" && this.items.length ? `<button type="button" role="menuitem" data-auswahlmodus aria-pressed="${this.auswahlModus ? "true" : "false"}">${this.icon("auswahl")}${this.auswahlModus ? "Auswahl beenden" : "Auswählen"}</button>` : ""}
             <button type="button" role="menuitem" data-import-start>${this.icon("hochladen")}Import (JSON)</button>
           </div>
         </div>
@@ -1697,7 +1698,6 @@ class HofkartePanel extends HTMLElement {
           <button type="button" class="icon-btn" data-sortrichtung aria-label="${aufsteigend ? "Aufsteigend sortiert, umkehren" : "Absteigend sortiert, umkehren"}" title="Sortierrichtung umkehren">${aufsteigend ? "▲" : "▼"}</button>
         </div>
         <span class="steuer-abstand"></span>
-        ${this.uebersichtsAnsicht === "kacheln" ? `<button type="button" class="secondary mit-icon" data-auswahlmodus aria-pressed="${this.auswahlModus ? "true" : "false"}">${this.icon("auswahl")}${this.auswahlModus ? "Auswahl beenden" : "Auswählen"}</button>` : ""}
         <div class="seg" role="group" aria-label="Ansicht">${ansichten}</div>
       </div>`;
   }
@@ -2841,6 +2841,7 @@ class HofkartePanel extends HTMLElement {
       }
       if (this.kachelMenue !== null) this.schalteKachelMenue(null); // Klick irgendwo sonst (auch auf einen Menüeintrag) schliesst
       if (ziel.closest("[data-auswahlmodus]")) {
+        this.uebersichtMenue = false;
         this.auswahlModus = !this.auswahlModus;
         if (!this.auswahlModus) this.auswahl.clear();
         this.render();

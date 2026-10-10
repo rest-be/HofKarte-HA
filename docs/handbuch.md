@@ -110,7 +110,7 @@ Die Übersicht hat in allen drei Ansichten dieselbe **Kopf- und
 Steuerleiste**:
 
 - **Kopfzeile:** „Hofladen finden“, „Hofladen“ (neu anlegen) und ein
-  ⋮-Menü mit dem Import (JSON).
+  ⋮-Menü mit dem Import (JSON) und – nur bei Kacheln – „Auswählen“.
 - **Suche** nach Name oder Ort, der Filter **„Nur geöffnet“** (fehlende
   Öffnungszeiten zählen dabei **nicht** als geöffnet), die **Sortierung**
   (Name, Adresse, Ort, Status, Bewertung; Pfeil kehrt die Richtung um)
@@ -128,8 +128,8 @@ Die drei Ansichten:
   anklickbarer Webseite. **Die ganze Kachel ist anklickbar** und öffnet
   die Detailansicht. Das **⋮-Menü** der Kachel enthält Route (Google
   Maps / Apple Maps), Bearbeiten und – zuunterst, rot – Löschen (mit
-  Rückfrage). Checkboxen erscheinen nur im **Auswahlmodus** („Auswählen“
-  in der Steuerleiste, Beenden mit „Auswahl beenden“).
+  Rückfrage). Checkboxen erscheinen nur im **Auswahlmodus** (⋮-Menü oben
+  rechts: „Auswählen“, Beenden mit „Auswahl beenden“; nur bei Kacheln).
 - **Liste:** eine Tabelle mit Auswahl-Checkbox, Name (mit Adresse
   darunter), Ort, Status, Bewertung und ⋮-Menü (gleiche Einträge wie
   bei den Kacheln). Die Spaltenköpfe sind sortierbar (Klick, erneuter
@@ -174,7 +174,7 @@ mit der Entity „Geöffnet“ (Kapitel 5) überein.
 ### Hofläden exportieren und importieren
 
 In der Ansicht „Liste“ steht in jeder Zeile eine Auswahl-Checkbox, in
-den „Kacheln“ erscheinen die Checkboxen nach Klick auf „Auswählen“. Sobald
+den „Kacheln“ erscheinen die Checkboxen nach „Auswählen“ im ⋮-Menü oben rechts. Sobald
 etwas gewählt ist (bzw. im Auswahlmodus), zeigt eine Leiste die Anzahl
 und die Buttons „Alle auswählen“ (nur die gerade sichtbaren Treffer),
 „Auswahl aufheben“ und „Export“. Der Import (JSON) liegt im ⋮-Menü der
