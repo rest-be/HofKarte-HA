@@ -60,7 +60,7 @@ function bauen({ n = 9, mitLeaflet = false, namen = null } = {}) {
   const wahl = async (sel, checked) => { const e = q(sel); e.checked = checked; e.dispatchEvent(new w.Event("change", { bubbles: true, composed: true })); await sleep(60); };
   const auswahlWert = async (sel, wert) => { const e = q(sel); e.value = wert; e.dispatchEvent(new w.Event("change", { bubbles: true, composed: true })); await sleep(60); };
   const taste = async (sel, key) => { q(sel).dispatchEvent(new w.KeyboardEvent("keydown", { key, bubbles: true, composed: true })); await sleep(20); };
-  const kacheln = () => qa("section.tile-card h2").map((h) => h.textContent.trim());
+  const kacheln = () => qa(".tile-card h2").map((h) => h.textContent.trim());
   return { w, el, sr, q, qa, klick, tippe, wahl, auswahlWert, taste, kacheln, items };
 }
 """
@@ -200,28 +200,34 @@ def test_ueberlaufmenue_oeffnet_schliesst_per_klick_daneben_und_escape() -> None
 
 
 @braucht_jsdom
-def test_kontextleiste_nur_bei_auswahl_und_alle_auswaehlen_nur_sichtbare() -> None:
+def test_kontextleiste_im_auswahlmodus_und_alle_auswaehlen_nur_sichtbare() -> None:
     ergebnis = _node(
         r"""
     const t = bauen({ n: 9 });
     await sleep(100);
     const leiste = () => t.q("[data-kontextleiste]");
-    const start = leiste().hidden;
+    const start = { hidden: leiste().hidden, checkboxen: t.qa("[data-auswahl]").length };
+    await t.klick("[data-auswahlmodus]");
+    const imModus = { hidden: leiste().hidden, checkboxen: t.qa("[data-auswahl]").length, text: t.q("[data-auswahl-anzahl]").textContent, export: t.q("[data-export]").disabled };
     await t.wahl("[data-auswahl]", true);
-    const nachEiner = { hidden: leiste().hidden, text: t.q("[data-auswahl-anzahl]").textContent, export: t.q("[data-export]").disabled };
+    const nachEiner = { text: t.q("[data-auswahl-anzahl]").textContent, export: t.q("[data-export]").disabled };
     await t.klick("[data-auswahl-keine]");
-    const nachAufheben = leiste().hidden;
+    const nachAufheben = { hidden: leiste().hidden, text: t.q("[data-auswahl-anzahl]").textContent };
     await t.tippe("[data-listen-filter]", "müller");
     await t.klick("[data-auswahl-alle]");
-    // erst nach Auswahl ist die Leiste sichtbar; "Alle auswählen" liegt in der Leiste -> vorher eine wählen
-    console.log(JSON.stringify({ start, nachEiner, nachAufheben, text: t.q("[data-auswahl-anzahl]").textContent }));
+    const text = t.q("[data-auswahl-anzahl]").textContent;
+    await t.klick("[data-auswahlmodus]"); // beenden
+    const nachBeenden = { hidden: leiste().hidden, checkboxen: t.qa("[data-auswahl]").length, text: t.q("[data-auswahl-anzahl]").textContent };
+    console.log(JSON.stringify({ start, imModus, nachEiner, nachAufheben, text, nachBeenden }));
     process.exit(0);
     """
     )
-    assert ergebnis["start"] is True
-    assert ergebnis["nachEiner"] == {"hidden": False, "text": "1 ausgewählt", "export": False}
-    assert ergebnis["nachAufheben"] is True
+    assert ergebnis["start"] == {"hidden": True, "checkboxen": 0}
+    assert ergebnis["imModus"] == {"hidden": False, "checkboxen": 9, "text": "0 ausgewählt", "export": True}
+    assert ergebnis["nachEiner"] == {"text": "1 ausgewählt", "export": False}
+    assert ergebnis["nachAufheben"] == {"hidden": False, "text": "0 ausgewählt"}
     assert ergebnis["text"] == "4 ausgewählt", "nur die sichtbaren (gefilterten) Hofläden"
+    assert ergebnis["nachBeenden"] == {"hidden": True, "checkboxen": 0, "text": "0 ausgewählt"}
 
 
 @braucht_jsdom
@@ -239,3 +245,73 @@ def test_suchwert_wird_als_attribut_maskiert() -> None:
     )
     assert ergebnis["wert"].startswith('"><img')
     assert ergebnis["fremdesElement"] is False and ergebnis["xss"] is False
+
+
+@braucht_jsdom
+def test_kachel_ganze_flaeche_klickbar_und_menue_aktionen_rufen_bestehende_handler() -> None:
+    ergebnis = _node(
+        r"""
+    const t = bauen({ n: 3 });
+    await sleep(100);
+    const log = [];
+    t.el.view = (x) => log.push("view:" + x.name);
+    t.el.start = (x) => log.push("edit:" + x.name);
+    t.el.remove = (id) => log.push("delete:" + id);
+    const k = t.q(".tile-card");
+    const id = k.querySelector("[data-kachel-menue-toggle]").dataset.kachelMenueToggle;
+    const vorher = { menueOffen: !k.querySelector("[data-kachel-menue]").hidden, aktionenInKachel: k.querySelectorAll("[data-delete]").length, ohneCheckbox: k.querySelectorAll("[data-auswahl]").length };
+    await t.klick(k.querySelector(".tile-link"));
+    await t.klick(k.querySelector("[data-kachel-menue-toggle]"));
+    const offen = !k.querySelector("[data-kachel-menue]").hidden;
+    const expanded = k.querySelector("[data-kachel-menue-toggle]").getAttribute("aria-expanded");
+    const eintraege = [...k.querySelectorAll("[data-kachel-menue] [role=menuitem]")].map((e) => e.textContent.trim());
+    const letzter = eintraege[eintraege.length - 1];
+    const routeHref = k.querySelector("[data-kachel-menue] a")?.getAttribute("href") || "";
+    await t.klick(k.querySelector("[data-edit]"));
+    const nachBearbeiten = !k.querySelector("[data-kachel-menue]").hidden;
+    await t.klick(k.querySelector("[data-kachel-menue-toggle]"));
+    await t.klick(k.querySelector("[data-delete]"));
+    // Klick daneben schliesst, Escape schliesst und fokussiert den Knopf
+    await t.klick(k.querySelector("[data-kachel-menue-toggle]"));
+    await t.klick(t.q("h1"));
+    const nachDaneben = !k.querySelector("[data-kachel-menue]").hidden;
+    await t.klick(k.querySelector("[data-kachel-menue-toggle]"));
+    await t.taste("main", "Escape");
+    const nachEscape = !k.querySelector("[data-kachel-menue]").hidden;
+    console.log(JSON.stringify({ vorher, offen, expanded, letzter, routeHref, log, nachBearbeiten, nachDaneben, nachEscape, id }));
+    process.exit(0);
+    """
+    )
+    assert ergebnis["vorher"] == {"menueOffen": False, "aktionenInKachel": 1, "ohneCheckbox": 0}
+    assert ergebnis["offen"] is True and ergebnis["expanded"] == "true"
+    assert ergebnis["letzter"].startswith("Löschen"), "destruktive Aktion zuunterst"
+    assert ergebnis["routeHref"].startswith("https://"), ergebnis["routeHref"]
+    assert ergebnis["log"][0].startswith("view:")
+    assert ergebnis["log"][1].startswith("edit:")
+    assert ergebnis["log"][2] == "delete:" + ergebnis["id"]
+    assert ergebnis["nachBearbeiten"] is False, "Menü schliesst nach Auswahl eines Eintrags"
+    assert ergebnis["nachDaneben"] is False
+    assert ergebnis["nachEscape"] is False
+
+
+@braucht_jsdom
+def test_kachel_nur_ein_menue_gleichzeitig_und_auswahl_markiert_kachel() -> None:
+    ergebnis = _node(
+        r"""
+    const t = bauen({ n: 3 });
+    await sleep(100);
+    const knoepfe = t.qa("[data-kachel-menue-toggle]");
+    await t.klick(knoepfe[0]);
+    await t.klick(knoepfe[1]);
+    const offene = t.qa("[data-kachel-menue]").filter((m) => !m.hidden).length;
+    await t.klick("[data-auswahlmodus]");
+    const modus = t.q("[data-auswahlmodus]").getAttribute("aria-pressed");
+    await t.wahl("[data-auswahl]", true);
+    const markiert = t.qa(".tile-card.ausgewaehlt").length;
+    console.log(JSON.stringify({ offene, modus, markiert }));
+    process.exit(0);
+    """
+    )
+    assert ergebnis["offene"] == 1
+    assert ergebnis["modus"] == "true"
+    assert ergebnis["markiert"] == 1

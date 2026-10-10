@@ -120,15 +120,18 @@ def test_panel_js_routing_urls_kodieren_das_ziel() -> None:
 
 def test_panel_js_routing_auswahl_ersetzt_kartenbutton_in_drei_ansichten() -> None:
     """Regressionstest für Issue #3: ``routingAuswahl()`` muss die neue,
-    einzige Kartenlogik in Kacheln- (``listCard``), Listen-
-    (``listTable``) und Detailansicht (``detail``) sein - nicht mehr
-    ``mapButton()`` an diesen drei Stellen."""
+    einzige Kartenlogik in Listen- (``listenZeilenHtml``) und
+    Detailansicht (``detail``) sein - nicht mehr ``mapButton()``. Die
+    Kachel (``listCard``, GUI-Überarbeitung Phase 2) bietet die Routen im
+    ⋮-Menü an, mit denselben Hilfsfunktionen (``ermittleRoutingZiel``)."""
     quelltext = _lade_panel_js()
     treffer = re.findall(r"this\.routingAuswahl\(", quelltext)
-    assert len(treffer) == 3, (
-        f"Erwartet genau 3 Aufrufstellen (Kacheln/Liste/Detail), "
+    assert len(treffer) == 2, (
+        f"Erwartet genau 2 Aufrufstellen (Liste/Detail), "
         f"gefunden: {len(treffer)}."
     )
+    kachel = quelltext[quelltext.index("  listCard(item) {"):quelltext.index("  sortSchluessel(item) {")]
+    assert "ermittleRoutingZiel(item)" in kachel and "googleMapsRoutenUrl(ziel)" in kachel
 
 
 def test_panel_js_editor_behaelt_unveraenderten_mapbutton() -> None:

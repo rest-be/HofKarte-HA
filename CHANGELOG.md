@@ -15,6 +15,13 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Geändert (2026.10.1-dev.11) – GUI-Überarbeitung, Phase 2 (Kacheln)
+
+- Kacheln: die ganze Kachel ist klickbar (öffnet die Details); Aktionen Route (Google/Apple Maps), Bearbeiten und Löschen liegen im ⋮-Menü der Kachel (Löschen zuunterst, rot, mit bestehender Rückfrage). Es ist immer nur ein Kachelmenü offen; Schliessen per Klick daneben oder Escape.
+- Auswahl: Checkboxen erscheinen nur im neuen «Auswählen»-Modus (Schalter in der Steuerleiste); gewählte Kacheln sind hervorgehoben, die Kontextleiste (Export) bleibt im Modus sichtbar.
+- Raster `repeat(auto-fill, minmax(260px, 1fr))`, einheitliche Kopfzeile je Kachel (Name, Adresse, Status, Bewertung, Webseite).
+- Tests: Anpassung bestehender Kacheltests, 2 neue Tests.
+
 ### Geändert (2026.10.1-dev.10) – GUI-Überarbeitung, Phase 1
 
 - Übersicht (Kacheln, Liste, Karte): gemeinsame **Kopfzeile** („Hofladen finden“,

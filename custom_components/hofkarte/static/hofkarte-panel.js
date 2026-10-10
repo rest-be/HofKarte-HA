@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1-dev.10";
+const PANEL_BUILD = "2026.10.1-dev.11";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -332,6 +332,8 @@ class HofkartePanel extends HTMLElement {
     this.listenFilter = ""; // Freitextfilter in der Listenansicht
     this.karteNurGeoeffnet = false; // Filter "Nur geöffnet" - gemeinsam für Kacheln, Liste und Karte (Issue #2, GUI-Überarbeitung)
     this.uebersichtMenue = false; // ⋮-Menü der Kopfzeile (Import) geöffnet?
+    this.kachelMenue = null; // id der Kachel, deren ⋮-Menü offen ist (nur Anzeigezustand, kein Render nötig)
+    this.auswahlModus = false; // Auswahlmodus der Kachelansicht (Checkboxen sichtbar)
     this.karteFehler = ""; // Fehlermeldung beim Laden der Kartenbibliothek (Issue #2)
     this._leafletMap = null; // aktive Leaflet-Karteninstanz, ausserhalb des normalen Render-Zyklus verwaltet; lebt, solange die Kartenansicht offen ist (Befund F10)
     this._leafletResizeHandler = null;
@@ -1380,7 +1382,7 @@ class HofkartePanel extends HTMLElement {
       :host{display:block;color:var(--primary-text-color);background:var(--primary-background-color);min-height:100%;font-family:var(--paper-font-body1_-_font-family,Roboto,sans-serif)}
       main{max-width:1200px;margin:0 auto;padding:24px}
       .top{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
-      .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:20px}
+      .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-top:12px}
       .view-toggle{display:flex;gap:8px;margin-top:16px}
       .ico{flex:0 0 auto;vertical-align:middle}
       button.mit-icon{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 16px;font-weight:500}
@@ -1417,8 +1419,27 @@ class HofkartePanel extends HTMLElement {
       .kontext-anzahl{font-weight:500;margin-right:auto}
       .zaehler{margin:16px 4px 4px;font-size:.9em}
       .leerzustand{grid-column:1/-1;text-align:center;padding:40px 16px}
-      .tile-card{display:flex;flex-direction:column;gap:6px}
-      .tile-image{width:100%;height:140px;object-fit:cover;border-radius:8px;margin-bottom:4px}
+      .tile-card{position:relative;display:flex;flex-direction:column;gap:6px}
+      .tile-card:hover{box-shadow:0 2px 10px rgba(0,0,0,.25)}
+      .tile-card.ausgewaehlt{outline:2px solid var(--primary-color)}
+      .tile-bild{position:relative}
+      .tile-kopf{display:flex;align-items:flex-start;justify-content:space-between;gap:4px}
+      .tile-kopf h2{margin:0;font-size:1.1em;line-height:1.3;min-width:0;overflow-wrap:anywhere}
+      .tile-link::after{content:"";position:absolute;inset:0;z-index:0;border-radius:inherit}
+      .tile-link:focus-visible{outline:none}
+      .tile-link:focus-visible::after{outline:2px solid var(--primary-color);outline-offset:2px}
+      .tile-adresse{color:var(--secondary-text-color);font-size:.95em}
+      .tile-card .kachel-menue-bereich,.tile-card a{position:relative;z-index:1}
+      .tile-card .kachel-auswahl{z-index:1}
+      .kachel-menue-bereich{margin:-4px -6px -4px 0;flex:0 0 auto}
+      .kachel-menue-bereich .icon-btn{width:36px;height:36px}
+      .kachel-menue-bereich .menue{top:36px;z-index:30;min-width:230px;white-space:nowrap}
+      .menue a{display:flex;align-items:center;gap:12px;min-height:44px;padding:0 16px;color:var(--primary-text-color);text-decoration:none}
+      .menue a:hover{background:var(--secondary-background-color)}
+      .menue .gefahr{color:var(--error-color,#db4437);border-top:1px solid var(--divider-color)}
+      .kachel-auswahl{position:absolute;top:8px;left:8px;display:flex;align-items:center;justify-content:center;width:36px;height:36px;margin:0;border-radius:50%;background:var(--ha-card-background,var(--card-background-color));box-shadow:0 1px 4px rgba(0,0,0,.35)}
+      .kachel-auswahl input{width:20px;height:20px;margin:0;padding:0}
+      .tile-image{width:100%;height:140px;object-fit:cover;border-radius:8px;display:block}
       .tile-image-placeholder{display:flex;align-items:center;justify-content:center;background:var(--secondary-background-color);font-size:2.5em}
       .link-button{background:none;border:0;padding:0;color:var(--primary-color);font:inherit;font-weight:500;cursor:pointer;text-align:left}
       .link-button:hover{text-decoration:underline}
@@ -1587,6 +1608,10 @@ class HofkartePanel extends HTMLElement {
     hochladen: '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
     herunterladen: '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
     haken: '<path d="M5 12l5 5 9-10"/>',
+    route: '<path d="M3 11l18-8-8 18-2-8-8-2z"/>',
+    bearbeiten: '<path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>',
+    loeschen: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>',
+    auswahl: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12l3 3 5-6"/>',
   };
 
   icon(name) {
@@ -1625,6 +1650,7 @@ class HofkartePanel extends HTMLElement {
           <button type="button" class="icon-btn" data-sortrichtung aria-label="${aufsteigend ? "Aufsteigend sortiert, umkehren" : "Absteigend sortiert, umkehren"}" title="Sortierrichtung umkehren">${aufsteigend ? "▲" : "▼"}</button>
         </div>
         <span class="steuer-abstand"></span>
+        ${this.uebersichtsAnsicht === "kacheln" ? `<button type="button" class="secondary mit-icon" data-auswahlmodus aria-pressed="${this.auswahlModus ? "true" : "false"}">${this.icon("auswahl")}${this.auswahlModus ? "Auswahl beenden" : "Auswählen"}</button>` : ""}
         <div class="seg" role="group" aria-label="Ansicht">${ansichten}</div>
       </div>`;
   }
@@ -1634,13 +1660,20 @@ class HofkartePanel extends HTMLElement {
    * aktualisiereAuswahlAnzeige()). */
   kontextleisteHtml() {
     const n = this.auswahl.size;
-    const sichtbar = n > 0 && this.uebersichtsAnsicht !== "karte";
+    const sichtbar = this.kontextleisteSichtbar();
     return `<div class="kontextleiste" data-kontextleiste role="status" ${sichtbar ? "" : "hidden"}>
         <span class="kontext-anzahl" data-auswahl-anzahl>${n} ausgewählt</span>
         <button type="button" class="secondary" data-auswahl-alle>Alle auswählen</button>
         <button type="button" class="secondary" data-auswahl-keine>Auswahl aufheben</button>
         <button type="button" class="mit-icon" data-export ${n ? "" : "disabled"}>${this.icon("herunterladen")}Export</button>
       </div>`;
+  }
+
+  /** Kontextleiste: sichtbar bei vorhandener Auswahl (Liste/Kacheln) oder
+   * im Auswahlmodus der Kacheln; nie in der Kartenansicht. */
+  kontextleisteSichtbar() {
+    if (this.uebersichtsAnsicht === "karte") return false;
+    return this.auswahl.size > 0 || (this.auswahlModus && this.uebersichtsAnsicht === "kacheln");
   }
 
   zaehlerText() {
@@ -1711,20 +1744,33 @@ class HofkartePanel extends HTMLElement {
       ? `<img class="tile-image" src="${this.escAttr(vorschauSrc)}"${originalAttr} alt="${this.escAttr(item.name)}" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
       : `<div class="tile-image tile-image-placeholder" aria-hidden="true">🏬</div>`;
 
-    return `<section class="card tile-card">
-      <label class="auswahl-checkbox"><input type="checkbox" data-auswahl="${this.escAttr(item.id)}" ${this.auswahl.has(item.id) ? "checked" : ""}> Auswählen</label>
-      ${bildHtml}
-      <h2><button type="button" class="link-button" data-view="${this.escAttr(item.id)}">${this.esc(item.name)}</button></h2>
-      ${adresse ? `<div>${this.esc(adresse)}</div>` : ""}
-      ${this.websiteLinkHtml(item.website)}
-      <div>${this.geoeffnetBadge(item.geoeffnet)}${item.bewertung ? ` <span class="bewertung-klein">${"★".repeat(item.bewertung)}</span>` : ""}</div>
-      <div class="coord-actions">${this.routingAuswahl(item)}</div>
-      <div class="actions">
-        <button class="secondary" data-view="${this.escAttr(item.id)}">Details</button>
-        <button class="secondary" data-edit="${this.escAttr(item.id)}">Bearbeiten</button>
-        <button class="danger" data-delete="${this.escAttr(item.id)}">Löschen</button>
+    const id = this.escAttr(item.id);
+    const checkbox = this.auswahlModus
+      ? `<label class="kachel-auswahl"><input type="checkbox" data-auswahl="${this.escAttr(item.id)}" ${this.auswahl.has(item.id) ? "checked" : ""} aria-label="${this.escAttr(item.name)} auswählen"></label>`
+      : "";
+    const ziel = ermittleRoutingZiel(item);
+    const routeEintrag = ziel
+      ? `<a role="menuitem" href="${this.escAttr(googleMapsRoutenUrl(ziel))}" target="_blank" rel="noopener noreferrer">${this.icon("route")}Route (Google Maps)</a>
+          <a role="menuitem" href="${this.escAttr(appleMapsRoutenUrl(ziel))}" target="_blank" rel="noopener noreferrer">${this.icon("route")}Route (Apple Maps)</a>`
+      : "";
+    const offen = this.kachelMenue === item.id;
+    return `<article class="card tile-card${this.auswahl.has(item.id) ? " ausgewaehlt" : ""}">
+      <div class="tile-bild">${bildHtml}${checkbox}</div>
+      <div class="tile-kopf">
+        <h2><button type="button" class="link-button tile-link" data-view="${id}">${this.esc(item.name)}</button></h2>
+        <div class="menue-bereich kachel-menue-bereich">
+          <button type="button" class="icon-btn" data-kachel-menue-toggle="${id}" aria-haspopup="menu" aria-expanded="${offen ? "true" : "false"}" aria-label="Aktionen für ${this.escAttr(item.name)}">${this.icon("mehr")}</button>
+          <div class="menue" role="menu" data-kachel-menue ${offen ? "" : "hidden"}>
+            ${routeEintrag}
+            <button type="button" role="menuitem" data-edit="${this.escAttr(item.id)}">${this.icon("bearbeiten")}Bearbeiten</button>
+            <button type="button" role="menuitem" class="gefahr" data-delete="${this.escAttr(item.id)}">${this.icon("loeschen")}Löschen …</button>
+          </div>
+        </div>
       </div>
-    </section>`;
+      ${adresse ? `<div class="tile-adresse">${this.esc(adresse)}</div>` : ""}
+      <div class="tile-status">${this.geoeffnetBadge(item.geoeffnet)}${item.bewertung ? ` <span class="bewertung-klein" aria-label="${item.bewertung} von 5 Sternen">${"★".repeat(item.bewertung)}</span>` : ""}</div>
+      ${this.websiteLinkHtml(item.website)}
+    </article>`;
   }
 
   /** Sortierte, gefilterte Zeilen für die Listenansicht (rein
@@ -1808,8 +1854,11 @@ class HofkartePanel extends HTMLElement {
     const export_ = this._mainEl.querySelector("[data-export]");
     if (export_) export_.disabled = this.auswahl.size === 0;
     const leiste = this._mainEl.querySelector("[data-kontextleiste]");
-    if (leiste) leiste.hidden = this.auswahl.size === 0 || this.uebersichtsAnsicht === "karte";
-    this._mainEl.querySelectorAll("[data-auswahl]").forEach((cb) => { cb.checked = this.auswahl.has(cb.dataset.auswahl); });
+    if (leiste) leiste.hidden = !this.kontextleisteSichtbar();
+    this._mainEl.querySelectorAll("[data-auswahl]").forEach((cb) => {
+      cb.checked = this.auswahl.has(cb.dataset.auswahl);
+      cb.closest(".tile-card")?.classList.toggle("ausgewaehlt", cb.checked);
+    });
   }
 
   listTable() {
@@ -2577,6 +2626,17 @@ class HofkartePanel extends HTMLElement {
     this._mainEl.querySelector("[data-menue-toggle]")?.setAttribute("aria-expanded", offen ? "true" : "false");
   }
 
+  /** Kachel-⋮-Menü öffnen/schliessen (nur hidden/aria, kein Render). */
+  schalteKachelMenue(id) {
+    this.kachelMenue = id;
+    this._mainEl.querySelectorAll("[data-kachel-menue-toggle]").forEach((knopf) => {
+      const offen = id !== null && knopf.dataset.kachelMenueToggle === id;
+      knopf.setAttribute("aria-expanded", offen ? "true" : "false");
+      const menue = knopf.parentElement?.querySelector("[data-kachel-menue]");
+      if (menue) menue.hidden = !offen;
+    });
+  }
+
   /** Einmalig im Konstruktor gebundene Event-Delegation auf <main>
    * (Befund F10): <main> bleibt über alle Renders bestehen, es entstehen
    * daher keine Listener pro Kachel/Zeile/Render mehr. */
@@ -2589,6 +2649,19 @@ class HofkartePanel extends HTMLElement {
       // irgendwo sonst schliesst es (ohne Render, nur hidden/aria).
       const menueKnopf = ziel.closest("[data-menue-toggle]");
       if (menueKnopf) { this.schalteMenue(!this.uebersichtMenue); return; }
+      const kachelKnopf = ziel.closest("[data-kachel-menue-toggle]");
+      if (kachelKnopf) {
+        const id = kachelKnopf.dataset.kachelMenueToggle;
+        this.schalteKachelMenue(this.kachelMenue === id ? null : id);
+        return;
+      }
+      if (this.kachelMenue !== null) this.schalteKachelMenue(null); // Klick irgendwo sonst (auch auf einen Menüeintrag) schliesst
+      if (ziel.closest("[data-auswahlmodus]")) {
+        this.auswahlModus = !this.auswahlModus;
+        if (!this.auswahlModus) this.auswahl.clear();
+        this.render();
+        return;
+      }
       if (this.uebersichtMenue && !ziel.closest("[data-menue]")) this.schalteMenue(false);
       if (ziel.closest("[data-menue] [data-import-start]")) this.schalteMenue(false);
       if (ziel.closest("[data-filter-zuruecksetzen]")) {
@@ -3384,6 +3457,12 @@ class HofkartePanel extends HTMLElement {
       }
     });
     main.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && this.kachelMenue !== null) {
+        const id = this.kachelMenue;
+        this.schalteKachelMenue(null);
+        [...this._mainEl.querySelectorAll("[data-kachel-menue-toggle]")].find((k) => k.dataset.kachelMenueToggle === id)?.focus();
+        return;
+      }
       if (e.key === "Escape" && this.uebersichtMenue) {
         this.schalteMenue(false);
         this.shadowRoot.querySelector("[data-menue-toggle]")?.focus();
