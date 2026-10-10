@@ -315,3 +315,77 @@ def test_kachel_nur_ein_menue_gleichzeitig_und_auswahl_markiert_kachel() -> None
     assert ergebnis["offene"] == 1
     assert ergebnis["modus"] == "true"
     assert ergebnis["markiert"] == 1
+
+
+@braucht_jsdom
+def test_liste_spalten_sortierkoepfe_und_zeilenmenue() -> None:
+    ergebnis = _node(
+        r"""
+    const t = bauen({ n: 6 });
+    await sleep(100);
+    await t.klick('[data-ansicht="liste"]', 100);
+    const koepfe = t.qa("thead th").map((th) => th.textContent.trim());
+    const aria0 = t.qa("thead th[aria-sort]").map((th) => th.getAttribute("aria-sort"));
+    await t.klick('[data-sort="ort"]', 60);
+    const nachOrt = t.qa("thead th[aria-sort]").map((th) => th.getAttribute("aria-sort"));
+    const sortSelect = t.q("[data-sortierung]").value;
+    const zeile = t.q("[data-list-body] tr");
+    const log = [];
+    t.el.start = (x) => log.push("edit:" + x.name);
+    t.el.remove = (id) => log.push("delete");
+    await t.klick(zeile.querySelector("[data-kachel-menue-toggle]"));
+    const offen = !zeile.querySelector("[data-kachel-menue]").hidden;
+    const letzter = [...zeile.querySelectorAll("[role=menuitem]")].pop().textContent.trim();
+    await t.klick(zeile.querySelector("[data-edit]"));
+    const zu = zeile.querySelector("[data-kachel-menue]").hidden;
+    console.log(JSON.stringify({ koepfe, aria0, nachOrt, sortSelect, offen, letzter, zu, log, adresseInZeile: !!zeile.querySelector(".zeilen-adresse") }));
+    process.exit(0);
+    """
+    )
+    assert ergebnis["koepfe"][1:5] == ["Name & Adresse ▲", "Ort", "Status", "Bewertung"]
+    assert ergebnis["aria0"] == ["ascending", "none", "none", "none"]
+    assert ergebnis["nachOrt"] == ["none", "ascending", "none", "none"]
+    assert ergebnis["sortSelect"] == "ort"
+    assert ergebnis["offen"] is True and ergebnis["zu"] is True
+    assert ergebnis["letzter"].startswith("Löschen")
+    assert ergebnis["log"][0].startswith("edit:")
+    assert ergebnis["adresseInZeile"] is True
+
+
+@braucht_jsdom
+def test_liste_kopf_checkbox_waehlt_nur_sichtbare_und_zeigt_teilzustand() -> None:
+    ergebnis = _node(
+        r"""
+    const t = bauen({ n: 9 });
+    await sleep(100);
+    await t.klick('[data-ansicht="liste"]', 100);
+    const box = () => t.q("[data-auswahl-alle-box]");
+    await t.tippe("[data-listen-filter]", "müller");
+    await t.wahl("[data-auswahl-alle-box]", true);
+    const nachAlle = { text: t.q("[data-auswahl-anzahl]").textContent, geprueft: box().checked, markiert: t.qa("[data-list-body] tr.ausgewaehlt").length };
+    await t.wahl("[data-list-body] [data-auswahl]", false);
+    const teil = { checked: box().checked, indeterminate: box().indeterminate };
+    await t.wahl("[data-auswahl-alle-box]", false);
+    console.log(JSON.stringify({ nachAlle, teil, ende: t.q("[data-auswahl-anzahl]").textContent }));
+    process.exit(0);
+    """
+    )
+    assert ergebnis["nachAlle"] == {"text": "4 ausgewählt", "geprueft": True, "markiert": 4}
+    assert ergebnis["teil"] == {"checked": False, "indeterminate": True}
+    assert ergebnis["ende"] == "0 ausgewählt"
+
+
+@braucht_jsdom
+def test_menue_hat_deckenden_hintergrund() -> None:
+    ergebnis = _node(
+        r"""
+    const t = bauen({ n: 1 });
+    await sleep(100);
+    const css = t.sr.querySelector("style").textContent;
+    const regel = css.match(/\.menue\{[^}]*\}/)[0];
+    console.log(JSON.stringify({ regel }));
+    process.exit(0);
+    """
+    )
+    assert "background-color:var(--primary-background-color" in ergebnis["regel"]
+    assert "--ha-card-background" not in ergebnis["regel"], "keine (evtl. transparente) Kartenfarbe als einziger Hintergrund"

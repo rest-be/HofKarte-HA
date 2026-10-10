@@ -15,6 +15,13 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Geändert (2026.10.1-dev.12) – GUI-Überarbeitung, Phase 3 (Liste)
+
+- Liste: Spalten Auswahl · Name & Adresse · Ort · Status · Bewertung · ⋮-Aktionen; Sortierköpfe mit `aria-sort`, feststehender Tabellenkopf, Hover- und Auswahl-Hervorhebung. Auf schmalen Bildschirmen entfallen Ort und Bewertung.
+- Kopf-Checkbox wählt alle sichtbaren (gefilterten) Hofläden, mit Teilzustand.
+- Je Zeile dasselbe ⋮-Menü wie in den Kacheln (Route, Bearbeiten, Löschen zuunterst); ein gemeinsamer Aufbau (`aktionenMenueHtml`). Neue Sortieroption «Ort».
+- Behoben: Das ⋮-Menü (Kachel, Liste, Kopfzeile) war in manchen HA-Themes durchsichtig; es hat jetzt einen deckenden Hintergrund.
+
 ### Geändert (2026.10.1-dev.11) – GUI-Überarbeitung, Phase 2 (Kacheln)
 
 - Kacheln: die ganze Kachel ist klickbar (öffnet die Details); Aktionen Route (Google/Apple Maps), Bearbeiten und Löschen liegen im ⋮-Menü der Kachel (Löschen zuunterst, rot, mit bestehender Rückfrage). Es ist immer nur ein Kachelmenü offen; Schliessen per Klick daneben oder Escape.

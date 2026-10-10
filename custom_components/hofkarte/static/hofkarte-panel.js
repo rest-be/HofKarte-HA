@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1-dev.11";
+const PANEL_BUILD = "2026.10.1-dev.12";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -1390,7 +1390,7 @@ class HofkartePanel extends HTMLElement {
       button.icon-btn:hover{background:var(--secondary-background-color)}
       button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
       .menue-bereich{position:relative}
-      .menue{position:absolute;right:0;top:48px;z-index:20;min-width:200px;background:var(--ha-card-background,var(--card-background-color));border-radius:8px;box-shadow:0 4px 18px rgba(0,0,0,.3);padding:6px 0}
+      .menue{position:absolute;right:0;top:48px;z-index:20;min-width:200px;background-color:var(--primary-background-color,#fff);background-image:linear-gradient(var(--card-background-color,#fff),var(--card-background-color,#fff));border-radius:8px;box-shadow:0 4px 18px rgba(0,0,0,.3);padding:6px 0}
       .menue button{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 16px;border-radius:0;background:transparent;color:var(--primary-text-color);text-align:left}
       .menue button:hover{background:var(--secondary-background-color)}
       .steuerleiste{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:16px}
@@ -1437,7 +1437,7 @@ class HofkartePanel extends HTMLElement {
       .menue a{display:flex;align-items:center;gap:12px;min-height:44px;padding:0 16px;color:var(--primary-text-color);text-decoration:none}
       .menue a:hover{background:var(--secondary-background-color)}
       .menue .gefahr{color:var(--error-color,#db4437);border-top:1px solid var(--divider-color)}
-      .kachel-auswahl{position:absolute;top:8px;left:8px;display:flex;align-items:center;justify-content:center;width:36px;height:36px;margin:0;border-radius:50%;background:var(--ha-card-background,var(--card-background-color));box-shadow:0 1px 4px rgba(0,0,0,.35)}
+      .kachel-auswahl{position:absolute;top:8px;left:8px;display:flex;align-items:center;justify-content:center;width:36px;height:36px;margin:0;border-radius:50%;background-color:var(--primary-background-color,#fff);background-image:linear-gradient(var(--card-background-color,#fff),var(--card-background-color,#fff));box-shadow:0 1px 4px rgba(0,0,0,.35)}
       .kachel-auswahl input{width:20px;height:20px;margin:0;padding:0}
       .tile-image{width:100%;height:140px;object-fit:cover;border-radius:8px;display:block}
       .tile-image-placeholder{display:flex;align-items:center;justify-content:center;background:var(--secondary-background-color);font-size:2.5em}
@@ -1458,10 +1458,27 @@ class HofkartePanel extends HTMLElement {
       .diff-alt{background:color-mix(in srgb, var(--error-color,#db4437) 12%, transparent)}
       .diff-neu{background:color-mix(in srgb, var(--success-color,#43a047) 12%, transparent)}
       @media(max-width:700px){.import-diff{grid-template-columns:1fr}}
-      .table-scroll{overflow-x:auto;margin-top:12px}
-      .hoflaeden-table{width:100%;border-collapse:collapse;background:var(--ha-card-background,var(--card-background-color));border-radius:12px;overflow:hidden}
-      .hoflaeden-table th,.hoflaeden-table td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--divider-color)}
-      .hoflaeden-table tr:last-child td{border-bottom:0}
+      .table-scroll{margin-top:12px}
+      .hoflaeden-table{width:100%;border-collapse:separate;border-spacing:0;background:var(--ha-card-background,var(--card-background-color));border-radius:12px;box-shadow:var(--ha-card-box-shadow,0 1px 3px #0002)}
+      .hoflaeden-table th,.hoflaeden-table td{padding:8px 14px;text-align:left;vertical-align:middle;border-bottom:1px solid var(--divider-color)}
+      .hoflaeden-table thead th{position:sticky;top:0;z-index:2;background:var(--secondary-background-color);font-size:.9em}
+      .hoflaeden-table thead th:first-child{border-top-left-radius:12px}
+      .hoflaeden-table thead th:last-child{border-top-right-radius:12px}
+      .hoflaeden-table tbody tr:last-child td{border-bottom:0}
+      .hoflaeden-table tbody tr:hover{background:color-mix(in srgb,var(--primary-color) 6%,transparent)}
+      .hoflaeden-table tr.ausgewaehlt{background:color-mix(in srgb,var(--primary-color) 12%,transparent)}
+      .hoflaeden-table .sp-auswahl{width:52px;padding:0 0 0 6px}
+      .hoflaeden-table .sp-aktion{width:52px;padding:0 6px 0 0;text-align:right}
+      .hoflaeden-table .sp-ort,.hoflaeden-table .sp-bewertung{white-space:nowrap}
+      .zeilen-auswahl{display:flex;align-items:center;justify-content:center;width:44px;height:44px;margin:0;cursor:pointer}
+      .zeilen-auswahl input{width:20px;height:20px;margin:0;padding:0;cursor:pointer}
+      .zeilen-adresse{color:var(--secondary-text-color);font-size:.9em;margin-top:2px}
+      .hoflaeden-table .kachel-menue-bereich{margin:0;display:inline-block}
+      .hoflaeden-table .kachel-menue-bereich .menue{top:44px}
+      .nur-leser{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+      .leerzustand-zeile{text-align:center;padding:40px 16px !important;line-height:2}
+      @media(max-width:800px){.hoflaeden-table .sp-ort,.hoflaeden-table .sp-bewertung{display:none}}
+      @media(max-width:520px){.hoflaeden-table th,.hoflaeden-table td{padding:8px 8px}}
       .table-sort{background:none;border:0;padding:0;font:inherit;font-weight:600;color:var(--primary-text-color);cursor:pointer;white-space:nowrap}
       .karte-container{height:480px;border-radius:12px;margin-top:12px;background:var(--secondary-background-color)}
       .karte-empty{margin-top:20px}
@@ -1637,7 +1654,7 @@ class HofkartePanel extends HTMLElement {
   /** Steuerleiste für alle drei Ansichten: Suche, Filter, Sortierung, Ansicht. */
   steuerleisteHtml() {
     const spalte = this.listenSortSpalte || "name";
-    const optionen = [["name", "Name"], ["adresse", "Adresse"], ["geoeffnet", "Status"], ["bewertung", "Bewertung"]]
+    const optionen = [["name", "Name"], ["adresse", "Adresse"], ["ort", "Ort"], ["geoeffnet", "Status"], ["bewertung", "Bewertung"]]
       .map(([wert, text]) => `<option value="${wert}" ${wert === spalte ? "selected" : ""}>${text}</option>`).join("");
     const aufsteigend = this.listenSortRichtung === "asc";
     const ansichten = [["kacheln", "Kacheln"], ["liste", "Liste"], ["karte", "Karte"]]
@@ -1736,6 +1753,26 @@ class HofkartePanel extends HTMLElement {
     return `<img src="${this.escAttr(src)}"${original} alt="${this.escAttr(alt)}" loading="lazy" decoding="async" referrerpolicy="no-referrer">`;
   }
 
+  /** ⋮-Aktionsmenü eines Hofladens (Route, Bearbeiten, Löschen) – gemeinsam
+   * für Kacheln und Listenzeilen; Öffnen/Schliessen siehe schalteKachelMenue(). */
+  aktionenMenueHtml(item) {
+    const id = this.escAttr(item.id);
+    const ziel = ermittleRoutingZiel(item);
+    const routeEintrag = ziel
+      ? `<a role="menuitem" href="${this.escAttr(googleMapsRoutenUrl(ziel))}" target="_blank" rel="noopener noreferrer">${this.icon("route")}Route (Google Maps)</a>
+          <a role="menuitem" href="${this.escAttr(appleMapsRoutenUrl(ziel))}" target="_blank" rel="noopener noreferrer">${this.icon("route")}Route (Apple Maps)</a>`
+      : "";
+    const offen = this.kachelMenue === item.id;
+    return `<div class="menue-bereich kachel-menue-bereich">
+          <button type="button" class="icon-btn" data-kachel-menue-toggle="${id}" aria-haspopup="menu" aria-expanded="${offen ? "true" : "false"}" aria-label="Aktionen für ${this.escAttr(item.name)}">${this.icon("mehr")}</button>
+          <div class="menue" role="menu" data-kachel-menue ${offen ? "" : "hidden"}>
+            ${routeEintrag}
+            <button type="button" role="menuitem" data-edit="${this.escAttr(item.id)}">${this.icon("bearbeiten")}Bearbeiten</button>
+            <button type="button" role="menuitem" class="gefahr" data-delete="${this.escAttr(item.id)}">${this.icon("loeschen")}Löschen …</button>
+          </div>
+        </div>`;
+  }
+
   listCard(item) {
     const adresse = [item.adresse, item.plz, item.ort, item.land].filter(Boolean).join(", ");
     const vorschauSrc = item.hauptbild_url ? uploadVorschauUrl(item.hauptbild_url, window.location.origin) : "";
@@ -1748,24 +1785,11 @@ class HofkartePanel extends HTMLElement {
     const checkbox = this.auswahlModus
       ? `<label class="kachel-auswahl"><input type="checkbox" data-auswahl="${this.escAttr(item.id)}" ${this.auswahl.has(item.id) ? "checked" : ""} aria-label="${this.escAttr(item.name)} auswählen"></label>`
       : "";
-    const ziel = ermittleRoutingZiel(item);
-    const routeEintrag = ziel
-      ? `<a role="menuitem" href="${this.escAttr(googleMapsRoutenUrl(ziel))}" target="_blank" rel="noopener noreferrer">${this.icon("route")}Route (Google Maps)</a>
-          <a role="menuitem" href="${this.escAttr(appleMapsRoutenUrl(ziel))}" target="_blank" rel="noopener noreferrer">${this.icon("route")}Route (Apple Maps)</a>`
-      : "";
-    const offen = this.kachelMenue === item.id;
     return `<article class="card tile-card${this.auswahl.has(item.id) ? " ausgewaehlt" : ""}">
       <div class="tile-bild">${bildHtml}${checkbox}</div>
       <div class="tile-kopf">
         <h2><button type="button" class="link-button tile-link" data-view="${id}">${this.esc(item.name)}</button></h2>
-        <div class="menue-bereich kachel-menue-bereich">
-          <button type="button" class="icon-btn" data-kachel-menue-toggle="${id}" aria-haspopup="menu" aria-expanded="${offen ? "true" : "false"}" aria-label="Aktionen für ${this.escAttr(item.name)}">${this.icon("mehr")}</button>
-          <div class="menue" role="menu" data-kachel-menue ${offen ? "" : "hidden"}>
-            ${routeEintrag}
-            <button type="button" role="menuitem" data-edit="${this.escAttr(item.id)}">${this.icon("bearbeiten")}Bearbeiten</button>
-            <button type="button" role="menuitem" class="gefahr" data-delete="${this.escAttr(item.id)}">${this.icon("loeschen")}Löschen …</button>
-          </div>
-        </div>
+        ${this.aktionenMenueHtml(item)}
       </div>
       ${adresse ? `<div class="tile-adresse">${this.esc(adresse)}</div>` : ""}
       <div class="tile-status">${this.geoeffnetBadge(item.geoeffnet)}${item.bewertung ? ` <span class="bewertung-klein" aria-label="${item.bewertung} von 5 Sternen">${"★".repeat(item.bewertung)}</span>` : ""}</div>
@@ -1825,16 +1849,17 @@ class HofkartePanel extends HTMLElement {
   /** Tabellenzeilen der Listenansicht (auch für das Teil-Update beim
    * Filtern, siehe aktualisiereListe()). */
   listenZeilenHtml(zeilen) {
-    if (!zeilen.length) return `<tr><td colspan="6" class="muted">Keine Treffer für diesen Filter.</td></tr>`;
+    if (!zeilen.length) return `<tr><td colspan="6" class="leerzustand-zeile"><strong>Keine Treffer</strong><br><span class="muted">Für diese Suche und diese Filter gibt es keinen Hofladen.</span><br><button type="button" class="secondary" data-filter-zuruecksetzen>Filter zurücksetzen</button></td></tr>`;
     return zeilen.map(item => {
       const adresse = [item.adresse, item.plz, item.ort, item.land].filter(Boolean).join(", ");
-      return `<tr>
-                <td><input type="checkbox" data-auswahl="${this.escAttr(item.id)}" ${this.auswahl.has(item.id) ? "checked" : ""} aria-label="${this.escAttr(item.name)} auswählen"></td>
-                <td><button type="button" class="link-button" data-view="${this.escAttr(item.id)}">${this.esc(item.name)}</button></td>
-                <td>${this.esc(adresse) || '<span class="muted">–</span>'}</td>
-                <td>${this.geoeffnetBadge(item.geoeffnet)}</td>
-                <td>${item.bewertung ? "★".repeat(item.bewertung) : '<span class="muted">–</span>'}</td>
-                <td>${this.routingAuswahl(item)}</td>
+      const ort = [item.plz, item.ort].filter(Boolean).join(" ");
+      return `<tr class="${this.auswahl.has(item.id) ? "ausgewaehlt" : ""}">
+                <td class="sp-auswahl"><label class="zeilen-auswahl"><input type="checkbox" data-auswahl="${this.escAttr(item.id)}" ${this.auswahl.has(item.id) ? "checked" : ""} aria-label="${this.escAttr(item.name)} auswählen"></label></td>
+                <td class="sp-name"><button type="button" class="link-button" data-view="${this.escAttr(item.id)}">${this.esc(item.name)}</button>${item.adresse ? `<div class="zeilen-adresse">${this.esc(item.adresse)}</div>` : ""}</td>
+                <td class="sp-ort">${ort ? this.esc(ort) : '<span class="muted">–</span>'}</td>
+                <td class="sp-status">${this.geoeffnetBadge(item.geoeffnet)}</td>
+                <td class="sp-bewertung">${item.bewertung ? `<span class="bewertung-klein" role="img" aria-label="${item.bewertung} von 5 Sternen">${"★".repeat(item.bewertung)}</span>` : '<span class="muted">–</span>'}</td>
+                <td class="sp-aktion">${this.aktionenMenueHtml(item)}</td>
               </tr>`;
     }).join("");
   }
@@ -1844,6 +1869,7 @@ class HofkartePanel extends HTMLElement {
   aktualisiereListe() {
     const body = this._mainEl.querySelector("[data-list-body]");
     if (body) body.innerHTML = this.listenZeilenHtml(this.sortierteGefilterteItems());
+    this.aktualisiereAlleBox();
   }
 
   /** Teil-Update der Auswahl-Anzeige (Zähler, Export-Knopf, Checkboxen)
@@ -1857,24 +1883,41 @@ class HofkartePanel extends HTMLElement {
     if (leiste) leiste.hidden = !this.kontextleisteSichtbar();
     this._mainEl.querySelectorAll("[data-auswahl]").forEach((cb) => {
       cb.checked = this.auswahl.has(cb.dataset.auswahl);
-      cb.closest(".tile-card")?.classList.toggle("ausgewaehlt", cb.checked);
+      cb.closest(".tile-card, tr")?.classList.toggle("ausgewaehlt", cb.checked);
     });
+    this.aktualisiereAlleBox();
+  }
+
+  /** Kopf-Checkbox der Liste: Zustand (alle/keine/teils) der sichtbaren Zeilen. */
+  aktualisiereAlleBox() {
+    const box = this._mainEl.querySelector("[data-auswahl-alle-box]");
+    if (!box) return;
+    const sichtbar = this.gefilterteItems();
+    const gewaehlt = sichtbar.filter((item) => this.auswahl.has(item.id)).length;
+    box.checked = sichtbar.length > 0 && gewaehlt === sichtbar.length;
+    box.indeterminate = gewaehlt > 0 && gewaehlt < sichtbar.length;
   }
 
   listTable() {
     const zeilen = this.sortierteGefilterteItems();
-    const pfeil = (spalte) => (this.listenSortSpalte || "name") === spalte ? (this.listenSortRichtung === "asc" ? " ▲" : " ▼") : "";
-
+    const aktiv = this.listenSortSpalte || "name";
+    const alleGewaehlt = zeilen.length > 0 && zeilen.every((item) => this.auswahl.has(item.id));
+    const kopf = (spalte, text, klasse) => {
+      const ist = aktiv === spalte;
+      const pfeil = ist ? (this.listenSortRichtung === "asc" ? " ▲" : " ▼") : "";
+      const aria = ist ? (this.listenSortRichtung === "asc" ? "ascending" : "descending") : "none";
+      return `<th class="${klasse}" aria-sort="${aria}"><button type="button" class="table-sort" data-sort="${spalte}">${text}${pfeil}</button></th>`;
+    };
     return `<div class="table-scroll">
         <table class="hoflaeden-table">
           <thead>
             <tr>
-              <th>Auswahl</th>
-              <th><button type="button" class="table-sort" data-sort="name">Name${pfeil("name")}</button></th>
-              <th><button type="button" class="table-sort" data-sort="adresse">Adresse${pfeil("adresse")}</button></th>
-              <th><button type="button" class="table-sort" data-sort="geoeffnet">Status${pfeil("geoeffnet")}</button></th>
-              <th><button type="button" class="table-sort" data-sort="bewertung">Bewertung${pfeil("bewertung")}</button></th>
-              <th>Route</th>
+              <th class="sp-auswahl"><label class="zeilen-auswahl"><input type="checkbox" data-auswahl-alle-box ${alleGewaehlt ? "checked" : ""} aria-label="Alle sichtbaren Hofläden auswählen"></label></th>
+              ${kopf("name", "Name &amp; Adresse", "sp-name")}
+              ${kopf("ort", "Ort", "sp-ort")}
+              ${kopf("geoeffnet", "Status", "sp-status")}
+              ${kopf("bewertung", "Bewertung", "sp-bewertung")}
+              <th class="sp-aktion"><span class="nur-leser">Aktionen</span></th>
             </tr>
           </thead>
           <tbody data-list-body>
@@ -2706,7 +2749,10 @@ class HofkartePanel extends HTMLElement {
     main.addEventListener("change", (e) => {
       const ziel = e.target instanceof Element ? e.target : null;
       if (!ziel) return;
-      if (ziel.matches("[data-auswahl]")) {
+      if (ziel.matches("[data-auswahl-alle-box]")) {
+        this.gefilterteItems().forEach((item) => { if (ziel.checked) this.auswahl.add(item.id); else this.auswahl.delete(item.id); });
+        this.aktualisiereAuswahlAnzeige();
+      } else if (ziel.matches("[data-auswahl]")) {
         const id = ziel.dataset.auswahl;
         if (ziel.checked) this.auswahl.add(id); else this.auswahl.delete(id);
         this.aktualisiereAuswahlAnzeige();
