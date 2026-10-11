@@ -4,7 +4,8 @@ Private, lokal betriebene Home-Assistant-Custom-Integration zur Verwaltung
 und Darstellung von Hofläden (Direktvermarkter, Selbstbedienungsläden,
 Hofläden mit und ohne Personal).
 
-> **Status:** Stabiles Release. Die Integration ist funktional
+> **Status:** Release Candidate `2026.10.1-rc.1` (Test; der produktive
+> Stand bleibt `2026.10.0`). Die Integration ist funktional
 > vollständig und durchgehend getestet (siehe `CHANGELOG.md` für den
 > aktuellen Versionsstand). Home Assistant ist sowohl Laufzeit- als
 > auch Verwaltungsoberfläche für HofKarte – die vom Benutzer gepflegten

@@ -28,6 +28,8 @@ from .test_discovery_enrich import (  # noqa: F401 - Fixture ``site`` und Helfer
 )
 from .test_management import _FakeConnection, _setup_mit_coordinator
 
+_FIXTURES = (site,)  # Fixture ``site`` wird nur über den Parameternamen genutzt (pyflakes)
+
 TEXT = (
     "Unser Hofladen verkauft Eier, Kartoffeln und Honig. "
     "Bezahlen kannst du mit Twint oder Bargeld. "

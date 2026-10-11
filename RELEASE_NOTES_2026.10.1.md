@@ -1,8 +1,7 @@
-# HofKarte 2026.10.1 (Entwurf)
+# HofKarte 2026.10.1 (Release Candidate 1)
 
-> **Entwurf.** Noch nicht veröffentlicht: Version, Datum und der Abschnitt zur
-> KI-Messung werden beim Release-Candidate festgelegt (siehe unten
-> «Offen bis zum Release»).
+> **Release Candidate `2026.10.1-rc.1`.** Zum Testen, noch kein produktiver
+> Release. Offene Punkte stehen unten unter «Offen bis zum Release».
 
 Dieses Release bringt das **Erfassen neuer Hofläden aus dem Netz**
 (Hofladen-Discovery), eine **überarbeitete Verwaltungsoberfläche** und ein
@@ -63,4 +62,4 @@ neues App-Icon. Ein Update wird empfohlen.
 - Test auf dem iPhone (Kamera, Standortfreigabe, Abläufe «Webseite» und
   «Angaben ergänzen») und in der Mac-App.
 - Entscheid: GUI und Discovery gemeinsam als 2026.10.1 oder GUI als 2026.10.2.
-- Release-Candidate, Version in `manifest.json`, Tag und Merge.
+- Nach bestandenem Test: Version `2026.10.1` (bzw. `2026.10.2`) in `manifest.json`, Tag und Merge nach `main` durch den Projektbetreuer.

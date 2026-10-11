@@ -15,6 +15,94 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+## [2026.10.1-rc.1] - Release Candidate (develop)
+
+Kein produktiver Release. Fasst die Entwicklungsversionen
+`2026.10.1-dev.1` bis `dev.24` zusammen: Hofladen-Discovery (Erfassen aus
+dem Netz), überarbeitete Übersicht, neue Detail- und Erfassungsmasken und
+ein neues App-Icon. Der Test der KI-Auswertung mit Ollama (Discovery
+Phase 8) sowie ein Test auf iPhone und Mac-App stehen noch aus.
+
+### Hinzugefügt
+
+- **Hofladen-Discovery (Open-Source-Variante)** in `custom_components/hofkarte/discovery/`:
+  Kandidaten aus OpenStreetMap (Overpass, Suchprofil `farmshop`,
+  Zusammenführen von Dubletten, Fehlerantworten werden nie als «keine Treffer»
+  gewertet oder gecacht), Bewertung nach Entfernung/Namen/Website
+  (hohe/mittlere/niedrige Sicherheit), Anreicherung aus der Website
+  (`robots.txt` beachtend, höchstens 4 Seiten, 1 s Pause) mit Herkunft je Feld
+  (`quellen`: Quelle, Status, URL, Lizenz). WebSocket-Befehle
+  `hofkarte/management/discover` und `.../enrich` (Subscription mit Ereignissen
+  `osm`, `website`, `vorlaeufig`, `ki`, `fertig`), nur für Administratoren.
+- **Optionale KI-Auswertung** über Home Assistants `ai_task.generate_data`
+  (Options-Flow-Feld «KI-Entität», leer = aus; je Ablauf ein nie
+  vorangekreuztes Kästchen mit Datenschutzhinweis). Grounding durch HofKarte:
+  nur wörtlich im Seitentext stehende Werte gelten als belegt, alles andere
+  erscheint getrennt als «Vermutung», nicht vorausgewählt, und wird als
+  `ki`/`inferred` gespeichert. Festes Schema, Eingabelimits, entschärfter
+  Seitentext, keine Werkzeuge, Zeitlimit, Ausfall ohne Folgen.
+- **Herkunft der Angaben** im Detail unter «Quellen»; OpenStreetMap-Daten mit
+  Lizenzhinweis (© OpenStreetMap-Mitwirkende, ODbL).
+- **Neu: Erfassen und Ergänzen** (Panel):
+  - Einstieg **«Hofladen erfassen»** mit drei Wegen; Dublettenprüfung vor dem
+    Speichern.
+  - **Vor Ort / Schnellerfassung:** Standort auf Klick (nur HTTPS), Treffer in
+    der Nähe mit Entfernung, Umkreis 100/250/500 m, Name, Foto (Kamera),
+    Webseite; Abschluss mit Liste «Noch offen».
+  - **Von Webseite:** Schrittanzeige Webseite → Auslesen → Prüfen, KI optional
+    und nachträglich, «Vorliegendes prüfen», Prüfansicht mit Quelle,
+    Abweichungswarnung, getrennten KI-Vermutungen und Vorschau-Karte.
+  - **Angaben ergänzen / aktualisieren:** Vergleichstabelle Aktuell · Gefunden ·
+    Status (Lücke, Abweichend, Ergänzung, Gleich); Lücken vorgewählt,
+    Abweichungen nie, Listen werden ergänzt statt ersetzt; Übernahme ins
+    Formular, gespeichert wird erst dort.
+- **Serverseitige Hofladen-Felder** `geoeffnet`, `hauptbild_url`,
+  `status_wechsel` (nächster Öffnungs-/Schliesszeitpunkt).
+- **Neues App-Icon** (`brand/icon.png` 256 px, `brand/icon@2x.png` 512 px).
+- Neue Dokumente: `RELEASE_NOTES_2026.10.1.md`,
+  `docs/detail-erfassung-umsetzungsplan.md`, `docs/detail-erfassung-inventar.md`.
+
+### Geändert
+
+- **Überarbeitete Übersicht** (Kacheln, Liste, Karte): gemeinsame Kopfzeile und
+  Steuerleiste (Suche, «Nur geöffnet», Sortierung, Ansichtsumschalter), ganze
+  Kachel anklickbar, ⋮-Menüs (Route, Bearbeiten, Löschen), Auswahlmodus mit
+  Kontextleiste (Export), sortierbare Liste mit `aria-sort`, Karte mit
+  Seitenliste, Info-Popup und Legende; Tastaturbedienung der Menüs.
+- **Neue Detailansicht** («Auf einen Blick», Schnellaktionen, sieben
+  aufklappbare Gruppen mit Kurzfassung und Vollständigkeitspunkt, «Noch
+  unvollständig» mit «Jetzt ergänzen») und **neues Bearbeitungsformular** mit
+  denselben Gruppen (Chips für Angebote, Schalter für Zahlungsarten, Öffnungszeiten
+  mit «Auf Di–Fr kopieren», feste Fussleiste mit «Ungespeichert»,
+  Abbrechen mit Rückfrage). Datenformat und Selektoren des Speicherns
+  unverändert.
+- **Zugänglichkeit:** Fokus auf die Überschrift bei Schrittwechseln,
+  Statusmeldungen mit Text für Screenreader, `aria-current` in der
+  Schrittanzeige, `prefers-reduced-motion`, Touch-Ziele ≥ 44 px.
+- Dokumentation (README, Handbuch, `docs/gui-ueberarbeitung.md`,
+  CONTRIBUTING) auf den neuen Stand gebracht; README-Status auf
+  «Release Candidate».
+- Der frühere Suchdialog bleibt als «Erweiterte Suche» erhalten.
+
+### Behoben
+
+- Deckende ⋮-Menüs in Themes mit halbtransparenten Kartenfarben.
+- Tests: `pyflakes` ohne Findings (Fixture-Import in `test_discovery_llm.py`).
+
+### Hinweise
+
+- Version und Panel-Version (`PANEL_BUILD`) lauten `2026.10.1-rc.1`; nach dem
+  Update Home Assistant neu starten und das Panel im Browser hart neu laden.
+- Der Testlauf zeigt 4 bekannte Altfehler, die nur in der Sandbox
+  (Home Assistant 2024.3 statt ≥ 2025.1) auftreten:
+  `test_options_flow_rejects_radius_out_of_range`,
+  `test_ws_import_commit_ohne_eingerichtete_integration_sendet_fehler`,
+  `test_ws_import_commit_ohne_eintraege_sendet_fehler`,
+  `test_ws_osm_info_liefert_ermittelte_orte`.
+
+<details>
+<summary>Entwicklungsverlauf 2026.10.1-dev.1 bis dev.24 (Einzeleinträge)</summary>
+
 ### Geändert (2026.10.1-dev.24) – App-Icon, Release-Entwurf
 
 - **Neues Icon** (Karotte als Kartenmarker auf Feldern): `brand/icon.png` (256 × 256) und `brand/icon@2x.png` (512 × 512) ersetzt (bisher 1254 × 1254 px, unnötig gross).
@@ -286,6 +374,8 @@ unten als historische Entwicklungsdokumentation erhalten.
 - Der HTTP-Abruf (mehrere Overpass-Instanzen, Gesamtbudget, Grössenlimit)
   wird von `osm_info.py` wiederverwendet und blieb unverändert; die
   Funktion „Ort in der Nähe suchen“ verhält sich wie bisher.
+
+</details>
 
 ## [2026.10.0] - 2026-10-06
 
