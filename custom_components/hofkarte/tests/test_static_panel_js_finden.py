@@ -102,7 +102,7 @@ def test_dialog_oeffnet_und_uebernimmt_geraetestandort() -> None:
     e = _node(r"""
     const t = bauen({ geo: "ok" });
     await sleep(50);
-    await t.klick("[data-finden-open]", 60);
+    await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 60);
     console.log(JSON.stringify({
       lat: t.q('[data-finden-feld="latitude"]').value, lon: t.q('[data-finden-feld="longitude"]').value,
       status: t.q("[data-finden-standort-text]").textContent, geo: t.log.geoAufrufe,
@@ -121,7 +121,7 @@ def test_dialog_oeffnet_und_uebernimmt_geraetestandort() -> None:
 @pytest.mark.parametrize("geo", ["fehler", "keine"])
 def test_ohne_geraetestandort_bleibt_ha_standort(geo: str) -> None:
     e = _node(
-        'const t = bauen({ geo: "%s" }); await sleep(50); await t.klick("[data-finden-open]", 60);' % geo
+        'const t = bauen({ geo: "%s" }); await sleep(50); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 60);' % geo
         + r"""
     console.log(JSON.stringify({ lat: t.q('[data-finden-feld="latitude"]').value, status: t.q("[data-finden-standort-text]").textContent }));
     process.exit(0);
@@ -134,7 +134,7 @@ def test_eingaben_gehen_beim_rerender_nicht_verloren_und_geo_antwort_stoert_nich
     e = _node(r"""
     const t = bauen({ geo: "ok" });
     await sleep(50);
-    await t.klick("[data-finden-open]", 0);
+    await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 0);
     await t.tippe('[data-finden-feld="name"]', "Hofladen Rohrer");
     await sleep(60); // Geolocation-Antwort trifft ein
     t.el.render();
@@ -149,7 +149,7 @@ def test_suche_sendet_erwartete_nachricht_und_waehlt_hohe_konfidenz_vor() -> Non
     e = _node(r"""
     const t = bauen({ geo: "fehler" });
     await sleep(50);
-    await t.klick("[data-finden-open]", 40);
+    await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 40);
     await t.tippe('[data-finden-feld="name"]', "  Boucherie de Campagne ");
     await t.tippe("[data-finden-radius]", "3500");
     await t.wahl("[data-finden-erweitert]", true);
@@ -175,7 +175,7 @@ def test_suche_sendet_erwartete_nachricht_und_waehlt_hohe_konfidenz_vor() -> Non
 def test_niedrige_konfidenz_wird_nicht_vorgewaehlt() -> None:
     e = _node(r"""
     const t = bauen({ discover: { kandidaten: [KANDIDAT({ konfidenz: "niedrig", score: 0.1 })] } });
-    await sleep(50); await t.klick("[data-finden-open]", 20); await t.klick("[data-finden-suchen]", 40);
+    await sleep(50); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 20); await t.klick("[data-finden-suchen]", 40);
     console.log(JSON.stringify({ vor: t.q("[data-finden-kandidat]").checked, weiterAus: t.q("[data-finden-weiter]").disabled }));
     process.exit(0);
     """)
@@ -186,7 +186,7 @@ def test_niedrige_konfidenz_wird_nicht_vorgewaehlt() -> None:
 def test_ungueltige_koordinaten_rufen_den_server_nicht_auf() -> None:
     e = _node(r"""
     const t = bauen({ geo: "fehler" });
-    await sleep(50); await t.klick("[data-finden-open]", 20);
+    await sleep(50); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 20);
     await t.tippe('[data-finden-feld="latitude"]', "abc");
     await t.klick("[data-finden-suchen]", 20);
     console.log(JSON.stringify({ calls: t.log.calls.filter(c => c.type.endsWith("/discover")).length, fehler: t.q(".notice.error")?.textContent || "" }));
@@ -200,7 +200,7 @@ def test_serverfehler_wird_angezeigt_und_dialog_bleibt_bedienbar() -> None:
     e = _node(r"""
     const err = Object.assign(new Error("x"), { code: "unreachable" });
     const t = bauen({ discover: err });
-    await sleep(50); await t.klick("[data-finden-open]", 20); await t.klick("[data-finden-suchen]", 40);
+    await sleep(50); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 20); await t.klick("[data-finden-suchen]", 40);
     console.log(JSON.stringify({ fehler: t.q(".notice.error").textContent, knopf: t.q("[data-finden-suchen]").disabled }));
     process.exit(0);
     """)
@@ -211,7 +211,7 @@ def test_serverfehler_wird_angezeigt_und_dialog_bleibt_bedienbar() -> None:
 def test_keine_treffer_bietet_website_und_manuell_an() -> None:
     e = _node(r"""
     const t = bauen({ discover: { kandidaten: [] } });
-    await sleep(50); await t.klick("[data-finden-open]", 20);
+    await sleep(50); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 20);
     await t.tippe('[data-finden-feld="name"]', "Beutlers Hoflädeli");
     await t.tippe('[data-finden-feld="website"]', "https://beutlers.example");
     await t.klick("[data-finden-suchen]", 40);
@@ -230,7 +230,7 @@ def test_keine_treffer_bietet_website_und_manuell_an() -> None:
 def test_anreicherung_ereignisse_pruefansicht_und_uebernahme_mit_quellen() -> None:
     e = _node(r"""
     const t = bauen();
-    await sleep(50); await t.klick("[data-finden-open]", 20);
+    await sleep(50); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 20);
     await t.tippe('[data-finden-feld="website"]', "https://martin.example");
     await t.klick("[data-finden-suchen]", 40);
     await t.klick("[data-finden-weiter]", 30);
@@ -295,7 +295,7 @@ def test_anreicherung_ereignisse_pruefansicht_und_uebernahme_mit_quellen() -> No
 def test_manuell_geaendertes_feld_verliert_herkunftsangabe() -> None:
     e = _node(r"""
     const t = bauen();
-    await sleep(50); await t.klick("[data-finden-open]", 20); await t.klick("[data-finden-suchen]", 40); await t.klick("[data-finden-weiter]", 30);
+    await sleep(50); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 20); await t.klick("[data-finden-suchen]", 40); await t.klick("[data-finden-weiter]", 30);
     await t.ereignis(t.log.subs[0], t.fertig({ name: "Famille Martin", email: "a@martin.example" },
       { name: { quelle: "openstreetmap", status: "confirmed" }, email: { quelle: "website", status: "confirmed" } }));
     await t.klick("[data-finden-uebernehmen]", 30);
@@ -313,7 +313,7 @@ def test_manuell_geaendertes_feld_verliert_herkunftsangabe() -> None:
 def test_enrich_fehler_beim_abonnieren_und_zurueck_meldet_ab() -> None:
     e = _node(r"""
     const t = bauen();
-    await sleep(50); await t.klick("[data-finden-open]", 20); await t.klick("[data-finden-suchen]", 40); await t.klick("[data-finden-weiter]", 30);
+    await sleep(50); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 20); await t.klick("[data-finden-suchen]", 40); await t.klick("[data-finden-weiter]", 30);
     await t.klick("[data-finden-zurueck]", 30);   // während der Anreicherung zurück
     await sleep(20);
     console.log(JSON.stringify({ unsubs: t.log.unsubs, schritt2: !!t.q("[data-finden-kandidat]") }));
@@ -326,13 +326,13 @@ def test_enrich_fehler_beim_abonnieren_und_zurueck_meldet_ab() -> None:
 def test_escape_schliesst_dialog_und_meldet_ab() -> None:
     e = _node(r"""
     const t = bauen();
-    await sleep(50); await t.klick("[data-finden-open]", 20); await t.klick("[data-finden-suchen]", 40); await t.klick("[data-finden-weiter]", 30);
+    await sleep(50); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 20); await t.klick("[data-finden-suchen]", 40); await t.klick("[data-finden-weiter]", 30);
     t.q("[data-finden-dialog]").dispatchEvent(new t.w.KeyboardEvent("keydown", { key: "Escape", bubbles: true, composed: true }));
     await sleep(30);
-    console.log(JSON.stringify({ weg: !t.q("[data-finden-dialog]"), unsubs: t.log.unsubs, listeAnzeige: !!t.q("[data-new]") }));
+    console.log(JSON.stringify({ weg: !t.q("[data-finden-dialog]"), unsubs: t.log.unsubs, einstieg: !!t.q("[data-erfassen-url]") }));
     process.exit(0);
     """)
-    assert e["weg"] and e["unsubs"] == 1 and e["listeAnzeige"]
+    assert e["weg"] and e["unsubs"] == 1 and e["einstieg"]
 
 
 @braucht_jsdom
@@ -340,7 +340,7 @@ def test_fremdtexte_werden_escaped_und_unsichere_links_nicht_gerendert() -> None
     e = _node(r"""
     const boese = KANDIDAT({ name: '<img src=x onerror="window.__xss=1">', adresse: "<b>x</b>" });
     const t = bauen({ discover: { kandidaten: [boese] } });
-    await sleep(50); await t.klick("[data-finden-open]", 20); await t.klick("[data-finden-suchen]", 40);
+    await sleep(50); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 20); await t.klick("[data-finden-suchen]", 40);
     const imgs2 = t.sr.querySelectorAll("[data-finden-dialog] img").length;
     await t.wahl("[data-finden-kandidat]", true);
     await t.klick("[data-finden-weiter]", 30);
@@ -357,7 +357,7 @@ def test_bestehender_hofladen_wird_als_hinweis_angezeigt() -> None:
     e = _node(r"""
     const items = [{ id: "1", name: "famille martin", latitude: null, longitude: null, oeffnungszeiten: [], angebote: [], zahlungsarten: [], bilder: [], sonderoeffnungszeiten: [], bewertung: 0, geoeffnet: null }];
     const t = bauen({ items });
-    await sleep(80); await t.klick("[data-finden-open]", 20); await t.klick("[data-finden-suchen]", 40);
+    await sleep(80); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 20); await t.klick("[data-finden-suchen]", 40);
     console.log(JSON.stringify({ hinweis: t.q(".finden-warnung")?.textContent || "" }));
     process.exit(0);
     """)
@@ -384,7 +384,7 @@ def test_detailansicht_zeigt_herkunft() -> None:
 def test_unsicherer_kontext_wird_benannt_ohne_geolocation_aufruf() -> None:
     e = _node(r"""
     const t = bauen({ geo: "ok", unsicher: true });
-    await sleep(50); await t.klick("[data-finden-open]", 60);
+    await sleep(50); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 60);
     console.log(JSON.stringify({ status: t.q("[data-finden-standort-text]").textContent, geo: t.log.geoAufrufe, lat: t.q('[data-finden-feld="latitude"]').value }));
     process.exit(0);
     """)
@@ -395,7 +395,7 @@ def test_unsicherer_kontext_wird_benannt_ohne_geolocation_aufruf() -> None:
 def test_button_mein_standort_fragt_erneut() -> None:
     e = _node(r"""
     const t = bauen({ geo: "ok" });
-    await sleep(50); await t.klick("[data-finden-open]", 40);
+    await sleep(50); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 40);
     await t.tippe('[data-finden-feld="latitude"]', "1");
     await t.klick("[data-finden-standort]", 40);
     console.log(JSON.stringify({ geo: t.log.geoAufrufe, lat: t.q('[data-finden-feld="latitude"]').value }));
@@ -411,11 +411,11 @@ def test_button_mein_standort_fragt_erneut() -> None:
 def test_ki_checkbox_nur_mit_gewaehlter_entitaet_und_nie_vorangekreuzt() -> None:
     e = _node(r"""
     const aus = bauen({ ki: null });
-    await sleep(50); await aus.klick("[data-finden-open]", 20);
+    await sleep(50); await aus.klick("[data-erfassen-open]", 10); await aus.klick("[data-finden-open]", 20);
     const ohne = aus.q("[data-finden-ki]") !== null;
     const hinweisAus = aus.q("[data-finden-ki-hinweis]")?.textContent || "";
     const an = bauen({ ki: "ai_task.lokal" });
-    await sleep(50); await an.klick("[data-finden-open]", 20);
+    await sleep(50); await an.klick("[data-erfassen-open]", 10); await an.klick("[data-finden-open]", 20);
     const cb = an.q("[data-finden-ki]");
     console.log(JSON.stringify({ ohne, hinweisAus, hinweisMit: an.q("[data-finden-ki-hinweis]") !== null, mit: cb !== null, vorangekreuzt: cb.checked, hinweis: cb.parentElement.textContent }));
     process.exit(0);
@@ -432,7 +432,7 @@ def test_enrich_sendet_ki_nur_wenn_angehakt() -> None:
     const nachrichten = [];
     for (const haken of [false, true]) {
       const t = bauen({ ki: "ai_task.lokal" });
-      await sleep(50); await t.klick("[data-finden-open]", 20);
+      await sleep(50); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 20);
       if (haken) await t.wahl("[data-finden-ki]", true);
       await t.klick("[data-finden-suchen]", 40); await t.klick("[data-finden-weiter]", 30);
       nachrichten.push(t.log.subs[0].m);
@@ -448,7 +448,7 @@ def test_enrich_sendet_ki_nur_wenn_angehakt() -> None:
 def test_enrich_ohne_entitaet_sendet_nie_ki() -> None:
     e = _node(r"""
     const t = bauen({ ki: null });
-    await sleep(50); await t.klick("[data-finden-open]", 20);
+    await sleep(50); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 20);
     t.el.finden.ki = true;  // selbst ein manipulierter Zustand darf nichts senden
     await t.klick("[data-finden-suchen]", 40); await t.klick("[data-finden-weiter]", 30);
     console.log(JSON.stringify({ m: t.log.subs[0].m }));
@@ -461,7 +461,7 @@ def test_enrich_ohne_entitaet_sendet_nie_ki() -> None:
 def test_vermutungen_getrennt_nicht_vorgewaehlt_und_als_inferred_uebernommen() -> None:
     e = _node(r"""
     const t = bauen({ ki: "ai_task.lokal" });
-    await sleep(50); await t.klick("[data-finden-open]", 20);
+    await sleep(50); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 20);
     await t.wahl("[data-finden-ki]", true);
     await t.klick("[data-finden-suchen]", 40); await t.klick("[data-finden-weiter]", 30);
     const sub = t.log.subs[0];
@@ -495,7 +495,7 @@ def test_vermutungen_getrennt_nicht_vorgewaehlt_und_als_inferred_uebernommen() -
 def test_angehakte_vermutung_wird_uebernommen_und_feld_gilt_als_vermutet() -> None:
     e = _node(r"""
     const t = bauen({ ki: "ai_task.lokal" });
-    await sleep(50); await t.klick("[data-finden-open]", 20);
+    await sleep(50); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 20);
     await t.wahl("[data-finden-ki]", true);
     await t.klick("[data-finden-suchen]", 40); await t.klick("[data-finden-weiter]", 30);
     await t.ereignis(t.log.subs[0], { phase: "fertig", vorschlag: {
@@ -517,7 +517,7 @@ def test_angehakte_vermutung_wird_uebernommen_und_feld_gilt_als_vermutet() -> No
 def test_ki_fehlerstatus_wird_lesbar_angezeigt() -> None:
     e = _node(r"""
     const t = bauen({ ki: "ai_task.lokal" });
-    await sleep(50); await t.klick("[data-finden-open]", 20);
+    await sleep(50); await t.klick("[data-erfassen-open]", 10); await t.klick("[data-finden-open]", 20);
     await t.wahl("[data-finden-ki]", true);
     await t.klick("[data-finden-suchen]", 40); await t.klick("[data-finden-weiter]", 30);
     await t.ereignis(t.log.subs[0], { phase: "ki", status: "zeitueberschreitung" });

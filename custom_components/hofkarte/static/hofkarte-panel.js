@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1-dev.18";
+const PANEL_BUILD = "2026.10.1-dev.19";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -332,6 +332,7 @@ class HofkartePanel extends HTMLElement {
     this.listenFilter = ""; // Freitextfilter in der Listenansicht
     this.karteNurGeoeffnet = false; // Filter "Nur geöffnet" - gemeinsam für Kacheln, Liste und Karte (Issue #2, GUI-Überarbeitung)
     this.uebersichtMenue = false; // ⋮-Menü der Kopfzeile (Import) geöffnet?
+    this.erfassen = null; // Einstiegsseite "Hofladen erfassen" (null = geschlossen, sonst { name, url })
     this.editGeaendert = false; // ungespeicherte Änderungen im Bearbeitungsformular (nur Anzeige "Ungespeichert", Rückfrage beim Abbrechen)
     this.gruppenZustand = { detail: {}, editor: {} }; // Auf-/Zuklappzustand der Gruppen je Maske, nur für die Sitzung (id -> true/false)
     this.kachelMenue = null; // id der Kachel, deren ⋮-Menü offen ist (nur Anzeigezustand, kein Render nötig)
@@ -487,6 +488,11 @@ class HofkartePanel extends HTMLElement {
     const data = this.formData();
     try {
       this.validate(data);
+      if (!data.id) {
+        const lat = Number(data.latitude), lon = Number(data.longitude);
+        const doppelt = this.findeBestehenden({ name: data.name, latitude: data.latitude === null || data.latitude === "" ? NaN : lat, longitude: data.longitude === null || data.longitude === "" ? NaN : lon });
+        if (doppelt && !confirm(`Möglicherweise schon erfasst: «${doppelt.name}». Trotzdem als neuen Hofladen speichern?`)) return;
+      }
       await this.call("hofkarte/management/save", { hofladen: data });
       this.message = "Änderungen gespeichert.";
       this.editing = null;
@@ -1391,8 +1397,9 @@ class HofkartePanel extends HTMLElement {
 
   currentView() {
     if (this.importDialog) return this.importKonflikte();
-    if (this.editing) return this.editor();
+    if (this.editing) { this.erfassen = null; return this.editor(); }
     if (this.viewing) return this.detail();
+    if (this.erfassen) return this.erfassenEinstieg();
     return this.list();
   }
 
@@ -1613,6 +1620,21 @@ class HofkartePanel extends HTMLElement {
       .fussleiste{position:sticky;bottom:0;z-index:5;display:flex;align-items:center;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px;padding:10px 16px;border-radius:8px;background:var(--card-background-color,#fff);border:1px solid var(--divider-color);box-shadow:0 -2px 8px rgba(0,0,0,.08)}
       .fussleiste .ungespeichert{margin-right:auto;color:var(--warning-color,#b26a00);font-weight:500}
       .day-title .link-button{margin-left:10px;font-weight:normal;font-size:.9em}
+      .erfassen-titel{margin:12px 0 0;font-size:1.5em;outline:none}
+      .erfassen-frage{margin:20px 0 4px;font-size:1.2em}
+      .erfassen-intro{margin:0 0 16px;max-width:640px}
+      .erfassen-karten{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+      @media(max-width:900px){.erfassen-karten{grid-template-columns:1fr}}
+      .erfassen-karte{display:flex;flex-direction:column;gap:10px;padding:20px}
+      .erfassen-karte h3{margin:0;font-size:1.1em}
+      .erfassen-karte p{margin:0}
+      .erfassen-karte label{margin:0}
+      .erfassen-aktion{margin-top:auto;align-self:flex-start}
+      .erfassen-aktion[disabled]{opacity:.5;cursor:not-allowed}
+      .erfassen-icon{display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:50%;background:var(--secondary-background-color);color:var(--primary-color)}
+      .erfassen-icon.neutral{color:var(--secondary-text-color)}
+      .erfassen-hinweis{margin-top:16px;padding:14px 18px}
+      .erfassen-fuss{margin-top:12px;font-size:.9em}
       .gruppen-leiste{display:flex;justify-content:flex-end;margin:0 0 8px}
       .gruppe{margin-bottom:12px;padding:0}
       .gruppe-titel{margin:0;font-size:1em}
@@ -1724,6 +1746,8 @@ class HofkartePanel extends HTMLElement {
   static ICONS = {
     search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    standort: '<path d="M12 21s-7-6.2-7-11a7 7 0 0114 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+    web: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/>',
     kacheln: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',
     liste: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
     karte: '<path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4zM8 2v16M16 6v16"/>',
@@ -1746,8 +1770,7 @@ class HofkartePanel extends HTMLElement {
     const offen = this.uebersichtMenue;
     return `<div class="top"><div><h1>HofKarte</h1><div class="muted">Hofläden verwalten · Panel ${PANEL_BUILD}</div></div>
       <div class="top-aktionen">
-        <button type="button" class="secondary mit-icon" data-finden-open>${this.icon("search")}Hofladen finden</button>
-        <button type="button" class="mit-icon" data-new>${this.icon("plus")}Hofladen</button>
+        <button type="button" class="mit-icon" data-erfassen-open>${this.icon("plus")}Hofladen erfassen</button>
         <div class="menue-bereich" data-menue-bereich>
           <button type="button" class="icon-btn" data-menue-toggle aria-haspopup="menu" aria-expanded="${offen ? "true" : "false"}" aria-label="Weitere Aktionen">${this.icon("mehr")}</button>
           <div class="menue" role="menu" data-menue ${offen ? "" : "hidden"}>
@@ -3272,12 +3295,14 @@ class HofkartePanel extends HTMLElement {
     // Bearbeiten: Enter im Chip-Eingabefeld fügt hinzu (statt das Formular abzuschicken).
     main.addEventListener("keydown", (e) => {
       const ziel = e.target instanceof Element ? e.target : null;
+      if (ziel && e.key === "Enter" && ziel.matches("[data-erfassen-url]")) { e.preventDefault(); this.erfassenAuslesen(); return; }
       if (!ziel || e.key !== "Enter" || !ziel.matches("[data-chip-eingabe]")) return;
       e.preventDefault();
       this.chipHinzufuegen(ziel.dataset.chipEingabe, ziel.value);
       ziel.value = "";
     });
     // Bearbeiten: Änderungen erkennen ("Ungespeichert") und Gruppenköpfe live nachführen.
+    main.addEventListener("input", (e) => { if (e.target instanceof Element) this.erfassenEingabe(e.target); });
     const aenderung = (e) => {
       const ziel = e.target instanceof Element ? e.target : null;
       if (!this.editing || !ziel || !ziel.closest("form") || !ziel.name || ziel.name === "osm_radius") return;
@@ -3297,6 +3322,8 @@ class HofkartePanel extends HTMLElement {
       if (!ziel) return;
       // ⋮-Menü der Kopfzeile: Klick auf den Knopf schaltet um, Klick
       // irgendwo sonst schliesst es (ohne Render, nur hidden/aria).
+      if (ziel.closest("[data-erfassen-open]")) { this.erfassen = { name: "", url: "" }; this.render(); this.shadowRoot.querySelector(".erfassen-titel")?.focus?.(); return; }
+      if (ziel.closest("[data-erfassen-zurueck]")) { this.erfassen = null; this.render(); return; }
       // --- Bearbeiten: Chips, Zeiten kopieren, Standort, Bewertung ---
       const chipEntf = ziel.closest("[data-chip-entfernen]");
       if (chipEntf) { this.chipEntfernen(chipEntf.dataset.chipFeld, chipEntf.dataset.chipEntfernen); return; }
@@ -3645,18 +3672,82 @@ class HofkartePanel extends HTMLElement {
     { key: "zahlungsarten", label: "Zahlungsarten" },
   ];
 
-  oeffneFinden() {
+  // --- Erfassen: Einstiegsseite -------------------------------------------
+
+  static URL_MUSTER = /^https?:\/\/[^\s/]+\.[^\s/]+/i;
+
+  urlGueltigFuerAuslesen(wert) {
+    const t = String(wert || "").trim();
+    return HofkartePanel.URL_MUSTER.test(t) && this.isPlausibleUrl(t);
+  }
+
+  /** Einstieg "Hofladen erfassen": drei Wege je nach Ausgangslage. */
+  erfassenEinstieg() {
+    const e = this.erfassen;
+    const urlOk = this.urlGueltigFuerAuslesen(e.url);
+    const kreis = (name, klasse = "") => `<span class="erfassen-icon ${klasse}" aria-hidden="true">${this.icon(name).replace('width="20" height="20"', 'width="26" height="26"')}</span>`;
+    return `<div class="top"><div><button type="button" class="secondary" data-erfassen-zurueck>← Übersicht</button></div></div>
+      <h1 class="erfassen-titel">Hofladen erfassen</h1>
+      <h2 class="erfassen-frage">Womit startest du?</h2>
+      <p class="muted erfassen-intro">Wähle, was du schon hast. Den Rest suchen wir für dich. Du prüfst alles, bevor etwas gespeichert wird.</p>
+      <div class="erfassen-karten">
+        <section class="card erfassen-karte" aria-labelledby="erf-1">
+          ${kreis("standort")}
+          <h3 id="erf-1">Ich stehe vor dem Hofladen</h3>
+          <p class="muted">Dein Standort wird verwendet, Hofläden in der Nähe werden vorgeschlagen.</p>
+          <label>Name (optional)<input type="text" data-erfassen-name value="${this.escAttr(e.name)}" placeholder="z. B. Hofladen Seeblick" autocomplete="off"></label>
+          <button type="button" class="mit-icon erfassen-aktion" data-finden-open>${this.icon("standort")}Standort verwenden</button>
+        </section>
+        <section class="card erfassen-karte" aria-labelledby="erf-2">
+          ${kreis("web")}
+          <h3 id="erf-2">Ich habe eine Webseite</h3>
+          <p class="muted">Webseite einfügen. Name, Adresse, Öffnungszeiten und Angebote werden ausgelesen.</p>
+          <label>Webseite<input type="url" data-erfassen-url value="${this.escAttr(e.url)}" placeholder="https://…" inputmode="url" autocomplete="off"></label>
+          <button type="button" class="mit-icon erfassen-aktion" data-erfassen-auslesen ${urlOk ? "" : "disabled"}>${this.icon("search")}Auslesen</button>
+        </section>
+        <section class="card erfassen-karte" aria-labelledby="erf-3">
+          ${kreis("bearbeiten", "neutral")}
+          <h3 id="erf-3">Von Hand erfassen</h3>
+          <p class="muted">Leeres Formular, alle Angaben selbst eintragen. Sinnvoll, wenn nichts online zu finden ist.</p>
+          <button type="button" class="secondary mit-icon erfassen-aktion" data-new>${this.icon("bearbeiten")}Leeres Formular</button>
+        </section>
+      </div>
+      <section class="card erfassen-hinweis" role="note">
+        <div><strong>Hofladen schon erfasst?</strong><div class="muted">Öffne ihn in der Übersicht. Im Detail findest du «Bearbeiten», bei fehlenden Angaben auch «Jetzt ergänzen».</div></div>
+      </section>
+      <p class="muted erfassen-fuss">Vor dem Speichern wird immer geprüft, ob es den Hofladen schon gibt (Name, Nähe).</p>`;
+  }
+
+  /** Eingaben der Einstiegsseite (Name, Webseite) sichern; aktualisiert nur "Auslesen" (kein Render, Fokus bleibt). */
+  erfassenEingabe(ziel) {
+    if (!this.erfassen) return;
+    if (ziel.matches("[data-erfassen-name]")) this.erfassen.name = ziel.value;
+    if (ziel.matches("[data-erfassen-url]")) {
+      this.erfassen.url = ziel.value;
+      const knopf = this.shadowRoot.querySelector("[data-erfassen-auslesen]");
+      if (knopf) knopf.disabled = !this.urlGueltigFuerAuslesen(ziel.value);
+    }
+  }
+
+  erfassenAuslesen() {
+    if (!this.erfassen || !this.urlGueltigFuerAuslesen(this.erfassen.url)) return;
+    const website = this.erfassen.url.trim();
+    this.oeffneFinden({ website, ohneStandort: true });
+    this.reichereFindenAn({ ohneKandidat: true });
+  }
+
+  oeffneFinden({ name = "", website = "", ohneStandort = false } = {}) {
     const ha = this.hass?.config;
     const haLat = Number.isFinite(Number(ha?.latitude)) ? ha.latitude : "";
     const haLon = Number.isFinite(Number(ha?.longitude)) ? ha.longitude : "";
     this.finden = {
-      schritt: 1, ki: false, name: "", website: "", latitude: haLat, longitude: haLon,
+      schritt: 1, ki: false, name: String(name || "").trim(), website: String(website || "").trim(), latitude: haLat, longitude: haLon,
       radius: FINDEN_STANDARD_RADIUS_METER, erweitert: false,
       standortText: "", standortKind: "", busy: false, fehler: "",
       kandidaten: [], gewaehlt: null, ereignisse: {}, vorschlag: null, felder: {},
     };
     this.render();
-    this.ermittleGeraeteStandort();
+    if (!ohneStandort) this.ermittleGeraeteStandort();
   }
 
   schliesseFinden() {
@@ -4099,7 +4190,8 @@ class HofkartePanel extends HTMLElement {
     main.addEventListener("click", (e) => {
       const ziel = e.target instanceof Element ? e.target : null;
       if (!ziel) return;
-      if (ziel.closest("[data-finden-open]")) { this.oeffneFinden(); return; }
+      if (ziel.closest("[data-finden-open]")) { this.oeffneFinden({ name: this.erfassen?.name || "" }); return; }
+      if (ziel.closest("[data-erfassen-auslesen]")) { this.erfassenAuslesen(); return; }
       if (!this.finden) return;
       if (ziel.closest("[data-finden-abbrechen]")) { this.schliesseFinden(); return; }
       if (ziel.closest("[data-finden-standort]")) { this.ermittleGeraeteStandort(); return; }

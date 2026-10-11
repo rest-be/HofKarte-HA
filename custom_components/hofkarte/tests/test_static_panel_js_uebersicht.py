@@ -85,7 +85,7 @@ def test_gemeinsame_steuerleiste_in_allen_drei_ansichten() -> None:
         r"""
     const t = bauen({ mitLeaflet: true });
     await sleep(100);
-    const sel = ["[data-listen-filter]", "[data-karte-nur-geoeffnet]", "[data-sortierung]", "[data-sortrichtung]", '[data-ansicht="kacheln"]', '[data-ansicht="liste"]', '[data-ansicht="karte"]', "[data-menue-toggle]", "[data-finden-open]", "[data-new]"];
+    const sel = ["[data-listen-filter]", "[data-karte-nur-geoeffnet]", "[data-sortierung]", "[data-sortrichtung]", '[data-ansicht="kacheln"]', '[data-ansicht="liste"]', '[data-ansicht="karte"]', "[data-menue-toggle]", "[data-erfassen-open]"];
     const out = {};
     for (const a of ["kacheln", "liste", "karte"]) {
       if (a !== "kacheln") await t.klick(`[data-ansicht="${a}"]`, 200);

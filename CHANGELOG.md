@@ -15,6 +15,12 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Geändert (2026.10.1-dev.19) – Detail & Erfassung, Phase 4 (Einstieg «Hofladen erfassen»)
+
+- Die beiden Kopfzeilen-Knöpfe «Hofladen finden» und «Hofladen» sind durch einen Knopf **«Hofladen erfassen»** ersetzt. Er öffnet eine Einstiegsseite mit drei Wegen: **Ich stehe vor dem Hofladen** (Standort verwenden, optional Name; öffnet den bisherigen Suchdialog mit dem Namen vorbelegt), **Ich habe eine Webseite** (Webseite einfügen; «Auslesen» ist nur bei einer gültigen http(s)-Adresse aktiv und wertet die Webseite direkt aus, ohne Standortabfrage; Enter im Feld genügt) und **Von Hand erfassen** (leeres Formular). Schliesst man den Suchdialog, landet man wieder auf der Einstiegsseite.
+- Beim Speichern eines **neuen** Hofladens wird geprüft, ob es ihn schon gibt (gleicher Name oder Hofladen im Umkreis von 100 m); bei einem Treffer erscheint eine Rückfrage («Möglicherweise schon erfasst: … Trotzdem speichern?»). Das gilt jetzt auch für die Erfassung von Hand und gilt nicht beim Bearbeiten bestehender Hofläden.
+- Intern: Der bisherige Dialog «Hofladen finden» bleibt unverändert und wird in den Phasen 5 und 6 durch die Schnellerfassung vor Ort bzw. den Webseiten-Ablauf mit Prüfansicht ersetzt.
+
 ### Geändert (2026.10.1-dev.18) – Detail & Erfassung, Phase 3 (Bearbeiten neu)
 
 - Das Bearbeitungsformular verwendet dieselben sieben einklappbaren Gruppen in derselben Reihenfolge wie die Detailansicht (Grunddaten inkl. Bewertung und interner Bemerkung · Adresse & Standort · Kontakt & Webseite · Öffnungszeiten · Angebote & Zahlungsarten · Bilder · Herkunft der Angaben, dort nur lesend). Standardmässig offen: Grunddaten, Adresse & Standort, Angebote & Zahlungsarten. Zusammenfassung und Vollständigkeitspunkt jeder Gruppe werden beim Tippen laufend nachgeführt.
