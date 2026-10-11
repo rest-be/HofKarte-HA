@@ -15,6 +15,11 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Geändert (2026.10.1-dev.24) – App-Icon, Release-Entwurf
+
+- **Neues Icon** (Karotte als Kartenmarker auf Feldern): `brand/icon.png` (256 × 256) und `brand/icon@2x.png` (512 × 512) ersetzt (bisher 1254 × 1254 px, unnötig gross).
+- Neu: `RELEASE_NOTES_2026.10.1.md` als **Entwurf** (Phase 9 bleibt offen: KI-Messung mit Ollama, Test auf iPhone/Mac, Versionsentscheid, RC).
+
 ### Geändert (2026.10.1-dev.23) – Detail & Erfassung, Phase 8 (Zugänglichkeit, Doku, Aufräumen)
 
 - **Fokusführung:** Beim Wechsel eines Schritts (Einstieg, Schnellerfassung, Webseite, Abgleich) springt der Fokus auf die Seitenüberschrift; sie bleibt dort, auch wenn ein asynchrones Ergebnis (Standort, Suche, Auslesen) neu zeichnet. Überschriften sind fokussierbar (`tabindex="-1"`).
