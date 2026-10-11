@@ -15,6 +15,14 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Geändert (2026.10.1-dev.17) – Detail & Erfassung, Phase 2 (Detailansicht neu)
+
+- Die Detailansicht ist neu gegliedert: oben der Block «Auf einen Blick» (Hauptbild, Name, Status, Sterne, Adresse und Schnellaktionen Route / Anrufen / Webseite / E-Mail, jeweils nur wenn vorhanden), darunter die sieben einklappbaren Gruppen aus dem gemeinsamen Gruppenmodell (Grunddaten, Adresse & Standort, Kontakt & Webseite, Öffnungszeiten, Angebote & Zahlungsarten, Bilder, Herkunft der Angaben). Jede Gruppe zeigt eingeklappt eine Kurzzusammenfassung und einen Vollständigkeitspunkt (✓ / ½ / leer). Bilder und Herkunft sind standardmässig eingeklappt, «Alle ausklappen/einklappen» schaltet alle Gruppen.
+- Hinweis «Noch unvollständig: …» mit «Jetzt ergänzen» (öffnet vorerst das Bearbeitungsformular; der Abgleich folgt in Phase 7).
+- Öffnungszeiten: der heutige Wochentag ist markiert; Sonderöffnungszeiten stehen in derselben Gruppe.
+- Status mit Uhrzeit: «Offen bis 16:00» bzw. «Geschlossen · öffnet Mo 08:00». Dafür liefert der Server in `hofkarte/management/list` ein neues Feld `status_wechsel` (berechnet mit denselben Funktionen wie die Sensoren «Nächste Öffnung/Schliessung»); ohne Feld oder bei unbekanntem Status bleibt es bei «Geöffnet/Geschlossen/Unbekannt». Das Feld ist nicht Teil des Exports.
+- ⋮-Menü in der Detailansicht mit «Löschen …»; «Bearbeiten» bleibt als Knopf in der Kopfzeile.
+
 ### Hinzugefügt (2026.10.1-dev.16) – Detail & Erfassung, Phase 1 (Gruppenmodell)
 
 - Gemeinsame Bausteine für Detail und Bearbeiten: sieben Gruppen in fester Reihenfolge (Grunddaten · Adresse & Standort · Kontakt & Webseite · Öffnungszeiten · Angebote & Zahlungsarten · Bilder · Herkunft der Angaben), einklappbar (Knopf mit `aria-expanded`, Tastatur Enter/Leertaste), mit Kurzzusammenfassung im eingeklappten Zustand und Vollständigkeitspunkt (✓ / ◐ / ○ mit Text, nicht nur Farbe). «Alle ausklappen/einklappen» schaltet alle Gruppen. Der Zustand gilt je Maske für die Sitzung. Die Vollständigkeit wird nur zur Anzeige berechnet. Noch nicht in Detail/Bearbeiten eingebunden (folgt in Phase 2 und 3), daher für Anwender noch keine sichtbare Änderung.

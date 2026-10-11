@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1-dev.16";
+const PANEL_BUILD = "2026.10.1-dev.17";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -1565,6 +1565,22 @@ class HofkartePanel extends HTMLElement {
       .notice.error{background:var(--error-color,#db4437)}
       .muted{color:var(--secondary-text-color)}
       h1,h2{font-weight:500}
+      .blick{display:flex;gap:16px;align-items:stretch;margin:12px 0;padding:12px;flex-wrap:wrap}
+      .blick-bild{flex:0 0 180px;min-height:120px;border-radius:8px;overflow:hidden;background:var(--secondary-background-color)}
+      .blick-bild img{display:block;width:100%;height:100%;min-height:120px;object-fit:cover}
+      .blick-platzhalter{display:flex;align-items:center;justify-content:center;width:100%;height:100%;min-height:120px;font-size:2.4em}
+      .blick-text{flex:1 1 260px;min-width:0;display:flex;flex-direction:column;gap:8px}
+      .blick-text h1{margin:0;font-size:1.5em}
+      .schnellaktionen{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:auto}
+      .aktion-btn{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 14px;border-radius:18px;background:var(--secondary-background-color);color:var(--primary-text-color);text-decoration:none;box-sizing:border-box}
+      .aktion-btn:hover{filter:brightness(.96)}
+      .unvollstaendig{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px;padding:10px 14px;border-radius:8px;border:1px solid var(--warning-color,#b26a00);color:var(--primary-text-color)}
+      .gruppe-inhalt h3.sub{margin:14px 0 6px;font-size:.85em;text-transform:uppercase;letter-spacing:.03em;color:var(--secondary-text-color)}
+      .gruppe-inhalt h3.sub:first-child{margin-top:0}
+      .opening-table tr.heute td{font-weight:600}
+      .opening-table td:first-child{white-space:nowrap;padding-right:20px}
+      .gruppe-inhalt .sterne-reihe{justify-content:flex-start}
+      .heute-marke{display:inline-block;white-space:nowrap;margin-left:6px;padding:0 8px;border-radius:10px;font-size:.8em;background:var(--primary-color);color:var(--text-primary-color,#fff)}
       .gruppen-leiste{display:flex;justify-content:flex-end;margin:0 0 8px}
       .gruppe{margin-bottom:12px;padding:0}
       .gruppe-titel{margin:0;font-size:1em}
@@ -1653,12 +1669,22 @@ class HofkartePanel extends HTMLElement {
 
   // --- Liste -----------------------------------------------------------
 
+  /** "bis 16:00" bzw. "Mo 08:00" aus dem serverseitigen Feld `status_wechsel`
+   * (nur Anzeige, keine eigene Zeitberechnung). Ohne Feld: leer. */
+  statusWechselText(w) {
+    if (!w || typeof w.zeit !== "string" || !/^\d{2}:\d{2}$/.test(w.zeit)) return "";
+    const tage = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+    const tag = w.heute ? "" : `${tage[(Number(w.wochentag) || 1) - 1] || ""} `;
+    return w.art === "schliesst" ? `bis ${tag}${w.zeit}` : `${w.heute ? "heute " : ""}${tag}${w.zeit}`.trim();
+  }
+
   /** Einheitliche Statusanzeige "geöffnet/geschlossen/unbekannt" – nutzt
    * das serverseitig berechnete Feld `geoeffnet` (siehe management.py),
    * keine eigene Öffnungszeiten-Berechnung in JavaScript (Issue #1). */
-  geoeffnetBadge(geoeffnet) {
-    if (geoeffnet === true) return `<span class="status-badge status-open">🟢 Geöffnet</span>`;
-    if (geoeffnet === false) return `<span class="status-badge status-closed">🔴 Geschlossen</span>`;
+  geoeffnetBadge(geoeffnet, wechsel = null) {
+    const zeit = this.statusWechselText(wechsel);
+    if (geoeffnet === true) return `<span class="status-badge status-open">🟢 ${zeit && wechsel.art === "schliesst" ? `Offen ${zeit}` : "Geöffnet"}</span>`;
+    if (geoeffnet === false) return `<span class="status-badge status-closed">🔴 Geschlossen${zeit && wechsel.art === "oeffnet" ? ` · öffnet ${zeit}` : ""}</span>`;
     return `<span class="status-badge status-unknown">Unbekannt</span>`;
   }
 
@@ -1803,10 +1829,10 @@ class HofkartePanel extends HTMLElement {
 
   /** ⋮-Aktionsmenü eines Hofladens (Route, Bearbeiten, Löschen) – gemeinsam
    * für Kacheln und Listenzeilen; Öffnen/Schliessen siehe schalteKachelMenue(). */
-  aktionenMenueHtml(item) {
+  aktionenMenueHtml(item, { nurLoeschen = false } = {}) {
     const id = this.escAttr(item.id);
     const ziel = ermittleRoutingZiel(item);
-    const routeEintrag = ziel
+    const routeEintrag = ziel && !nurLoeschen
       ? `<a role="menuitem" href="${this.escAttr(googleMapsRoutenUrl(ziel))}" target="_blank" rel="noopener noreferrer">${this.icon("route")}Route (Google Maps)</a>
           <a role="menuitem" href="${this.escAttr(appleMapsRoutenUrl(ziel))}" target="_blank" rel="noopener noreferrer">${this.icon("route")}Route (Apple Maps)</a>`
       : "";
@@ -1815,7 +1841,7 @@ class HofkartePanel extends HTMLElement {
           <button type="button" class="icon-btn" data-kachel-menue-toggle="${id}" aria-haspopup="menu" aria-expanded="${offen ? "true" : "false"}" aria-label="Aktionen für ${this.escAttr(item.name)}">${this.icon("mehr")}</button>
           <div class="menue" role="menu" data-kachel-menue ${offen ? "" : "hidden"}>
             ${routeEintrag}
-            <button type="button" role="menuitem" data-edit="${this.escAttr(item.id)}">${this.icon("bearbeiten")}Bearbeiten</button>
+            ${nurLoeschen ? "" : `<button type="button" role="menuitem" data-edit="${this.escAttr(item.id)}">${this.icon("bearbeiten")}Bearbeiten</button>`}
             <button type="button" role="menuitem" class="gefahr" data-delete="${this.escAttr(item.id)}">${this.icon("loeschen")}Löschen …</button>
           </div>
         </div>`;
@@ -2081,7 +2107,7 @@ class HofkartePanel extends HTMLElement {
    * Export entfernen - der Export soll exakt das interne Datenmodell
    * widerspiegeln, keine flüchtigen, zur Exportzeit gültigen Werte. */
   bereinigtFuerExport(item) {
-    const { geoeffnet, hauptbild_url, ...rest } = item;
+    const { geoeffnet, hauptbild_url, status_wechsel, ...rest } = item;
     return rest;
   }
 
@@ -2287,57 +2313,94 @@ class HofkartePanel extends HTMLElement {
 
   detail() {
     const d = this.viewing;
-    const adresse = [d.adresse, [d.plz, d.ort].filter(Boolean).join(" "), d.land].filter(Boolean).join(", ");
-    const hatKoordinaten = d.latitude != null && d.longitude != null;
+    const v = this.vollstaendigkeit(d);
+    const adresseZeile = [d.adresse, [d.plz, d.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    const bildOk = d.hauptbild_url && istSichereBildUrl(d.hauptbild_url, window.location.origin);
+    const hero = bildOk ? this.bildHtml(d.hauptbild_url, d.name) : `<div class="blick-platzhalter" aria-hidden="true">🏬</div>`;
+    const inhalt = {
+      grunddaten: this.detailGrunddatenInhalt(d),
+      adresse: this.detailAdresseInhalt(d),
+      kontakt: this.detailKontaktInhalt(d),
+      zeiten: this.detailZeitenInhalt(d),
+      angebote: this.detailAngeboteInhalt(d),
+      bilder: this.detailBilderInhalt(d),
+      herkunft: this.detailQuellenInhalt(d.quellen),
+    };
+    const gruppen = HofkartePanel.HOF_GRUPPEN.map((g) => this.gruppeHtml({
+      modus: "detail", id: g.id, zusammenfassung: this.gruppenZusammenfassung(d, g.id), zustand: v.gruppen[g.id], inhalt: inhalt[g.id],
+    })).join("");
 
     return `<div class="top">
-        <div><h1>${this.esc(d.name)}</h1><div class="muted">Detailansicht – nur Anzeige</div></div>
-        <div class="actions"><button class="secondary" data-back>← Zurück zur Liste</button><button data-edit-from-detail="${this.escAttr(d.id)}">Bearbeiten</button></div>
+        <div class="top-titel"><button class="secondary" data-back>← Zurück zur Liste</button></div>
+        <div class="actions"><button data-edit-from-detail="${this.escAttr(d.id)}">Bearbeiten</button>${this.aktionenMenueHtml(d, { nurLoeschen: true })}</div>
       </div>
       ${this.error ? `<div class="notice error">${this.esc(this.error)}</div>` : ""}
 
-      ${d.beschreibung ? `<section class="card detail-section"><h3>Allgemeine Informationen</h3><div>${this.esc(d.beschreibung)}</div></section>` : ""}
-      ${d.bemerkung ? `<section class="card detail-section"><h3>Bemerkung</h3><div>${this.esc(d.bemerkung)}</div></section>` : ""}
-
-      <section class="card detail-section">
-        <h3>Adresse</h3>
-        <div>${adresse ? this.esc(adresse) : '<span class="muted">Keine Adresse hinterlegt</span>'}</div>
-      </section>
-
-      ${this.detailKontaktSection(d)}
-
-      <section class="card detail-section">
-        <h3>Standort / Koordinaten</h3>
-        <div class="coord-row">
-          <div class="muted">${hatKoordinaten ? `Latitude ${d.latitude.toFixed(6)}, Longitude ${d.longitude.toFixed(6)}` : "Keine Koordinaten hinterlegt"}</div>
+      <section class="card blick" aria-label="Auf einen Blick">
+        <div class="blick-bild">${hero}</div>
+        <div class="blick-text">
+          <h1>${this.esc(d.name)}</h1>
+          <div class="blick-status">${this.geoeffnetBadge(d.geoeffnet, d.status_wechsel)}${d.bewertung ? ` <span class="bewertung-klein" aria-label="${d.bewertung} von ${BEWERTUNG_MAX} Sternen">${"★".repeat(d.bewertung)}</span>` : ""}</div>
+          <div class="blick-adresse">${adresseZeile ? this.esc(adresseZeile) : '<span class="muted">Keine Adresse hinterlegt</span>'}</div>
+          <div class="schnellaktionen">${this.schnellaktionenHtml(d)}</div>
         </div>
-        <div class="coord-actions">${this.routingAuswahl(d)}</div>
       </section>
+      ${v.alleFehlend.length ? `<div class="unvollstaendig" role="note"><span>Noch unvollständig: ${this.esc(v.alleFehlend.join(", "))}.</span> <button type="button" class="link-button" data-ergaenzen="${this.escAttr(d.id)}">Jetzt ergänzen</button></div>` : ""}
 
-      <section class="card detail-section">
-        <h3>Öffnungszeiten</h3>
-        ${this.detailOpeningHours(d.oeffnungszeiten || [])}
-        ${(d.sonderoeffnungszeiten || []).length ? `<h3 style="margin-top:14px">Sonderöffnungszeiten</h3>${this.detailSpecialHours(d.sonderoeffnungszeiten)}` : ""}
-      </section>
-
-      ${this.detailAngeboteSection(d.angebote)}
-      ${this.detailPillSection("Zahlungsarten", d.zahlungsarten)}
-
-      ${(d.bilder || []).length ? `<section class="card detail-section"><h3>Bilder</h3><div class="thumbs">${d.bilder.map(b => this.bildHtml(b.url, b.beschreibung || d.name)).join("")}</div></section>` : ""}
-
-      <section class="card detail-section">
-        <h3>Bewertung</h3>
-        ${this.bewertungSterne(d.bewertung || 0, false)}
-      </section>
-
-      ${this.detailQuellenSection(d.quellen)}
+      ${this.gruppenAlleHtml("detail")}
+      ${gruppen}
     `;
   }
 
+  /** Schnellaktionen im Block "Auf einen Blick": nur, was vorhanden ist. */
+  schnellaktionenHtml(d) {
+    const teile = [this.routingAuswahl(d)];
+    const tel = (d.mobilnummer || "").trim();
+    if (tel) teile.push(`<a class="aktion-btn" href="tel:${this.escAttr(tel.replace(/[^\d+]/g, ""))}">📞 Anrufen</a>`);
+    const web = (d.website || "").trim();
+    if (web && this.isPlausibleUrl(web)) {
+      const href = /^https?:\/\//i.test(web) ? web : `https://${web}`;
+      teile.push(`<a class="aktion-btn" href="${this.escAttr(href)}" target="_blank" rel="noopener noreferrer">🔗 Webseite</a>`);
+    }
+    const mail = (d.email || "").trim();
+    if (mail && istGueltigeEmail(mail)) teile.push(`<a class="aktion-btn" href="mailto:${this.escAttr(mail)}">✉️ E-Mail</a>`);
+    return teile.join("");
+  }
+
+  detailGrunddatenInhalt(d) {
+    return `<div>${d.beschreibung ? this.esc(d.beschreibung) : '<span class="muted">Keine Beschreibung hinterlegt</span>'}</div>
+      <h3 class="sub">Bewertung</h3>${(d.bewertung || 0) > 0 ? this.bewertungSterne(d.bewertung, false) : '<span class="muted">Noch keine Bewertung</span>'}
+      ${d.bemerkung ? `<h3 class="sub">Interne Bemerkung</h3><div>${this.esc(d.bemerkung)}</div>` : ""}`;
+  }
+
+  detailAdresseInhalt(d) {
+    const adresse = [d.adresse, [d.plz, d.ort].filter(Boolean).join(" "), d.land].filter(Boolean).join(", ");
+    const hatKoordinaten = d.latitude != null && d.longitude != null;
+    return `<div>${adresse ? this.esc(adresse) : '<span class="muted">Keine Adresse hinterlegt</span>'}</div>
+      <div class="muted coord-row">${hatKoordinaten ? `Latitude ${d.latitude.toFixed(6)}, Longitude ${d.longitude.toFixed(6)}` : "Keine Koordinaten hinterlegt"}</div>`;
+  }
+
+  detailZeitenInhalt(d) {
+    const sonder = d.sonderoeffnungszeiten || [];
+    return `${this.detailOpeningHours(d.oeffnungszeiten || [])}
+      <h3 class="sub">Sonderöffnungszeiten</h3>${sonder.length ? this.detailSpecialHours(sonder) : '<span class="muted">Keine hinterlegt</span>'}`;
+  }
+
+  detailAngeboteInhalt(d) {
+    const pills = (liste) => liste && liste.length ? liste.map((e) => `<span class="pill">${this.esc(e.name)}</span>`).join("") : '<span class="muted">Noch keine erfasst</span>';
+    return `<h3 class="sub">Angebote</h3>${pills(d.angebote)}<h3 class="sub">Zahlungsarten</h3>${pills(d.zahlungsarten)}`;
+  }
+
+  detailBilderInhalt(d) {
+    return (d.bilder || []).length
+      ? `<div class="thumbs">${d.bilder.map((b) => this.bildHtml(b.url, b.beschreibung || d.name)).join("")}</div>`
+      : '<span class="muted">Keine Bilder hinterlegt</span>';
+  }
+
   /** Herkunft einzelner Angaben (aus "Hofladen finden"), samt Lizenzhinweis
-   * für OpenStreetMap-Daten; nur anzeigen, wenn vorhanden. */
-  detailQuellenSection(quellen) {
-    if (!Array.isArray(quellen) || !quellen.length) return "";
+   * für OpenStreetMap-Daten. */
+  detailQuellenInhalt(quellen) {
+    if (!Array.isArray(quellen) || !quellen.length) return '<span class="muted">Keine Quellen hinterlegt</span>';
     const labels = { name: "Name", beschreibung: "Beschreibung", adresse: "Adresse", plz: "PLZ", ort: "Ort", land: "Land", website: "Webseite", mobilnummer: "Telefon", email: "E-Mail", latitude: "Latitude", longitude: "Longitude", oeffnungszeiten: "Öffnungszeiten", angebote: "Angebote", zahlungsarten: "Zahlungsarten" };
     const zeilen = quellen.map((q) => {
       const art = HofkartePanel.FINDEN_QUELLEN_LABEL[q.quelle] || q.quelle;
@@ -2347,7 +2410,7 @@ class HofkartePanel extends HTMLElement {
       return `<tr><td>${this.esc(labels[q.feld] || q.feld)}</td><td>${text}</td></tr>`;
     }).join("");
     const osm = quellen.some(q => q.quelle === "openstreetmap");
-    return `<section class="card detail-section"><h3>Herkunft der Angaben</h3><table class="opening-table">${zeilen}</table>${osm ? `<div class="muted">© OpenStreetMap-Mitwirkende (ODbL)</div>` : ""}</section>`;
+    return `<table class="opening-table">${zeilen}</table>${osm ? `<div class="muted">© OpenStreetMap-Mitwirkende (ODbL)</div>` : ""}`;
   }
 
   /** Webseite als anklickbarer Link – kein UI-Block, wenn keine/keine
@@ -2378,11 +2441,13 @@ class HofkartePanel extends HTMLElement {
    * unmittelbar nach "Adresse" und vor "Standort / Koordinaten". Entfällt
    * vollständig, wenn keines der drei Felder gesetzt ist (wie bei den
    * übrigen bedingten Abschnitten dieser Ansicht). */
-  detailKontaktSection(d) {
+  /** Inhalt der Gruppe "Kontakt & Webseite": Mobilnummer (tel:-Link),
+   * E-Mail (nur validiert als mailto:, F12) und Webseite. */
+  detailKontaktInhalt(d) {
     const mobilnummer = (d.mobilnummer || "").trim();
     const email = (d.email || "").trim();
     const websiteHtml = this.websiteLinkHtml(d.website);
-    if (!mobilnummer && !email && !websiteHtml) return "";
+    if (!mobilnummer && !email && !websiteHtml) return '<span class="muted">Keine Kontaktangaben hinterlegt</span>';
 
     const zeilen = [];
     if (mobilnummer) {
@@ -2395,11 +2460,8 @@ class HofkartePanel extends HTMLElement {
         ? `<div class="kontakt-zeile"><a class="website-link" href="mailto:${this.escAttr(email)}">✉️ ${this.esc(email)}</a></div>`
         : `<div class="kontakt-zeile">✉️ ${this.esc(email)}</div>`);
     }
-    if (websiteHtml) {
-      zeilen.push(`<div class="kontakt-zeile">${websiteHtml}</div>`);
-    }
-
-    return `<section class="card detail-section"><h3>Kontakt</h3>${zeilen.join("")}</section>`;
+    if (websiteHtml) zeilen.push(`<div class="kontakt-zeile">${websiteHtml}</div>`);
+    return zeilen.join("");
   }
 
   detailOpeningHours(rows) {
@@ -2409,6 +2471,7 @@ class HofkartePanel extends HTMLElement {
       list.push(row);
       byDay.set(row.wochentag, list);
     }
+    const heute = ((new Date().getDay() + 6) % 7) + 1; // 1 = Montag (Browser-Zeitzone, nur zur Hervorhebung)
     const lines = [];
     for (let day = 1; day <= 7; day++) {
       const dayRows = (byDay.get(day) || []).slice().sort((a, b) => a.beginn.localeCompare(b.beginn));
@@ -2416,7 +2479,8 @@ class HofkartePanel extends HTMLElement {
       if (!dayRows.length) text = '<span class="muted">Geschlossen</span>';
       else if (dayRows.length === 1 && isFullDay(dayRows[0])) text = "24 Stunden geöffnet";
       else text = dayRows.map(r => `${r.beginn}–${r.ende} Uhr`).join(", ");
-      lines.push(`<tr><td>${WEEKDAYS[day - 1]}</td><td>${text}</td></tr>`);
+      const istHeute = day === heute;
+      lines.push(`<tr${istHeute ? ' class="heute"' : ""}><td>${WEEKDAYS[day - 1]}${istHeute ? ' <span class="heute-marke">heute</span>' : ""}</td><td>${text}</td></tr>`);
     }
     return `<table class="opening-table">${lines.join("")}</table>`;
   }
@@ -2433,19 +2497,6 @@ class HofkartePanel extends HTMLElement {
     if (!iso) return "?";
     const [y, m, d] = iso.split("-");
     return `${d}.${m}.${y}`;
-  }
-
-  detailPillSection(label, entries) {
-    if (!entries || !entries.length) return "";
-    return `<section class="card detail-section"><h3>${label}</h3>${entries.map(e => `<span class="pill">${this.esc(e.name)}</span>`).join("")}</section>`;
-  }
-
-  /** Angebote in der Detailansicht – ersetzt die früher getrennten
-   * Abschnitte "Kategorien"/"Produkte". Seit der Vereinfachung auf eine
-   * schlichte Namensliste ohne Gruppierung reduziert (siehe CHANGELOG)
-   * - daher eine einfache Weiterleitung an detailPillSection. */
-  detailAngeboteSection(angebote) {
-    return this.detailPillSection("Angebote", angebote);
   }
 
   // --- Gruppenmodell: gemeinsame Gliederung für Detail und Bearbeiten -----
@@ -2467,7 +2518,7 @@ class HofkartePanel extends HTMLElement {
   ];
 
   static PUNKT_TEXT = { ok: "vollständig", teil: "teilweise ausgefüllt", leer: "noch leer" };
-  static PUNKT_ZEICHEN = { ok: "✓", teil: "◐", leer: "○" };
+  static PUNKT_ZEICHEN = { ok: "✓", teil: "½", leer: "" };
 
   /** Ist die Gruppe in der Maske ("detail" | "editor") gerade offen? */
   gruppeOffen(modus, id) {
@@ -3102,6 +3153,8 @@ class HofkartePanel extends HTMLElement {
       }
       const kartenWahl = ziel.closest("[data-karte-waehle]");
       if (kartenWahl) { this.karteWaehleAusListe(kartenWahl.dataset.karteWaehle); return; }
+      const ergaenzen = ziel.closest("[data-ergaenzen]");
+      if (ergaenzen) { this.start(this.items.find(x => x.id === ergaenzen.dataset.ergaenzen)); return; } // Phase 7 ersetzt dies durch den Abgleich
       const ansehen = ziel.closest("[data-view]");
       if (ansehen) { this.view(this.items.find(x => x.id === ansehen.dataset.view)); return; }
       const bearbeiten = ziel.closest("[data-edit]");

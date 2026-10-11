@@ -97,7 +97,7 @@ def test_gruppen_standard_auf_und_zuklappen_ohne_render() -> None:
     assert e["auf"] == [False, False] and e["zu"] == [True, True]
     assert e["alleText1"] == "Alle ausklappen" and e["alleText2"] == "Alle einklappen"
     assert "<b>" not in e["summe"] and "&lt;b&gt;" in e["summe"]
-    assert e["punkt"] == "teilweise ausgefüllt" and e["punktText"] == "◐"
+    assert e["punkt"] == "teilweise ausgefüllt" and e["punktText"] == "½"
 
 
 @braucht_jsdom
@@ -119,3 +119,108 @@ def test_zustand_je_maske_getrennt_und_gruppenreihenfolge() -> None:
     assert e["detailBilder"] is False and e["editorGrund"] is True
     assert e["editorKontakt"] is False and e["detailKontakt"] is False
     assert e["ids"] == ["grunddaten", "adresse", "kontakt", "zeiten", "angebote", "bilder", "herkunft"]
+
+
+# --- Phase 2: Detailansicht ---------------------------------------------------
+
+
+@braucht_jsdom
+def test_detail_zeigt_sieben_gruppen_in_fester_reihenfolge_und_auf_einen_blick() -> None:
+    e = _node(
+        _VOLL
+        + r"""
+    const t = bauen({ n: 1 });
+    await sleep(80);
+    t.el.view({ ...voll, geoeffnet: true, status_wechsel: { art: "schliesst", zeit: "16:00", wochentag: 6, heute: true }, hauptbild_url: null });
+    await sleep(40);
+    const gruppen = t.qa("[data-gruppe]").map((s) => s.dataset.gruppe);
+    const offen = Object.fromEntries(t.qa("[data-gruppe-toggle]").map((b) => [b.dataset.gruppeToggle, b.getAttribute("aria-expanded")]));
+    const blick = t.q(".blick");
+    console.log(JSON.stringify({
+      gruppen, offen, h1: blick.querySelector("h1").textContent, status: blick.querySelector(".status-badge").textContent.trim(),
+      aktionen: [...blick.querySelectorAll(".schnellaktionen a")].map((a) => a.textContent.trim() + "|" + a.getAttribute("href").split(":")[0]),
+      unvollst: !!t.q(".unvollstaendig"), zurueck: !!t.q("[data-back]"), bearb: !!t.q("[data-edit-from-detail]"),
+      menue: t.qa("[data-kachel-menue] [role=menuitem]").map((m) => m.textContent.trim()),
+      heute: t.qa(".opening-table tr.heute").length, hatErgaenzen: !!t.q("[data-ergaenzen]"),
+    }));
+    process.exit(0);
+    """
+    )
+    assert e["gruppen"] == ["grunddaten", "adresse", "kontakt", "zeiten", "angebote", "bilder", "herkunft"]
+    assert e["offen"] == {"grunddaten": "true", "adresse": "true", "kontakt": "true", "zeiten": "true", "angebote": "true", "bilder": "false", "herkunft": "false"}
+    assert e["h1"] == "Hof Voll" and e["status"].endswith("Offen bis 16:00")
+    assert e["aktionen"][-3:] == ["📞 Anrufen|tel", "🔗 Webseite|https", "✉️ E-Mail|mailto"]
+    assert e["unvollst"] is False and e["hatErgaenzen"] is False
+    assert e["zurueck"] and e["bearb"]
+    assert e["menue"] == ["Löschen …"]
+    assert e["heute"] == 1
+
+
+@braucht_jsdom
+def test_detail_unvollstaendig_hinweis_leerzustaende_und_ergaenzen() -> None:
+    e = _node(
+        _VOLL
+        + r"""
+    const t = bauen({ n: 1 });
+    await sleep(80);
+    t.el.view({ ...leer, geoeffnet: null });
+    await sleep(40);
+    const hinweis = t.q(".unvollstaendig").textContent.replace(/\s+/g, " ").trim();
+    const text = t.q("main").textContent;
+    const status = t.q(".status-badge").textContent.trim();
+    const aktionen = t.qa(".schnellaktionen a").length;
+    await t.klick("[data-ergaenzen]", 60);
+    console.log(JSON.stringify({ hinweis, text: text.includes("Keine Kontaktangaben hinterlegt") && text.includes("Keine Bilder hinterlegt") && text.includes("Noch keine Bewertung"), status, aktionen, editor: !!t.q("form"), viewing: t.el.viewing }));
+    process.exit(0);
+    """
+    )
+    assert e["hinweis"].startswith("Noch unvollständig: Beschreibung, Bewertung, Adresse, Ort, Koordinaten, Telefon, E-Mail, Webseite")
+    assert e["text"] is True
+    assert e["status"] == "Unbekannt"
+    assert e["aktionen"] == 0  # nur die (deaktivierten) Routenknöpfe sind Schaltflächen, keine Links
+    assert e["editor"] is True and e["viewing"] is None
+
+
+@braucht_jsdom
+def test_detail_escaped_inhalte_und_filtert_unsichere_links() -> None:
+    e = _node(
+        _VOLL
+        + r"""
+    const t = bauen({ n: 1 });
+    await sleep(80);
+    t.el.view({ ...voll, name: '<img src=x onerror=1>', beschreibung: '<script>boom()</script>', website: "javascript:alert(1)", email: "a@b.ch?cc=x@y.ch", geoeffnet: false,
+      status_wechsel: { art: "oeffnet", zeit: "<b>x</b>", wochentag: 1, heute: false }, hauptbild_url: "javascript:alert(1)" });
+    await sleep(40);
+    const main = t.q("main");
+    console.log(JSON.stringify({
+      img: main.querySelectorAll("img[onerror]").length, script: main.querySelectorAll("script").length,
+      js: [...main.querySelectorAll("a")].filter((a) => /^javascript:/i.test(a.getAttribute("href") || "")).length,
+      mail: [...main.querySelectorAll("a")].filter((a) => (a.getAttribute("href") || "").startsWith("mailto:")).length,
+      status: t.q(".status-badge").textContent.trim(),
+    }));
+    process.exit(0);
+    """
+    )
+    assert e["img"] == 0 and e["script"] == 0 and e["js"] == 0
+    assert e["mail"] == 0
+    assert e["status"] == "🔴 Geschlossen"  # ungültige Zeitangabe wird nicht angezeigt
+
+
+@braucht_jsdom
+def test_status_wechsel_texte() -> None:
+    e = _node(
+        r"""
+    const t = bauen({ n: 1 });
+    await sleep(80);
+    const b = (g, w) => t.el.geoeffnetBadge(g, w).replace(/<[^>]+>/g, "").trim();
+    console.log(JSON.stringify([
+      b(true, { art: "schliesst", zeit: "16:00", wochentag: 6, heute: true }),
+      b(true, { art: "schliesst", zeit: "01:00", wochentag: 7, heute: false }),
+      b(false, { art: "oeffnet", zeit: "08:00", wochentag: 1, heute: false }),
+      b(false, { art: "oeffnet", zeit: "14:00", wochentag: 6, heute: true }),
+      b(true, null), b(false, undefined), b(null, null),
+    ]));
+    process.exit(0);
+    """
+    )
+    assert e == ["🟢 Offen bis 16:00", "🟢 Offen bis So 01:00", "🔴 Geschlossen · öffnet Mo 08:00", "🔴 Geschlossen · öffnet heute 14:00", "🟢 Geöffnet", "🔴 Geschlossen", "Unbekannt"]

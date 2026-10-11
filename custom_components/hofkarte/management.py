@@ -41,7 +41,7 @@ from .coordinator import HofKarteUpdateCoordinator, HofladenVersionConflictError
 from .data_provider import DuplicateHofladenIdError, HofladenNotFoundError
 from .images import get_main_image_url
 from .models import Hofladen
-from .opening_hours import is_open
+from .opening_hours import get_next_closing, get_next_opening, is_open
 from .discovery import enrich as discovery_enrich
 from .discovery import overpass as discovery_overpass
 from .discovery import scoring as discovery_scoring
@@ -116,6 +116,32 @@ def _json_value(value: Any) -> Any:
     return value
 
 
+def _status_wechsel(
+    hofladen: Hofladen, now: datetime, geoeffnet: bool | None
+) -> dict[str, Any] | None:
+    """Nächster Statuswechsel für die Anzeige („Offen bis 16:00“).
+
+    Nutzt dieselben Funktionen wie die Sensoren (``get_next_closing`` bzw.
+    ``get_next_opening``), damit keine zweite Fachlogik entsteht. Liefert
+    ``{"art": "schliesst" | "oeffnet", "zeit": "HH:MM", "wochentag": 1-7,
+    "heute": bool}`` in der Zeitzone von ``now``; ``wochentag`` ist ISO
+    (1 = Montag). ``None``, wenn der Status unbekannt ist oder kein
+    Zeitpunkt gefunden wird.
+    """
+    if geoeffnet is None:
+        return None
+    zeitpunkt = get_next_closing(hofladen, now) if geoeffnet else get_next_opening(hofladen, now)
+    if zeitpunkt is None:
+        return None
+    lokal = zeitpunkt.astimezone(now.tzinfo) if now.tzinfo else zeitpunkt
+    return {
+        "art": "schliesst" if geoeffnet else "oeffnet",
+        "zeit": lokal.strftime("%H:%M"),
+        "wochentag": lokal.isoweekday(),
+        "heute": lokal.date() == now.date(),
+    }
+
+
 def _serialize_hofladen(hofladen: Any, *, now: datetime) -> dict[str, Any]:
     """Rohdaten eines Hofladens für die Verwaltungsoberfläche serialisieren.
 
@@ -128,6 +154,9 @@ def _serialize_hofladen(hofladen: Any, *, now: datetime) -> dict[str, Any]:
     - ``geoeffnet`` (``True``/``False``/``None`` für „unbekannt“) über
       ``opening_hours.is_open`` – exakt dieselbe Funktion, die auch der
       Binary Sensor „Geöffnet“ verwendet (siehe ``binary_sensor.py``).
+    - ``status_wechsel`` (``dict | None``): wann der Status das nächste Mal
+      wechselt, für Texte wie „Offen bis 16:00“ / „Öffnet Mo 08:00“ (siehe
+      ``_status_wechsel``). ``None``, wenn der Status unbekannt ist.
     - ``hauptbild_url`` (``str | None``) über ``images.get_main_image_url``
       – exakt dieselbe Funktion (inkl. Sicherheitsprüfung gegen
       private/interne IP-Literale), die auch das ``image``-Entity für
@@ -139,7 +168,9 @@ def _serialize_hofladen(hofladen: Any, *, now: datetime) -> dict[str, Any]:
     werden.
     """
     daten = _json_value(hofladen)
-    daten["geoeffnet"] = is_open(hofladen, now)
+    geoeffnet = is_open(hofladen, now)
+    daten["geoeffnet"] = geoeffnet
+    daten["status_wechsel"] = _status_wechsel(hofladen, now, geoeffnet)
     daten["hauptbild_url"] = get_main_image_url(hofladen.bilder)
     return daten
 

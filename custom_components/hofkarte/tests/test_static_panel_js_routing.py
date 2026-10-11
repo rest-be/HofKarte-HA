@@ -129,7 +129,7 @@ def test_panel_js_routing_auswahl_ersetzt_kartenbutton_in_drei_ansichten() -> No
     assert len(treffer) == 1, (
         f"Erwartet genau 1 Aufrufstelle (Detail), gefunden: {len(treffer)}."
     )
-    menue = quelltext[quelltext.index("  aktionenMenueHtml(item) {"):quelltext.index("  listCard(item) {")]
+    menue = quelltext[quelltext.index("  aktionenMenueHtml(item"):quelltext.index("  listCard(item) {")]
     assert "ermittleRoutingZiel(item)" in menue and "googleMapsRoutenUrl(ziel)" in menue
     assert quelltext.count("this.aktionenMenueHtml(item)") == 2, "Kachel und Listenzeile"
 
