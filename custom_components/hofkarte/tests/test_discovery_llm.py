@@ -238,8 +238,10 @@ async def test_enrich_mit_ki_ergaenzt_belegtes_und_trennt_vermutetes(hass: HomeA
         ki_angefordert=True,
         ki_entitaet="ai_task.lokal",
     )
-    assert [e["phase"] for e in ereignisse] == ["osm", "website", "ki", "fertig"]
-    assert ereignisse[2]["status"] == "ok" and ereignisse[2]["entitaet"] == "ai_task.lokal"
+    assert [e["phase"] for e in ereignisse] == ["osm", "website", "vorlaeufig", "ki", "fertig"]
+    assert ereignisse[3]["status"] == "ok" and ereignisse[3]["entitaet"] == "ai_task.lokal"
+    # Zwischenstand vor der KI: ohne KI-Ergänzungen (Angebote nur aus der Webseite, keine Vermutungen)
+    assert not ereignisse[2]["vorschlag"].get("vermutungen") and "Trüffel" not in str(ereignisse[2]["vorschlag"])
     assert v.daten["angebote"] == ["Eier", "Honig"] and v.vermutungen == {"angebote": ["Trüffel"]}
     assert "Twint" in v.daten["zahlungsarten"]
     assert ki.aufrufe and "Eier, Kartoffeln" in ki.aufrufe[0][2]["instructions"]
@@ -269,7 +271,7 @@ async def test_enrich_ki_ohne_website_text(hass: HomeAssistant) -> None:
     await enrich.async_anreichern(
         hass, _osm(name="Hof"), fortschritt=ereignisse.append, ki_angefordert=True, ki_entitaet="ai_task.x"
     )
-    assert ereignisse[2]["status"] == llm.KEINE_TEXTE and ki.aufrufe == []
+    assert next(e for e in ereignisse if e["phase"] == "ki")["status"] == llm.KEINE_TEXTE and ki.aufrufe == []
 
 
 async def test_robots_gesperrt_schickt_nichts_an_die_ki(hass: HomeAssistant, site) -> None:
@@ -322,7 +324,8 @@ async def test_ws_enrich_ki_nutzt_die_option_nicht_die_nachricht(hass: HomeAssis
     assert c.nachrichten[2]["event"]["status"] == "nicht_konfiguriert" and ki.aufrufe == []
     hass.config_entries.async_update_entry(coordinator.config_entry, options={"ki_entitaet": "ai_task.lokal"})
     c2 = await _enrich(hass, {"website": f"{BASIS}/", "ki": True})
-    assert c2.nachrichten[2]["event"]["status"] == "ok" and ki.aufrufe[0][2]["entity_id"] == "ai_task.lokal"
+    assert [m["event"]["phase"] for m in c2.nachrichten] == ["osm", "website", "vorlaeufig", "ki", "fertig"]
+    assert c2.nachrichten[3]["event"]["status"] == "ok" and ki.aufrufe[0][2]["entity_id"] == "ai_task.lokal"
     # ohne ``ki`` in der Nachricht läuft keine KI, auch wenn eine Entität gewählt ist
     ki.aufrufe.clear()
     c3 = await _enrich(hass, {"website": f"{BASIS}/"})

@@ -71,18 +71,17 @@ def test_vor_ort_uebernimmt_name_und_webseite_startet_auslesen_ohne_standort() -
     const nochEinstieg = !!t.q("[data-erfassen-url]");
     // Webseite: Auslesen startet direkt die Auswertung der Webseite, ohne Standortabfrage
     const aufrufe = [];
-    el.reichereFindenAn = async (o) => { aufrufe.push(o); };
+    el.starteWebseite = (u) => { aufrufe.push(u); };
     const url = t.q("[data-erfassen-url]"); url.value = "https://hof.example/"; url.dispatchEvent(new t.w.Event("input", { bubbles: true, composed: true }));
     await t.klick("[data-erfassen-auslesen]", 30);
-    console.log(JSON.stringify({ vorOrt, nochEinstieg, aufrufe, geoNachWebseite: geoAufrufe, website: el.finden?.website, nameWeb: el.finden?.name }));
+    console.log(JSON.stringify({ vorOrt, nochEinstieg, aufrufe, geoNachWebseite: geoAufrufe }));
     process.exit(0);
     """
     )
     assert e["vorOrt"]["name"] == "Hofladen Seeblick" and e["vorOrt"]["dialog"] is True and e["vorOrt"]["geo"] == 1
     assert e["nochEinstieg"] is True
-    assert e["aufrufe"] == [{"ohneKandidat": True}]
+    assert e["aufrufe"] == ["https://hof.example/"]
     assert e["geoNachWebseite"] == 1  # kein zweiter Abruf
-    assert e["website"] == "https://hof.example/"
 
 
 @braucht_jsdom
@@ -91,7 +90,7 @@ def test_enter_im_url_feld_liest_aus_nur_wenn_gueltig() -> None:
         _START
         + r"""
     const aufrufe = [];
-    el.reichereFindenAn = async (o) => { aufrufe.push(o); };
+    el.starteWebseite = (u) => { aufrufe.push(u); };
     await einstieg();
     const url = t.q("[data-erfassen-url]");
     const enter = () => url.dispatchEvent(new t.w.KeyboardEvent("keydown", { key: "Enter", bubbles: true, composed: true, cancelable: true }));

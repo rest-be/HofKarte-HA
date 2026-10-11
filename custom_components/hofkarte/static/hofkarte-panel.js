@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1-dev.20";
+const PANEL_BUILD = "2026.10.1-dev.21";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -333,6 +333,7 @@ class HofkartePanel extends HTMLElement {
     this.karteNurGeoeffnet = false; // Filter "Nur geöffnet" - gemeinsam für Kacheln, Liste und Karte (Issue #2, GUI-Überarbeitung)
     this.uebersichtMenue = false; // ⋮-Menü der Kopfzeile (Import) geöffnet?
     this.vorOrt = null; // Ablauf "Vor Ort erfassen" (Schnellerfassung), null = geschlossen
+    this.webseite = null; // Ablauf "Von Webseite" (Webseite -> Auslesen -> Prüfen), null = geschlossen
     this._vorOrtToken = 0; // verwirft Antworten veralteter Standort-/Suchläufe
     this.erfassen = null; // Einstiegsseite "Hofladen erfassen" (null = geschlossen, sonst { name, url })
     this.editGeaendert = false; // ungespeicherte Änderungen im Bearbeitungsformular (nur Anzeige "Ungespeichert", Rückfrage beim Abbrechen)
@@ -1400,9 +1401,10 @@ class HofkartePanel extends HTMLElement {
 
   currentView() {
     if (this.importDialog) return this.importKonflikte();
-    if (this.editing) { this.erfassen = null; this.vorOrt = null; return this.editor(); }
+    if (this.editing) { this.erfassen = null; this.vorOrt = null; this.webseite = null; return this.editor(); }
     if (this.viewing) return this.detail();
     if (this.vorOrt) return this.vorOrtAnsicht();
+    if (this.webseite) return this.webseiteAnsicht();
     if (this.erfassen) return this.erfassenEinstieg();
     return this.list();
   }
@@ -1661,6 +1663,27 @@ class HofkartePanel extends HTMLElement {
       .vorort-haken{width:64px;height:64px;font-size:2em}
       .vorort-offen ul{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
       .vorort-offen li{display:flex;gap:10px;align-items:center}
+      .web-ablauf{display:flex;flex-direction:column;gap:14px;margin-top:14px;max-width:960px}
+      .web-ablauf label{margin:0}
+      .web-schritte{list-style:none;display:flex;gap:6px;margin:10px 0 0;padding:0;flex-wrap:wrap}
+      .web-schritt{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;border-radius:999px;background:var(--secondary-background-color);color:var(--secondary-text-color);font-size:.95em}
+      .web-schritt.aktiv{background:var(--primary-color);color:#fff;font-weight:500}
+      .web-schritt.erledigt{color:var(--primary-text-color)}
+      .web-schritt-nr{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.35);font-size:.85em}
+      .web-status-liste{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+      .web-status{display:flex;gap:10px;align-items:center}
+      .web-pruefen{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+      @media (min-width:860px){.web-pruefen{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);align-items:start}.web-vorschau{position:sticky;top:12px}}
+      .web-zeilen{display:flex;flex-direction:column;gap:10px}
+      .web-zeile{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;cursor:pointer;min-height:56px}
+      .web-zeile input[type=checkbox]{width:24px;height:24px;margin:2px 0 0;flex:none}
+      .web-zeile-text{display:flex;flex-direction:column;gap:2px;min-width:0}
+      .web-zeile-wert{overflow-wrap:anywhere}
+      .web-vorschau{padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+      .web-vorschau h3{margin:0 0 4px}
+      .web-vorschau-name{font-size:1.15em;font-weight:500}
+      .web-vorschau-zeile{overflow-wrap:anywhere}
+      .web-vorschau-n{margin:6px 0 0}
       .gruppen-leiste{display:flex;justify-content:flex-end;margin:0 0 8px}
       .gruppe{margin-bottom:12px;padding:0}
       .gruppe-titel{margin:0;font-size:1em}
@@ -3508,6 +3531,7 @@ class HofkartePanel extends HTMLElement {
       }
     }, true);
     this.bindFindenDelegiert();
+    this.bindWebseiteDelegiert();
   }
 
   bind() {
@@ -3787,9 +3811,7 @@ class HofkartePanel extends HTMLElement {
 
   erfassenAuslesen() {
     if (!this.erfassen || !this.urlGueltigFuerAuslesen(this.erfassen.url)) return;
-    const website = this.erfassen.url.trim();
-    this.oeffneFinden({ website, ohneStandort: true });
-    this.reichereFindenAn({ ohneKandidat: true });
+    this.starteWebseite(this.erfassen.url.trim());
   }
 
   // --- Erfassen: Szenario 1 "Vor Ort" (Schnellerfassung) --------------------
@@ -4059,6 +4081,247 @@ class HofkartePanel extends HTMLElement {
       <p class="muted small">Offene Angaben erscheinen später als Hinweis im Detail des Hofladens.</p>`;
   }
 
+  // --- Erfassen: Szenario 2 "Von Webseite" ---------------------------------
+
+  static WEB_SCHRITTE = ["Webseite", "Auslesen", "Prüfen"];
+
+  /** Startet den Ablauf. Ist eine KI-Entität eingerichtet, kommt zuerst die Wahl (Schritt 1, mit Datenschutzhinweis), sonst wird sofort ausgelesen. */
+  starteWebseite(url) {
+    this.webseite = { schritt: 1, url, ki: false, busy: false, fehler: "", ereignisse: {}, vorschlag: null, vorlaeufig: false, felder: {}, kiNeu: false, name: "", website: url };
+    if (this._kiEntitaet) { this.render(); this.fokusTitel(); } else this.liesWebseiteAus();
+  }
+
+  fokusTitel() { this.shadowRoot.querySelector(".erfassen-titel")?.focus?.(); }
+
+  async liesWebseiteAus() {
+    const w = this.webseite;
+    if (!w || w.busy) return;
+    const website = String(w.url || "").trim();
+    if (!this.urlGueltigFuerAuslesen(website)) { w.fehler = "Bitte eine gültige Webseite (http:// oder https://) eingeben."; this.render(); return; }
+    w.website = website; w.schritt = 2; w.busy = true; w.fehler = ""; w.ereignisse = {}; w.vorschlag = null; w.vorlaeufig = false; w.felder = {}; w.kiNeu = false;
+    this.render(); this.fokusTitel();
+    const nachricht = { type: "hofkarte/management/enrich", website };
+    if (w.ki && this._kiEntitaet) nachricht.ki = true;
+    const aufEreignis = (ereignis) => {
+      if (this.webseite !== w || !ereignis) return;
+      if (ereignis.phase === "vorlaeufig" || ereignis.phase === "fertig") this.webseiteVorschlag(w, ereignis.vorschlag, ereignis.phase === "fertig");
+      else if (ereignis.phase) w.ereignisse[ereignis.phase] = ereignis;
+      this.render();
+    };
+    try {
+      this._findenUnsub = await this.hass.connection.subscribeMessage(aufEreignis, nachricht);
+      this._findenTimer = setTimeout(() => {
+        if (this.webseite !== w || !w.busy) return;
+        w.busy = false;
+        w.fehler = w.vorschlag ? "Die KI hat zu lange gebraucht. Du kannst das Vorliegende prüfen." : "Das Auslesen hat zu lange gedauert.";
+        this.beendeFindenAbo();
+        this.render();
+      }, 120000);
+    } catch (err) {
+      if (this.webseite !== w) return;
+      w.busy = false;
+      w.fehler = HofkartePanel.FINDEN_FEHLERMELDUNGEN[err?.code] || err?.message || "Das Auslesen ist fehlgeschlagen.";
+      this.render();
+    }
+  }
+
+  /** Neuen Zwischen-/Endstand übernehmen. Bereits getroffene Wahlen bleiben erhalten; KI-Vermutungen sind nie vorausgewählt. */
+  webseiteVorschlag(w, vorschlag, fertig) {
+    const neu = vorschlag || { daten: {}, quellen: {}, abweichungen: {} };
+    const alt = w.felder || {};
+    const felder = {};
+    for (const zeile of HofkartePanel.FINDEN_ZEILEN) felder[zeile.key] = zeile.key in alt ? alt[zeile.key] : this.findenZeileWert(zeile, neu.daten) !== "";
+    for (const v of HofkartePanel.FINDEN_VERMUTUNGEN) felder[`vermutung:${v.key}`] = alt[`vermutung:${v.key}`] === true;
+    const hatteVorschlag = !!w.vorschlag;
+    w.vorschlag = neu; w.felder = felder;
+    if (!fertig) { w.vorlaeufig = true; return; }
+    w.busy = false;
+    this.beendeFindenAbo();
+    if (w.schritt === 3 && hatteVorschlag) w.kiNeu = true;
+    else w.schritt = 3;
+  }
+
+  webseiteEingabe(ziel) {
+    const w = this.webseite;
+    if (!w) return;
+    if (ziel.matches("[data-web-url]")) {
+      w.url = ziel.value; w.fehler = "";
+      const knopf = this.shadowRoot.querySelector("[data-web-start]");
+      if (knopf) knopf.disabled = !this.urlGueltigFuerAuslesen(ziel.value);
+    }
+  }
+
+  /** Zeilen der Prüfansicht aus dem Vorschlag (Wert, Quelle, Abweichung). */
+  webseiteZeilen(w) {
+    const v = w.vorschlag || {};
+    const quellenListe = Array.isArray(v.quellen) ? v.quellen : Object.entries(v.quellen || {}).map(([feld, q]) => ({ feld, ...q }));
+    const abweichungen = v.abweichungen || {};
+    const zeilen = [];
+    for (const zeile of HofkartePanel.FINDEN_ZEILEN) {
+      const wert = this.findenZeileWert(zeile, v.daten);
+      if (!wert) continue;
+      const q = zeile.felder.map((f) => quellenListe.find((x) => x.feld === f)).find(Boolean);
+      const abwFeld = zeile.felder.find((x) => abweichungen[x]);
+      zeilen.push({ key: zeile.key, label: zeile.label, wert, quelle: q || null, abweichung: abwFeld ? (HofkartePanel.FINDEN_QUELLEN_LABEL[abweichungen[abwFeld]] || "der anderen Quelle") : "" });
+    }
+    const vermutungen = [];
+    for (const m of HofkartePanel.FINDEN_VERMUTUNGEN) {
+      const werte = Array.isArray((v.vermutungen || {})[m.key]) ? v.vermutungen[m.key] : [];
+      if (werte.length) vermutungen.push({ key: `vermutung:${m.key}`, label: m.label, werte });
+    }
+    return { zeilen, vermutungen };
+  }
+
+  /** Vorschau-Karte: zeigt, wie der Eintrag nach der Übernahme aussähe (nur gewählte Zeilen). */
+  webseiteVorschauHtml(w) {
+    const { zeilen, vermutungen } = this.webseiteZeilen(w);
+    const gewaehlt = (key) => !!w.felder[key];
+    const wert = (key) => { const z = zeilen.find((x) => x.key === key); return z && gewaehlt(key) ? z.wert : ""; };
+    const d = w.vorschlag?.daten || {};
+    const liste = (key) => {
+      const basis = gewaehlt(key) && Array.isArray(d[key]) ? d[key].map((x) => x.name || x) : [];
+      const m = vermutungen.find((x) => x.key === `vermutung:${key}`);
+      const extra = m && gewaehlt(m.key) ? m.werte : [];
+      return [...new Set([...basis, ...extra])];
+    };
+    const angebote = liste("angebote"), zahlung = liste("zahlungsarten");
+    const n = zeilen.filter((z) => gewaehlt(z.key)).length + vermutungen.filter((m) => gewaehlt(m.key)).length;
+    const zeile = (label, text) => text ? `<div class="web-vorschau-zeile"><span class="muted">${this.esc(label)}</span> ${this.esc(text)}</div>` : "";
+    return `<h3>Vorschau</h3>
+      <div class="web-vorschau-name">${wert("name") ? this.esc(wert("name")) : `<span class="muted">(Name fehlt)</span>`}</div>
+      ${zeile("Adresse", wert("adresse"))}${zeile("Webseite", wert("website"))}${zeile("Telefon", wert("mobilnummer"))}${zeile("E-Mail", wert("email"))}${zeile("Öffnungszeiten", wert("oeffnungszeiten"))}
+      ${angebote.length ? `<div class="web-vorschau-zeile"><span class="muted">Angebote</span> <span class="chips-anzeige">${angebote.map((a) => `<span class="pill">${this.esc(a)}</span>`).join("")}</span></div>` : ""}
+      ${zahlung.length ? `<div class="web-vorschau-zeile"><span class="muted">Zahlungsarten</span> ${this.esc(zahlung.join(", "))}</div>` : ""}
+      <p class="muted web-vorschau-n" data-web-anzahl>${n} Angabe${n === 1 ? "" : "n"} gewählt</p>`;
+  }
+
+  aktualisiereWebVorschau() {
+    const w = this.webseite;
+    if (!w?.vorschlag) return;
+    const karte = this.shadowRoot.querySelector("[data-web-vorschau]");
+    if (karte) karte.innerHTML = this.webseiteVorschauHtml(w);
+    const n = Object.values(w.felder).filter(Boolean).length;
+    const knopf = this.shadowRoot.querySelector("[data-web-uebernehmen]");
+    if (knopf) knopf.textContent = `In Formular übernehmen (${n})`;
+  }
+
+  webseiteAnsicht() {
+    const w = this.webseite;
+    const schritte = HofkartePanel.WEB_SCHRITTE.map((t, i) => {
+      const nr = i + 1;
+      return `<li class="web-schritt${nr === w.schritt ? " aktiv" : ""}${nr < w.schritt ? " erledigt" : ""}"${nr === w.schritt ? ' aria-current="step"' : ""}><span class="web-schritt-nr" aria-hidden="true">${nr < w.schritt ? "✓" : nr}</span><span>${this.esc(t)}</span></li>`;
+    }).join("");
+    const titel = ["Von Webseite erfassen", "Webseite wird ausgelesen", "Angaben prüfen"][w.schritt - 1];
+    const fehler = w.fehler ? `<div class="notice error" role="alert">${this.esc(w.fehler)}</div>` : "";
+    const kopf = `<div class="top"><div><button type="button" class="secondary" data-web-zurueck>← Einstieg</button></div></div>
+      <h1 class="erfassen-titel" tabindex="-1">${this.esc(titel)}</h1>
+      <ol class="web-schritte" aria-label="Fortschritt">${schritte}</ol>`;
+    let inhalt;
+    if (w.schritt === 1) inhalt = this.webseiteSchritt1(w, fehler);
+    else if (w.schritt === 2) inhalt = this.webseiteSchritt2(w, fehler);
+    else inhalt = this.webseiteSchritt3(w, fehler);
+    return `${kopf}<div class="web-ablauf">${inhalt}</div>`;
+  }
+
+  webseiteSchritt1(w, fehler) {
+    const ok = this.urlGueltigFuerAuslesen(w.url);
+    return `<p class="muted">Die Webseite wird nur gelesen (robots.txt wird beachtet). Gespeichert wird erst, wenn du es bestätigst.</p>
+      <label>Webseite<input type="url" data-web-url value="${this.escAttr(w.url)}" placeholder="https://…" inputmode="url" autocomplete="off"></label>
+      <label class="finden-check"><input type="checkbox" data-web-ki ${w.ki ? "checked" : ""}> <span>Text der Webseite mit KI auswerten (Angebote, Zahlungsarten, Öffnungszeiten)<br><span class="muted">Datenschutz: Der Text der Webseite wird an <b>${this.esc(this._kiEntitaet)}</b> gesendet, je nach Anbieter verlässt er dein Netzwerk. Die KI schlägt nur vor; Vermutungen werden getrennt angezeigt und nie vorausgewählt.</span></span></label>
+      ${fehler}
+      <div class="vorort-aktionen"><button type="button" data-web-start ${ok ? "" : "disabled"}>Auslesen</button></div>`;
+  }
+
+  webseiteStatusZeilen(w) {
+    const ev = w.ereignisse || {};
+    const zeilen = [];
+    const web = ev.website;
+    zeilen.push(web ? { icon: web.status === "ok" ? "✓" : "i", text: HofkartePanel.FINDEN_WEBSITE_STATUS[web.status] || web.status } : { icon: w.busy ? "…" : "", text: "Webseite wird gelesen" });
+    if (w.ki) {
+      const ki = ev.ki;
+      zeilen.push(ki ? { icon: ki.status === "ok" ? "✓" : "i", text: HofkartePanel.FINDEN_KI_STATUS[ki.status] || ki.status } : { icon: w.busy ? "…" : "", text: "KI wertet den Text aus" });
+    } else if (!this._kiEntitaet) {
+      zeilen.push({ icon: "i", text: "KI-Auswertung nicht eingerichtet (optional, in den HofKarte-Einstellungen)", klein: true });
+    }
+    return zeilen;
+  }
+
+  webseiteSchritt2(w, fehler) {
+    const status = this.webseiteStatusZeilen(w).map((z) => `<li class="web-status${z.klein ? " muted" : ""}"><span class="gruppe-punkt ${z.icon === "✓" ? "ok" : z.icon === "…" ? "teil" : "leer"}" aria-hidden="true">${z.icon === "i" ? "" : this.esc(z.icon)}</span><span>${this.esc(z.text)}</span></li>`).join("");
+    const vorlaeufig = w.vorlaeufig && w.busy ? `<button type="button" class="secondary" data-web-vorlaeufig>Vorliegendes prüfen</button>` : "";
+    const nochmal = !w.busy && w.fehler ? (w.vorschlag ? `<button type="button" data-web-vorlaeufig>Vorliegendes prüfen</button>` : `<button type="button" data-web-start>Erneut versuchen</button><button type="button" class="secondary" data-web-leer>Von Hand erfassen</button>`) : "";
+    return `<ul class="web-status-liste" role="status" aria-live="polite">${status}</ul>
+      ${w.busy ? `<p class="muted">Das kann einen Moment dauern.${w.ki ? " Die KI braucht oft länger; du kannst das bereits Vorliegende vorab prüfen." : ""}</p>` : ""}
+      ${fehler}
+      <div class="vorort-aktionen">${vorlaeufig}${nochmal}</div>`;
+  }
+
+  webseiteSchritt3(w, fehler) {
+    const { zeilen, vermutungen } = this.webseiteZeilen(w);
+    const statusKurz = this.webseiteStatusZeilen(w).filter((z) => !z.klein).map((z) => `<div class="muted">${this.esc((z.icon === "✓" ? "✔ " : "ℹ ") + z.text)}</div>`).join("");
+    const kiHinweis = w.kiNeu ? `<div class="notice" role="status">Die KI-Auswertung ist fertig. Neue Vermutungen stehen unten, deine bisherige Auswahl blieb unverändert.</div>`
+      : (w.busy ? `<div class="notice" role="status">Die KI läuft noch. Neue Ergebnisse erscheinen hier automatisch.</div>` : "");
+    const quelleHtml = (q) => {
+      if (!q) return "";
+      const label = HofkartePanel.FINDEN_QUELLEN_LABEL[q.quelle] || q.quelle;
+      return this.istHttpUrl(q.url) ? `<a class="website-link" href="${this.escAttr(q.url)}" target="_blank" rel="noopener noreferrer">${this.esc(label)}</a>` : this.esc(label);
+    };
+    const zeilenHtml = zeilen.map((z) => `<label class="web-zeile card">
+        <input type="checkbox" data-web-feldwahl="${this.escAttr(z.key)}" ${w.felder[z.key] ? "checked" : ""}>
+        <span class="web-zeile-text"><span class="webseite-info-label">${this.esc(z.label)}</span><span class="web-zeile-wert">${this.esc(z.wert)}</span>
+        ${z.quelle ? `<span class="muted quelle-badge">${quelleHtml(z.quelle)}</span>` : ""}
+        ${z.abweichung ? `<span class="finden-warnung">⚠ weicht von ${this.esc(z.abweichung)} ab</span>` : ""}</span></label>`).join("");
+    const vermutetHtml = vermutungen.map((m) => `<label class="web-zeile card finden-vermutung">
+        <input type="checkbox" data-web-feldwahl="${this.escAttr(m.key)}" ${w.felder[m.key] ? "checked" : ""}>
+        <span class="web-zeile-text"><span class="webseite-info-label">${this.esc(m.label)} (vermutet)</span><span class="web-zeile-wert">${this.esc(m.werte.join(", "))}</span>
+        <span class="finden-warnung">⚠ Von der KI genannt, steht aber nicht im Text der Webseite. Bitte selbst prüfen.</span></span></label>`).join("");
+    const n = Object.values(w.felder).filter(Boolean).length;
+    const leer = !zeilen.length && !vermutungen.length;
+    return `${statusKurz}${kiHinweis}${fehler}
+      ${leer ? `<p class="muted">Es wurden keine verwertbaren Angaben gefunden. Du kannst den Hofladen von Hand erfassen; die Webseite wird übernommen.</p><div class="vorort-aktionen"><button type="button" data-web-leer>Von Hand erfassen</button></div>` : `
+      <p class="muted">Wähle, was übernommen werden soll. Gespeichert wird erst im Formular.</p>
+      <div class="web-pruefen">
+        <div class="web-zeilen">${zeilenHtml}${vermutetHtml ? `<h2 class="vorort-h2">Vermutungen der KI (nicht belegt)</h2>${vermutetHtml}` : ""}
+          ${zeilen.some((z) => z.quelle?.quelle === "openstreetmap") ? `<p class="muted">${this.esc(HofkartePanel.OSM_LIZENZ)}</p>` : ""}</div>
+        <aside class="card web-vorschau" data-web-vorschau aria-label="Vorschau">${this.webseiteVorschauHtml(w)}</aside>
+      </div>
+      <div class="vorort-aktionen"><button type="button" data-web-uebernehmen>In Formular übernehmen (${n})</button></div>`}`;
+  }
+
+  bindWebseiteDelegiert() {
+    const main = this._mainEl;
+    main.addEventListener("click", (e) => {
+      const ziel = e.target instanceof Element ? e.target : null;
+      const w = this.webseite;
+      if (!ziel || !w) return;
+      if (ziel.closest("[data-web-zurueck]")) { this.beendeFindenAbo(); this.webseite = null; this.render(); return; }
+      if (ziel.closest("[data-web-start]")) { this.liesWebseiteAus(); return; }
+      if (ziel.closest("[data-web-vorlaeufig]")) { w.schritt = 3; this.render(); this.fokusTitel(); return; }
+      if (ziel.closest("[data-web-leer]")) {
+        const url = String(w.url || "").trim();
+        this.beendeFindenAbo(); this.webseite = null; this.erfassen = null;
+        this.start();
+        if (url) this.editing.website = url;
+        this.render();
+        return;
+      }
+      if (ziel.closest("[data-web-uebernehmen]")) this.uebernehmeVorschlag(w);
+    });
+    main.addEventListener("change", (e) => {
+      const ziel = e.target instanceof Element ? e.target : null;
+      const w = this.webseite;
+      if (!ziel || !w) return;
+      if (ziel.matches("[data-web-ki]")) w.ki = ziel.checked;
+      else if (ziel.matches("[data-web-feldwahl]")) { w.felder[ziel.dataset.webFeldwahl] = ziel.checked; this.aktualisiereWebVorschau(); }
+    });
+    main.addEventListener("input", (e) => { if (e.target instanceof Element) this.webseiteEingabe(e.target); });
+    main.addEventListener("keydown", (e) => {
+      const ziel = e.target instanceof Element ? e.target : null;
+      if (!ziel || !this.webseite) return;
+      if (e.key === "Enter" && ziel.matches("[data-web-url]")) { e.preventDefault(); this.liesWebseiteAus(); }
+    });
+  }
+
   oeffneFinden({ name = "", website = "", ohneStandort = false } = {}) {
     const ha = this.hass?.config;
     const haLat = Number.isFinite(Number(ha?.latitude)) ? ha.latitude : "";
@@ -4303,8 +4566,10 @@ class HofkartePanel extends HTMLElement {
   istHttpUrl(url) { return /^https?:\/\//i.test(String(url || "")); }
 
   /** Übernimmt die angehakten Zeilen in ein neues Bearbeitungsformular. */
-  uebernehmeFindenVorschlag() {
-    const f = this.finden;
+  uebernehmeFindenVorschlag() { this.uebernehmeVorschlag(this.finden); }
+
+  /** `f` = { vorschlag, felder, name, website } (Suchdialog oder Webseiten-Ablauf). */
+  uebernehmeVorschlag(f) {
     if (!f?.vorschlag) return;
     const daten = f.vorschlag.daten || {};
     const quellenListe = Array.isArray(f.vorschlag.quellen) ? f.vorschlag.quellen : Object.entries(f.vorschlag.quellen || {}).map(([feld, q]) => ({ feld, ...q }));
@@ -4327,9 +4592,9 @@ class HofkartePanel extends HTMLElement {
       info[v.key] = [...new Set([...(Array.isArray(info[v.key]) ? info[v.key] : []), ...werte])];
       vermutetFelder.push(v.key);
     }
-    const name = f.name.trim();
-    const website = f.website.trim();
-    this.finden = null;
+    const name = String(f.name || "").trim();
+    const website = String(f.website || "").trim();
+    this.finden = null; this.webseite = null; this.erfassen = null;
     this.beendeFindenAbo();
     this.start();
     if (!info.name && name) this.editing.name = name;

@@ -72,6 +72,9 @@ async def async_anreichern(
         if not ki_entitaet:
             await _melde(fortschritt, {"phase": "ki", "status": "nicht_konfiguriert"})
         else:
+            # Zwischenstand vor der (langsamen) KI-Auswertung: die Oberfläche kann
+            # das bereits Vorliegende prüfen lassen, KI-Ergebnisse folgen später.
+            await _melde(fortschritt, {"phase": "vorlaeufig", "vorschlag": vorschlag.als_dict()})
             texte = [(s.url, s.text) for s in (ergebnis.seiten if ergebnis else ()) if s.text]
             ki = await llm.async_extrahiere(hass, ki_entitaet, texte)
             ergaenze_mit_ki(vorschlag, ki)

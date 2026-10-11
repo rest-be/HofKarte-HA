@@ -15,6 +15,14 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Geändert (2026.10.1-dev.21) – Detail & Erfassung, Phase 6 (Szenario 2: Von Webseite)
+
+- **«Ich habe eine Webseite»** führt jetzt durch einen eigenen Ablauf mit Schrittanzeige **Webseite → Auslesen → Prüfen** (statt des Suchdialogs). Ist eine KI-Entität eingerichtet, erscheint zuerst die Wahl mit **Datenschutzhinweis** (Text geht an die gewählte Entität; Standard: aus); sonst wird sofort ausgelesen.
+- **Auslesen:** Fortschritt je Quelle (Webseite, KI). Bei KI-Auswertung kann das bereits Vorliegende vorab mit **«Vorliegendes prüfen»** angesehen werden; die KI-Ergebnisse erscheinen nachträglich, ohne die bereits getroffene Auswahl zu ändern (Hinweis «Die KI-Auswertung ist fertig»).
+- **Prüfen:** Feld für Feld mit Auswahlfeld, Quelle (Link) und Abweichungswarnung; **Vermutungen der KI getrennt, markiert und nie vorausgewählt**; **Vorschau-Karte** (rechts, mobil darunter) mit den gewählten Angaben; **«In Formular übernehmen (n)»** öffnet den Editor mit Herkunftsangaben (KI-Vermutungen als «inferred»). Nichts gefunden / Webseite gesperrt / Fehler: verständliche Meldung, «Erneut versuchen» bzw. «Von Hand erfassen» (Webseite wird übernommen).
+- Server: `hofkarte/management/enrich` sendet bei KI-Auswertung zusätzlich das Ereignis `vorlaeufig` (Zwischenstand vor der KI); bestehende Clients ignorieren es.
+- Intern: `uebernehmeVorschlag()` gemeinsam für Suchdialog und Webseiten-Ablauf. Neue Tests: `test_static_panel_js_webseite.py` (8), angepasst: `test_discovery_llm.py`, `test_static_panel_js_erfassen.py`.
+
 ### Geändert (2026.10.1-dev.20) – Detail & Erfassung, Phase 5 (Szenario 1: Vor Ort / Schnellerfassung)
 
 - **«Ich stehe vor dem Hofladen»** startet jetzt einen eigenen, mobil-ersten Ablauf statt des bisherigen Suchdialogs. **Schritt 1:** Der Gerätestandort wird auf den ausdrücklichen Klick hin ermittelt (mit Genauigkeit); danach erscheint die Liste «In der Nähe» mit Entfernung, dem Hinweis «Wahrscheinlich dieser» beim besten Treffer und der Warnung «Möglicherweise schon erfasst». Der Umkreis lässt sich per Chips (100/250/500 m) ändern; «Keiner davon, neu erfassen» führt direkt zur Erfassung. Verweigerter Standort, unsichere Verbindung und fehlgeschlagene Suche zeigen verständliche Hinweise mit «Erneut versuchen».
