@@ -156,3 +156,7 @@ Zwischenstände sind lauffähig. Nach jeder Phase ZIP; Abnahme durch dich vor de
 - Alle bisherigen Funktionen bleiben erreichbar (Routing, Löschen, Quellen, Bilder, Sonderzeiten, Export/Import).
 - Bedienung per Tastatur und Touch, Hell/Dunkel lesbar, mobil nutzbar (Szenario 1 auf 390 px).
 - Tests grün (ausser 4 bekannte Altfehler), Doku und CHANGELOG aktuell.
+
+## Umsetzungsstand
+
+Phasen 0–8 sind umgesetzt (dev.16 bis dev.23, Branch `feature/detail-erfassung`). Phase 9 (Release) bleibt zurückgestellt und erfolgt zusammen mit Discovery Phase 8 (KI-Messung mit Ollama). Bewusste Abweichung vom Plan: Der frühere Suchdialog wurde nicht entfernt, sondern bleibt als «Erweiterte Suche» erreichbar.

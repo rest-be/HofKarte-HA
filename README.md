@@ -182,14 +182,14 @@ Dort können Administratoren:
 - Hofläden kontrolliert löschen.
 
 Zusätzlich gibt es eine **read-only Detailansicht** je Hofladen
-(„Details“-Button in der Liste): zeigt alle Stammdaten, Adresse,
-Standort/Koordinaten (inkl. Routing-Auswahl), Öffnungszeiten, Sortiment
-und Bilder kompakt und übersichtlich an, **ohne** editierbare Felder –
-gedacht für den schnellen Überblick, getrennt von der Bearbeitung. Die
-Gruppierung der Informationen (Allgemeines, Adresse, Standort, Kontakt,
-Öffnungszeiten, ...) ist bewusst konsistent mit der Bearbeitungsansicht
-gehalten, damit dieselben Informationen in beiden Ansichten
-wiedererkennbar sind.
+(Klick auf die Kachel bzw. Zeile): ein Block «Auf einen Blick» (Bild,
+Status, Sterne, Adresse, Schnellaktionen Route/Anrufen/E-Mail/Webseite) und
+sieben **aufklappbare Gruppen** (Grunddaten, Adresse, Kontakt,
+Öffnungszeiten, Angebote, Bilder, Herkunft) mit Kurzfassung und
+Vollständigkeitspunkt (✓ / ½ / leer). Die Bearbeitungsansicht verwendet
+dieselben Gruppen in derselben Reihenfolge, damit Informationen in beiden
+Ansichten wiedererkennbar sind. «Angaben ergänzen» gleicht fehlende Angaben
+ab; «Bearbeiten» öffnet das Formular.
 
 Änderungen werden direkt im integrationsinternen Home-Assistant-Storage
 persistiert und ohne Neustart an Coordinator, Devices und Entities
@@ -263,42 +263,60 @@ keinen eigenen Backend-Endpunkt: Sie zeigt read-only die über
 `hofkarte/management/list` bereits geladenen Daten des jeweiligen
 Hofladens an.
 
-## Hofladen finden (Discovery)
+## Hofladen erfassen und ergänzen
 
-Statt einen Hofladen von Hand zu erfassen, kann das Panel ihn finden.
-In der Übersicht oben rechts auf **„🔎 Hofladen finden“** klicken:
+In der Übersicht oben rechts auf **«Hofladen erfassen»** klicken. Die
+Einstiegsseite bietet drei Wege (vor dem Speichern wird immer geprüft, ob
+es den Hofladen schon gibt):
 
-1. **Suchen:** Name und Website sind optional. Die Koordinaten werden beim
-   Öffnen vom **aktuellen Standort des Geräts** übernommen (Browser fragt
-   um Freigabe; Voraussetzung ist HTTPS, sonst wird die in Home Assistant
-   konfigurierte Position verwendet). „📍 Mein Standort“ holt ihn erneut.
-   Umkreis 50 m bis 5 km (Standard 2 km); die erweiterte Suche nimmt mehr
-   OpenStreetMap-Tags dazu (langsamer, noch wenig getestet).
-2. **Treffer wählen:** Die Treffer aus OpenStreetMap sind nach
-   Übereinstimmung sortiert (Entfernung, Namensähnlichkeit, Website) und mit
-   „hohe/mittlere/niedrige Sicherheit“ gekennzeichnet. Ein Hinweis zeigt
-   mögliche, bereits erfasste Hofläden. Alternativ: „Manuell erfassen“
-   oder „Nur Website auswerten“.
-3. **Angaben prüfen:** Aus OpenStreetMap und – falls vorhanden – der
-   Website werden Name, Adresse, Kontakt, Öffnungszeiten, Angebote und
-   Zahlungsarten vorgeschlagen, je Feld mit Quelle. Gewählte Angaben
-   kommen in ein **neues Formular**; gespeichert wird erst dort.
+1. **Ich stehe vor dem Hofladen (Schnellerfassung):** Der Standort des
+   Geräts wird auf Klick ermittelt (der Browser fragt um Freigabe;
+   Voraussetzung ist HTTPS). Hofläden aus OpenStreetMap in der Nähe
+   erscheinen mit Entfernung («Wahrscheinlich dieser», Warnung
+   «Möglicherweise schon erfasst»); der Umkreis lässt sich auf 100/250/500 m
+   stellen. Danach genügen Name, optional ein Foto (Kamera) und die
+   Webseite. Abschluss ist «Gespeichert» mit der Liste **«Noch offen»**
+   (Öffnungszeiten, Angebote, Zahlungsarten, Foto).
+2. **Ich habe eine Webseite:** Schrittanzeige *Webseite → Auslesen →
+   Prüfen*. Die Seite wird gelesen (nur wenn `robots.txt` es erlaubt,
+   höchstens 4 Seiten desselben Hosts, 1 s Pause). In der Prüfansicht
+   stehen die Angaben Feld für Feld mit Quelle und Abweichungswarnung,
+   daneben eine **Vorschau**. «In Formular übernehmen» öffnet das
+   Formular; gespeichert wird erst dort.
+3. **Von Hand erfassen:** leeres Formular.
 
-Die Website wird nur gelesen, wenn `robots.txt` es erlaubt (höchstens
-4 Seiten desselben Hosts, 1 s Pause). Beschreibungstexte werden nie
-automatisch übernommen.
+**Angaben ergänzen / aktualisieren** (Knopf im Detail, Hinweis «Noch
+unvollständig», «Noch offen»-Seite): Ein bestehender Hofladen wird mit
+Webseite und/oder OpenStreetMap verglichen. Die Tabelle zeigt
+**Angabe · Aktuell · Gefunden · Status** (Lücke, Abweichend, Ergänzung,
+Gleich). **Lücken sind vorgewählt, Abweichungen nie**; Angebote und
+Zahlungsarten werden ergänzt, nie ersetzt. «Auswahl übernehmen» öffnet das
+Formular mit den gewählten Werten, gespeichert wird erst dort.
+
+Die «Erweiterte Suche» (Koordinaten von Hand, grösserer Umkreis, mehr
+OpenStreetMap-Tags) bleibt über die Einstiegsseite erreichbar. Beschreibungstexte
+werden nie automatisch übernommen.
 
 **Optional: KI-Auswertung.** Wählst du in den HofKarte-Einstellungen eine
 Entität von Home Assistants „AI Task“ (z. B. lokal mit Ollama), erscheint
-in Schritt 1 die Option „Website-Text mit KI auswerten“ (nie vorangekreuzt).
-Die KI ergänzt Angebote, Zahlungsarten und Öffnungszeiten, aber nur
-Begriffe, die **wörtlich im Text der Website stehen**, gelten als belegt;
-alles andere erscheint getrennt als „Vermutung“, nicht vorausgewählt. Bei
+bei den Abläufen mit Webseite die Option „Text der Webseite mit KI
+auswerten“ (nie vorangekreuzt, mit Datenschutzhinweis). Die KI ergänzt
+Angebote, Zahlungsarten und Öffnungszeiten, aber nur Begriffe, die
+**wörtlich im Text der Website stehen**, gelten als belegt; alles andere
+erscheint getrennt als „Vermutung“, nicht vorausgewählt. Die KI läuft
+nachträglich: das bereits Vorliegende lässt sich vorab prüfen («Vorliegendes
+prüfen»), spätere KI-Ergebnisse ändern die getroffene Auswahl nicht. Bei
 Cloud-Anbietern verlässt der Website-Text dein Netzwerk. Ohne Auswahl ist
-keine KI beteiligt; bei einem KI-Fehler bleibt das Ergebnis ohne KI. Die Herkunft der Werte steht danach in der
-Detailansicht unter „Quellen“. OpenStreetMap-Daten: © OpenStreetMap-
-Mitwirkende (ODbL). Technik: [`architecture.md`](docs/architecture.md),
-Sicherheit: [`SECURITY.md`](SECURITY.md).
+keine KI beteiligt; bei einem KI-Fehler bleibt das Ergebnis ohne KI. Die
+Herkunft der Werte steht danach in der Detailansicht unter „Quellen“.
+OpenStreetMap-Daten: © OpenStreetMap-Mitwirkende (ODbL). Technik:
+[`architecture.md`](docs/architecture.md), Sicherheit:
+[`SECURITY.md`](SECURITY.md).
+
+**Zugänglichkeit:** Bei jedem Schrittwechsel springt der Fokus auf die
+Überschrift, Schritte und Statusmeldungen sind für Screenreader
+beschriftet, alle Bedienelemente sind per Tastatur erreichbar, und
+Animationen respektieren «Bewegung reduzieren».
 
 ## Bereitgestellte Devices
 
@@ -913,9 +931,9 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
 
 ## Bekannte Einschränkungen
 
-- „Hofladen finden“ ist auf in OpenStreetMap erfasste Hofläden
+- Die Suche in der Nähe ist auf in OpenStreetMap erfasste Hofläden
   angewiesen (Kern-Tag `shop=farm`); nicht erfasste Läden finden sich nur
-  über „Nur Website auswerten“ oder manuell. Die KI-Auswertung ist nur
+  über den Weg «Ich habe eine Webseite» oder von Hand. Die KI-Auswertung ist nur
   so gut wie das gewählte Modell (kleine lokale Modelle liefern oft wenig). Websites mit gesperrter
   `robots.txt`, reinem JavaScript-Aufbau oder Bildern statt Text liefern
   wenig. Die Standortübernahme benötigt HTTPS.
@@ -946,7 +964,7 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
 ## Datenschutz- und Standort-Hinweise
 
 - **Keine Cloud, kein externer Dienst:** HofKarte kommuniziert nicht mit
-  externen Servern – mit sieben Ausnahmen (die drei neuen betreffen „Hofladen finden“, siehe unten): dem Laden von Hofladen-Bildern
+  externen Servern – mit sieben Ausnahmen (die drei neuen betreffen das Erfassen und Ergänzen, siehe unten): dem Laden von Hofladen-Bildern
   über die vom Benutzer hinterlegten Bild-URLs (siehe „Bilder“), dem
   Laden der Kartenkacheln von OpenStreetMap (die Kartenbibliothek
   Leaflet selbst liegt lokal im Repository, kein CDN), sobald die Übersichtsansicht „🗺️ Karte“ tatsächlich
@@ -1000,7 +1018,7 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
   (rein lokale, deterministische Auswertung bzw. freie
   OpenStreetMap-Community-Dienste). Liefert eine Quelle keine Angaben
   oder schlägt fehl, wird dies in der Statusmeldung offen ausgewiesen.
-  Der Dialog „🔎 Hofladen finden“ (nur auf ausdrücklichen Klick, nur
+  Die Abläufe «Hofladen erfassen» und «Angaben ergänzen» (nur auf ausdrücklichen Klick, nur
   Administratoren) sendet die gewählten Suchkoordinaten an die freien
   OpenStreetMap-Overpass-Instanzen und liest – `robots.txt` beachtend,
   höchstens 4 Seiten desselben Hosts, 1 s Pause – die Website des

@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1-dev.22";
+const PANEL_BUILD = "2026.10.1-dev.23";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -1191,8 +1191,12 @@ class HofkartePanel extends HTMLElement {
     const inKarte = this.istKartenansicht();
     if (!inKarte) this.teardownKarte();
     // <style> existiert dauerhaft (Konstruktor) - hier wird nur <main> ersetzt.
+    // Fokusführung: Lag der Fokus auf der Seitenüberschrift eines Ablaufs, bleibt er dort,
+    // auch wenn ein asynchrones Ergebnis (Standort, Suche, Auslesen) neu rendert.
+    const titelHatFokus = !!this.shadowRoot.activeElement?.matches?.(".erfassen-titel");
     this._mainEl.innerHTML = this.currentView() + (this.finden ? this.findenDialog() : "");
     this.bind();
+    if (titelHatFokus) this.shadowRoot.querySelector(".erfassen-titel")?.focus?.();
     if (inKarte) this.initKarte();
     // Barrierefreiheit (Issue #9, 5.2): Fokus beim Öffnen des
     // Bestätigungs-Popups auf den Dialog selbst setzen, damit
@@ -1665,11 +1669,12 @@ class HofkartePanel extends HTMLElement {
       .vorort-haken{width:64px;height:64px;font-size:2em}
       .vorort-offen ul{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
       .vorort-offen li{display:flex;gap:10px;align-items:center}
+      .sr-nur{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
       .web-ablauf{display:flex;flex-direction:column;gap:14px;margin-top:14px;max-width:960px}
       .web-ablauf label{margin:0}
       .web-schritte{list-style:none;display:flex;gap:6px;margin:10px 0 0;padding:0;flex-wrap:wrap}
       .web-schritt{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;border-radius:999px;background:var(--secondary-background-color);color:var(--secondary-text-color);font-size:.95em}
-      .web-schritt.aktiv{background:var(--primary-color);color:#fff;font-weight:500}
+      .web-schritt.aktiv{background:var(--primary-color);color:var(--text-primary-color,#fff);font-weight:500}
       .web-schritt.erledigt{color:var(--primary-text-color)}
       .web-schritt-nr{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.35);font-size:.85em}
       .web-status-liste{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
@@ -2553,18 +2558,6 @@ class HofkartePanel extends HTMLElement {
     return `<a class="website-link" href="${this.escAttr(href)}" target="_blank" rel="noopener noreferrer">🔗 ${this.esc(trimmed)}</a>`;
   }
 
-  websiteLinkBlock(website) {
-    const inhalt = this.websiteLinkHtml(website);
-    if (!inhalt) return "";
-    return `<section class="card detail-section"><h3>Webseite</h3>${inhalt}</section>`;
-  }
-
-  /** Abschnitt "Kontakt" der Detailansicht: Mobilnummer (tel:-Link),
-   * E-Mail (mailto:-Link) und Webseite (dieselbe Darstellung wie zuvor
-   * im eigenständigen "Webseite"-Abschnitt, siehe websiteLinkHtml()) -
-   * unmittelbar nach "Adresse" und vor "Standort / Koordinaten". Entfällt
-   * vollständig, wenn keines der drei Felder gesetzt ist (wie bei den
-   * übrigen bedingten Abschnitten dieser Ansicht). */
   /** Inhalt der Gruppe "Kontakt & Webseite": Mobilnummer (tel:-Link),
    * E-Mail (nur validiert als mailto:, F12) und Webseite. */
   detailKontaktInhalt(d) {
@@ -3397,6 +3390,7 @@ class HofkartePanel extends HTMLElement {
       if (ziel.closest("[data-vorort-start]")) { this.starteVorOrt({ name: this.erfassen?.name || "" }); return; }
       if (ziel.closest("[data-vorort-zurueck]")) {
         if (this.vorOrt?.schritt === 2) { this.vorOrt.schritt = 1; this.vorOrt.fehler = ""; this.render(); } else { this.beendeVorOrt(); this.render(); }
+        this.fokusTitel();
         return;
       }
       if (ziel.closest("[data-vorort-neu-standort]")) { this.ermittleVorOrtStandort(); return; }
@@ -3787,7 +3781,7 @@ class HofkartePanel extends HTMLElement {
     const urlOk = this.urlGueltigFuerAuslesen(e.url);
     const kreis = (name, klasse = "") => `<span class="erfassen-icon ${klasse}" aria-hidden="true">${this.icon(name).replace('width="20" height="20"', 'width="26" height="26"')}</span>`;
     return `<div class="top"><div><button type="button" class="secondary" data-erfassen-zurueck>← Übersicht</button></div></div>
-      <h1 class="erfassen-titel">Hofladen erfassen</h1>
+      <h1 class="erfassen-titel" tabindex="-1">Hofladen erfassen</h1>
       <h2 class="erfassen-frage">Womit startest du?</h2>
       <p class="muted erfassen-intro">Wähle, was du schon hast. Den Rest suchen wir für dich. Du prüfst alles, bevor etwas gespeichert wird.</p>
       <div class="erfassen-karten">
@@ -3847,6 +3841,7 @@ class HofkartePanel extends HTMLElement {
       bild: null, bildStatus: "", bildKind: "", speichert: false, gespeichert: null,
     };
     this.render();
+    this.fokusTitel();
     this.ermittleVorOrtStandort();
   }
 
@@ -3908,6 +3903,7 @@ class HofkartePanel extends HTMLElement {
     if (k) { if (k.name) v.name = k.name; v.website = k.website || ""; }
     v.fehler = ""; v.schritt = 2;
     this.render();
+    this.fokusTitel();
   }
 
   /** Eingaben der Schnellerfassung sichern (ohne Render, Fokus bleibt). */
@@ -3996,6 +3992,7 @@ class HofkartePanel extends HTMLElement {
       v.schritt = 3;
       v.speichert = false;
       await this.load();
+      this.fokusTitel();
     } catch (err) {
       if (this.vorOrt !== v) return;
       v.speichert = false;
@@ -4016,7 +4013,7 @@ class HofkartePanel extends HTMLElement {
     const titel = v.schritt === 1 ? "Vor Ort erfassen" : v.schritt === 2 ? "Schnell erfassen" : "Gespeichert";
     const unter = v.schritt === 1 ? "Schritt 1 von 2 · Hofladen wählen" : v.schritt === 2 ? "Schritt 2 von 2 · Angaben" : "";
     const zurueck = v.schritt === 3 ? "" : `<div class="top"><div><button type="button" class="secondary" data-vorort-zurueck>${v.schritt === 1 ? "← Einstieg" : "← Zu den Treffern"}</button></div></div>`;
-    const kopf = `${zurueck}<h1 class="erfassen-titel">${this.esc(titel)}</h1>${unter ? `<div class="muted">${unter}</div>` : ""}`;
+    const kopf = `${zurueck}<h1 class="erfassen-titel" tabindex="-1">${this.esc(titel)}</h1>${unter ? `<div class="muted">${unter}</div>` : ""}`;
     const fehler = v.fehler ? `<div class="notice error" role="alert">${this.esc(v.fehler)}</div>` : "";
     if (v.schritt === 1) return `${kopf}<div class="vorort">${this.vorOrtSchritt1()}${fehler}</div>`;
     if (v.schritt === 2) return `${kopf}<div class="vorort">${fehler}${this.vorOrtSchritt2()}</div>`;
@@ -4125,9 +4122,11 @@ class HofkartePanel extends HTMLElement {
     if (w.ki && this._kiEntitaet) nachricht.ki = true;
     const aufEreignis = (ereignis) => {
       if (this.webseite !== w || !ereignis) return;
+      const vorher = w.schritt;
       if (ereignis.phase === "vorlaeufig" || ereignis.phase === "fertig") this.webseiteVorschlag(w, ereignis.vorschlag, ereignis.phase === "fertig");
       else if (ereignis.phase) w.ereignisse[ereignis.phase] = ereignis;
       this.render();
+      if (w.schritt !== vorher) this.fokusTitel();
     };
     try {
       this._findenUnsub = await this.hass.connection.subscribeMessage(aufEreignis, nachricht);
@@ -4268,7 +4267,7 @@ class HofkartePanel extends HTMLElement {
   }
 
   webseiteSchritt2(w, fehler) {
-    const status = this.webseiteStatusZeilen(w).map((z) => `<li class="web-status${z.klein ? " muted" : ""}"><span class="gruppe-punkt ${z.icon === "✓" ? "ok" : z.icon === "…" ? "teil" : "leer"}" aria-hidden="true">${z.icon === "i" ? "" : this.esc(z.icon)}</span><span>${this.esc(z.text)}</span></li>`).join("");
+    const status = this.webseiteStatusZeilen(w).map((z) => `<li class="web-status${z.klein ? " muted" : ""}"><span class="gruppe-punkt ${z.icon === "✓" ? "ok" : z.icon === "…" ? "teil" : "leer"}" aria-hidden="true">${z.icon === "i" ? "" : this.esc(z.icon)}</span><span><span class="sr-nur">${z.icon === "✓" ? "Erledigt: " : z.icon === "…" ? "Läuft: " : "Hinweis: "}</span>${this.esc(z.text)}</span></li>`).join("");
     const vorlaeufig = w.vorlaeufig && w.busy ? `<button type="button" class="secondary" data-web-vorlaeufig>Vorliegendes prüfen</button>` : "";
     const nochmal = !w.busy && w.fehler ? (w.vorschlag ? `<button type="button" data-web-vorlaeufig>Vorliegendes prüfen</button>` : `<button type="button" data-web-start>Erneut versuchen</button><button type="button" class="secondary" data-web-leer>Von Hand erfassen</button>`) : "";
     return `<ul class="web-status-liste" role="status" aria-live="polite">${status}</ul>
@@ -4279,7 +4278,7 @@ class HofkartePanel extends HTMLElement {
 
   webseiteSchritt3(w, fehler) {
     const { zeilen, vermutungen } = this.webseiteZeilen(w);
-    const statusKurz = this.webseiteStatusZeilen(w).filter((z) => !z.klein).map((z) => `<div class="muted">${this.esc((z.icon === "✓" ? "✔ " : "ℹ ") + z.text)}</div>`).join("");
+    const statusKurz = this.webseiteStatusZeilen(w).filter((z) => !z.klein).map((z) => `<div class="muted"><span aria-hidden="true">${z.icon === "✓" ? "✔" : "ℹ"} </span><span class="sr-nur">${z.icon === "✓" ? "Erledigt: " : "Hinweis: "}</span>${this.esc(z.text)}</div>`).join("");
     const kiHinweis = w.kiNeu ? `<div class="notice" role="status">Die KI-Auswertung ist fertig. Neue Vermutungen stehen unten, deine bisherige Auswahl blieb unverändert.</div>`
       : (w.busy ? `<div class="notice" role="status">Die KI läuft noch. Neue Ergebnisse erscheinen hier automatisch.</div>` : "");
     const quelleHtml = (q) => {
@@ -4315,7 +4314,7 @@ class HofkartePanel extends HTMLElement {
       const ziel = e.target instanceof Element ? e.target : null;
       const w = this.webseite;
       if (!ziel || !w) return;
-      if (ziel.closest("[data-web-zurueck]")) { this.beendeFindenAbo(); this.webseite = null; this.render(); return; }
+      if (ziel.closest("[data-web-zurueck]")) { this.beendeFindenAbo(); this.webseite = null; this.render(); this.fokusTitel(); return; }
       if (ziel.closest("[data-web-start]")) { this.liesWebseiteAus(); return; }
       if (ziel.closest("[data-web-vorlaeufig]")) { w.schritt = 3; this.render(); this.fokusTitel(); return; }
       if (ziel.closest("[data-web-leer]")) {
@@ -4560,20 +4559,21 @@ class HofkartePanel extends HTMLElement {
 
   ergaenzenStatusZeilen(e) {
     const zeilen = [];
+    const z = (ok, text) => zeilen.push({ ok, text });
     if (e.osm) {
-      if (e.osm.status === "ok") zeilen.push(`✔ OpenStreetMap: «${e.osm.name || "Treffer"}»${Number.isFinite(Number(e.osm.entfernung)) ? ` (${Math.round(e.osm.entfernung)} m)` : ""}`);
-      else if (e.osm.status === "kein_treffer") zeilen.push("ℹ OpenStreetMap: kein sicherer Treffer");
-      else zeilen.push(`ℹ OpenStreetMap: ${e.osm.text}`);
+      if (e.osm.status === "ok") z(true, `OpenStreetMap: «${e.osm.name || "Treffer"}»${Number.isFinite(Number(e.osm.entfernung)) ? ` (${Math.round(e.osm.entfernung)} m)` : ""}`);
+      else if (e.osm.status === "kein_treffer") z(false, "OpenStreetMap: kein sicherer Treffer");
+      else z(false, `OpenStreetMap: ${e.osm.text}`);
     }
     const web = e.ereignisse.website;
-    if (web && web.status !== "uebersprungen") zeilen.push(`${web.status === "ok" ? "✔" : "ℹ"} ${HofkartePanel.FINDEN_WEBSITE_STATUS[web.status] || web.status}`);
+    if (web && web.status !== "uebersprungen") z(web.status === "ok", HofkartePanel.FINDEN_WEBSITE_STATUS[web.status] || web.status);
     const ki = e.ereignisse.ki;
-    if (e.ki && ki) zeilen.push(`${ki.status === "ok" ? "✔" : "ℹ"} ${HofkartePanel.FINDEN_KI_STATUS[ki.status] || ki.status}`);
+    if (e.ki && ki) z(ki.status === "ok", HofkartePanel.FINDEN_KI_STATUS[ki.status] || ki.status);
     return zeilen;
   }
 
   ergaenzenSchritt2(e, item) {
-    const status = this.ergaenzenStatusZeilen(e).map((t) => `<div class="muted">${this.esc(t)}</div>`).join("");
+    const status = this.ergaenzenStatusZeilen(e).map((z) => `<div class="muted"><span aria-hidden="true">${z.ok ? "✔" : "ℹ"} </span><span class="sr-nur">${z.ok ? "Erledigt: " : "Hinweis: "}</span>${this.esc(z.text)}</div>`).join("");
     const fehler = e.fehler ? `<div class="notice error" role="alert">${this.esc(e.fehler)}</div>` : "";
     const laeuft = e.busy ? `<div class="notice" role="status">${e.vorschlag ? "Die KI läuft noch. Neue Ergebnisse erscheinen hier automatisch, deine Auswahl bleibt." : "Abgleich läuft …"}</div>` : "";
     const kiNeu = e.kiNeu ? `<div class="notice" role="status">Die KI-Auswertung ist fertig. Deine bisherige Auswahl blieb unverändert.</div>` : "";
@@ -4661,7 +4661,7 @@ class HofkartePanel extends HTMLElement {
     });
   }
 
-  oeffneFinden({ name = "", website = "", ohneStandort = false } = {}) {
+  oeffneFinden({ name = "", website = "" } = {}) {
     const ha = this.hass?.config;
     const haLat = Number.isFinite(Number(ha?.latitude)) ? ha.latitude : "";
     const haLon = Number.isFinite(Number(ha?.longitude)) ? ha.longitude : "";
@@ -4672,7 +4672,7 @@ class HofkartePanel extends HTMLElement {
       kandidaten: [], gewaehlt: null, ereignisse: {}, vorschlag: null, felder: {},
     };
     this.render();
-    if (!ohneStandort) this.ermittleGeraeteStandort();
+    this.ermittleGeraeteStandort();
   }
 
   schliesseFinden() {

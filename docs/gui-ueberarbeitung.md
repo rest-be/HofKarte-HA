@@ -38,3 +38,32 @@ wird der Test in derselben Phase angepasst und im CHANGELOG vermerkt.
 | 3 | Liste | dev.12 (erledigt) |
 | 4 | Karte | dev.13 (erledigt) |
 | 5 | Feinschliff, Zugänglichkeit, Doku | dev.14 (erledigt) |
+
+## Detail & Erfassung (Folgeprojekt)
+
+Umsetzung der überarbeiteten Detailmasken und des Erfassungsprozesses auf
+Branch `feature/detail-erfassung` (Plan: `detail-erfassung-umsetzungsplan.md`,
+Inventar: `detail-erfassung-inventar.md`).
+
+| Phase | Inhalt | Version |
+|---|---|---|
+| 1 | Gruppenmodell (7 Gruppen), Akkordeon, Vollständigkeit | dev.16 (erledigt) |
+| 2 | Detail neu: «Auf einen Blick», Schnellaktionen, Gruppen | dev.17 (erledigt) |
+| 3 | Bearbeiten neu: gleiche Gruppen, Chips, Fussleiste | dev.18 (erledigt) |
+| 4 | Einstieg «Hofladen erfassen» (drei Wege) | dev.19 (erledigt) |
+| 5 | Szenario 1: Vor Ort / Schnellerfassung | dev.20 (erledigt) |
+| 6 | Szenario 2: Von Webseite mit Prüfansicht | dev.21 (erledigt) |
+| 7 | Szenario 3: Angaben ergänzen / Abgleich | dev.22 (erledigt) |
+| 8 | Zugänglichkeit, Doku, Aufräumen | dev.23 (erledigt) |
+| 9 | Release (zusammen mit Discovery Phase 8) | zurückgestellt |
+
+Selektoren der neuen Abläufe: `data-erfassen-*` (Einstieg), `data-vorort-*`
+(Schnellerfassung), `data-web-*` (Webseite), `data-erg-*` (Abgleich),
+`data-gruppe*` (Akkordeon). Der frühere Suchdialog (`data-finden-*`) bleibt als
+«Erweiterte Suche» bestehen.
+
+Zugänglichkeit: Fokus auf die Überschrift bei Schrittwechseln (auch nach
+asynchronem Neuzeichnen), `aria-current="step"` in der Schrittanzeige,
+`role="status"` für Fortschritt, Statussymbole mit Text für Screenreader
+(`.sr-nur`), Beschriftungen an Auswahlfeldern, `prefers-reduced-motion`.
+Tests: `test_static_panel_js_a11y.py`.

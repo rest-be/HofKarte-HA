@@ -15,6 +15,16 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Geändert (2026.10.1-dev.23) – Detail & Erfassung, Phase 8 (Zugänglichkeit, Doku, Aufräumen)
+
+- **Fokusführung:** Beim Wechsel eines Schritts (Einstieg, Schnellerfassung, Webseite, Abgleich) springt der Fokus auf die Seitenüberschrift; sie bleibt dort, auch wenn ein asynchrones Ergebnis (Standort, Suche, Auslesen) neu zeichnet. Überschriften sind fokussierbar (`tabindex="-1"`).
+- **Screenreader:** Statusmeldungen der Abläufe tragen neben dem Symbol einen Text («Erledigt:», «Hinweis:», `.sr-nur`); Symbole sind `aria-hidden`. Schrittanzeige mit `aria-current="step"`, Auswahlfelder im Abgleich mit Namen.
+- **Kontrast:** Der aktive Schritt verwendet die Textfarbe auf Primärfarbe des Themes (`--text-primary-color`).
+- **Bewegung:** Es gibt nur noch eine Animation (Gruppenpfeil); sie respektiert `prefers-reduced-motion` (per Test abgesichert).
+- **Doku:** README, Handbuch (Kapitel 4: «Hofladen erfassen», «Angaben ergänzen und aktualisieren», Detail/Bearbeiten neu), `docs/gui-ueberarbeitung.md` (Abschnitt «Detail & Erfassung»), CONTRIBUTING (Testanzahl).
+- **Aufräumen:** ungenutzte Methode `websiteLinkBlock` und der nicht mehr genutzte Parameter `ohneStandort` entfernt. Der Suchdialog bleibt bewusst als «Erweiterte Suche» erhalten (Koordinaten von Hand, Umkreis bis 5 km, erweiterte Tags).
+- Neue Tests: `test_static_panel_js_a11y.py` (4).
+
 ### Geändert (2026.10.1-dev.22) – Detail & Erfassung, Phase 7 (Szenario 3: Ergänzen/Aktualisieren)
 
 - Neuer Ablauf **«Angaben ergänzen»** für bestehende Hofläden, erreichbar über den Knopf im Detail, den Hinweis «Noch unvollständig → Jetzt ergänzen» und «Jetzt ergänzen» auf der «Noch offen»-Seite nach der Schnellerfassung. **Schritt 1:** Vollständigkeit (Prozent, Balken, was noch offen ist) und «Verglichen mit»: Webseite (Adresse anpassbar), OpenStreetMap (am Standort des Hofladens, nur bei sicherem Treffer), KI optional mit Datenschutzhinweis. «Von Hand bearbeiten» bleibt jederzeit möglich.
