@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1-dev.21";
+const PANEL_BUILD = "2026.10.1-dev.22";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -333,6 +333,7 @@ class HofkartePanel extends HTMLElement {
     this.karteNurGeoeffnet = false; // Filter "Nur geöffnet" - gemeinsam für Kacheln, Liste und Karte (Issue #2, GUI-Überarbeitung)
     this.uebersichtMenue = false; // ⋮-Menü der Kopfzeile (Import) geöffnet?
     this.vorOrt = null; // Ablauf "Vor Ort erfassen" (Schnellerfassung), null = geschlossen
+    this.ergaenzen = null; // Ablauf "Angaben ergänzen" (Abgleich mit Webseite/OSM für einen bestehenden Hofladen), null = geschlossen
     this.webseite = null; // Ablauf "Von Webseite" (Webseite -> Auslesen -> Prüfen), null = geschlossen
     this._vorOrtToken = 0; // verwirft Antworten veralteter Standort-/Suchläufe
     this.erfassen = null; // Einstiegsseite "Hofladen erfassen" (null = geschlossen, sonst { name, url })
@@ -1401,7 +1402,8 @@ class HofkartePanel extends HTMLElement {
 
   currentView() {
     if (this.importDialog) return this.importKonflikte();
-    if (this.editing) { this.erfassen = null; this.vorOrt = null; this.webseite = null; return this.editor(); }
+    if (this.editing) { this.erfassen = null; this.vorOrt = null; this.webseite = null; this.ergaenzen = null; return this.editor(); }
+    if (this.ergaenzen) return this.ergaenzenAnsicht();
     if (this.viewing) return this.detail();
     if (this.vorOrt) return this.vorOrtAnsicht();
     if (this.webseite) return this.webseiteAnsicht();
@@ -1684,6 +1686,24 @@ class HofkartePanel extends HTMLElement {
       .web-vorschau-name{font-size:1.15em;font-weight:500}
       .web-vorschau-zeile{overflow-wrap:anywhere}
       .web-vorschau-n{margin:6px 0 0}
+      .erg-vollst{padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+      .erg-balken{height:10px;border-radius:5px;background:var(--secondary-background-color);overflow:hidden}
+      .erg-balken span{display:block;height:100%;background:var(--primary-color)}
+      .erg-leiste{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+      .erg-schnell{display:flex;gap:8px;flex-wrap:wrap}
+      .erg-liste{display:flex;flex-direction:column;gap:10px}
+      .erg-zeile{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:6px 12px;align-items:start;padding:12px 14px}
+      .erg-wahl{width:24px;height:24px;margin:0;grid-row:1}
+      .erg-feld{grid-column:2;font-weight:500}
+      .erg-status{grid-column:3;grid-row:1}
+      .erg-wert{grid-column:2 / 4;overflow-wrap:anywhere}
+      .erg-etikett{display:inline-block;min-width:4.6em;margin-right:6px;font-size:.85em}
+      .erg-badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:.85em;white-space:nowrap;background:var(--secondary-background-color)}
+      .erg-badge-luecke{background:#fff3cd;color:#664d03}
+      .erg-badge-abweichend{background:#ffe0b2;color:#7a3e00}
+      .erg-badge-ergaenzung{background:#d7ecff;color:#0b4a7a}
+      .erg-badge-gleich{background:#dff3e0;color:#1b5e20}
+      @media (min-width:860px){.erg-zeile{grid-template-columns:28px 150px minmax(0,1fr) minmax(0,1fr) 110px;align-items:center}.erg-feld,.erg-wert,.erg-status{grid-column:auto;grid-row:auto}.erg-etikett{display:none}}
       .gruppen-leiste{display:flex;justify-content:flex-end;margin:0 0 8px}
       .gruppe{margin-bottom:12px;padding:0}
       .gruppe-titel{margin:0;font-size:1em}
@@ -2436,7 +2456,7 @@ class HofkartePanel extends HTMLElement {
 
     return `<div class="top">
         <div class="top-titel"><button class="secondary" data-back>← Zurück zur Liste</button></div>
-        <div class="actions"><button data-edit-from-detail="${this.escAttr(d.id)}">Bearbeiten</button>${this.aktionenMenueHtml(d, { nurLoeschen: true })}</div>
+        <div class="actions"><button type="button" class="secondary" data-ergaenzen="${this.escAttr(d.id)}">Angaben ergänzen</button><button data-edit-from-detail="${this.escAttr(d.id)}">Bearbeiten</button>${this.aktionenMenueHtml(d, { nurLoeschen: true })}</div>
       </div>
       ${this.error ? `<div class="notice error">${this.esc(this.error)}</div>` : ""}
 
@@ -3392,7 +3412,7 @@ class HofkartePanel extends HTMLElement {
         const id = this.vorOrt?.gespeichert?.id;
         const item = this.items.find((x) => x.id === id) || this.vorOrt?.gespeichert;
         this.vorOrt = null; this.erfassen = null;
-        if (item) this.start(item); else this.render();
+        if (item) { this.view(item); this.starteErgaenzen(item); } else this.render();
         return;
       }
       if (ziel.closest("[data-vorort-fertig]")) { this.vorOrt = null; this.erfassen = null; this.render(); return; }
@@ -3474,7 +3494,7 @@ class HofkartePanel extends HTMLElement {
       const kartenWahl = ziel.closest("[data-karte-waehle]");
       if (kartenWahl) { this.karteWaehleAusListe(kartenWahl.dataset.karteWaehle); return; }
       const ergaenzen = ziel.closest("[data-ergaenzen]");
-      if (ergaenzen) { this.start(this.items.find(x => x.id === ergaenzen.dataset.ergaenzen)); return; } // Phase 7 ersetzt dies durch den Abgleich
+      if (ergaenzen) { this.starteErgaenzen(this.items.find(x => x.id === ergaenzen.dataset.ergaenzen)); return; }
       const ansehen = ziel.closest("[data-view]");
       if (ansehen) { this.view(this.items.find(x => x.id === ansehen.dataset.view)); return; }
       const bearbeiten = ziel.closest("[data-edit]");
@@ -3532,6 +3552,7 @@ class HofkartePanel extends HTMLElement {
     }, true);
     this.bindFindenDelegiert();
     this.bindWebseiteDelegiert();
+    this.bindErgaenzenDelegiert();
   }
 
   bind() {
@@ -4319,6 +4340,324 @@ class HofkartePanel extends HTMLElement {
       const ziel = e.target instanceof Element ? e.target : null;
       if (!ziel || !this.webseite) return;
       if (e.key === "Enter" && ziel.matches("[data-web-url]")) { e.preventDefault(); this.liesWebseiteAus(); }
+    });
+  }
+
+  // --- Ergänzen/Aktualisieren: Szenario 3 -----------------------------------
+
+  static ERG_STATUS = { luecke: "Lücke", abweichend: "Abweichend", ergaenzung: "Ergänzung", gleich: "Gleich", nichts: "Nichts gefunden" };
+
+  starteErgaenzen(item) {
+    if (!item) return;
+    this.ergaenzen = {
+      id: item.id, schritt: 1, url: item.website || "", mitWeb: true, mitOsm: this.hatKoordinaten(item), ki: false,
+      busy: false, fehler: "", ereignisse: {}, osm: null, vorschlag: null, felder: {}, filter: "unterschiede", kiNeu: false,
+    };
+    this.render(); this.fokusTitel();
+  }
+
+  ergaenzenItem() { return this.items.find((x) => x.id === this.ergaenzen?.id) || null; }
+
+  /** Vergleicht den gespeicherten Hofladen mit dem gefundenen Vorschlag, Zeile für Zeile.
+   * Status: luecke (fehlt bisher), abweichend (andere Angabe), ergaenzung (Liste hat Neues), gleich, nichts. */
+  ergaenzenZeilen(item, vorschlag) {
+    const daten = vorschlag?.daten || {};
+    const quellenListe = Array.isArray(vorschlag?.quellen) ? vorschlag.quellen : Object.entries(vorschlag?.quellen || {}).map(([feld, q]) => ({ feld, ...q }));
+    const leer = (v) => v == null || v === "" || (Array.isArray(v) && !v.length);
+    const norm = (v) => String(v ?? "").trim().toLowerCase().replace(/\s+/g, " ").replace(/\/+$/, "");
+    const name = (x) => String(x?.name ?? x);
+    const zeilen = [];
+    for (const zeile of HofkartePanel.FINDEN_ZEILEN) {
+      const gefunden = this.findenZeileWert(zeile, daten);
+      const aktuell = this.findenZeileWert(zeile, item);
+      const quelle = zeile.felder.map((f) => quellenListe.find((x) => x.feld === f)).find(Boolean) || null;
+      const basis = { key: zeile.key, label: zeile.label, aktuell, gefunden, quelle, felder: [], neueListe: [] };
+      if (!gefunden) { zeilen.push({ ...basis, status: "nichts" }); continue; }
+      let status; let felder = [];
+      if (zeile.key === "angebote" || zeile.key === "zahlungsarten") {
+        const vorhanden = new Set((item[zeile.key] || []).map((x) => this.slug(name(x))));
+        const neu = (daten[zeile.key] || []).map(name).filter((n) => !vorhanden.has(this.slug(n)));
+        basis.neueListe = neu;
+        status = !neu.length ? "gleich" : vorhanden.size ? "ergaenzung" : "luecke";
+        felder = neu.length ? [zeile.key] : [];
+        if (status === "ergaenzung") basis.gefunden = `Neu: ${neu.join(", ")}`;
+      } else if (zeile.key === "oeffnungszeiten") {
+        status = leer(item.oeffnungszeiten) ? "luecke" : this.quellenWert("oeffnungszeiten", item) === this.quellenWert("oeffnungszeiten", daten) ? "gleich" : "abweichend";
+        felder = status === "gleich" ? [] : ["oeffnungszeiten"];
+      } else if (zeile.key === "koordinaten") {
+        if (!this.hatKoordinaten(item)) { status = "luecke"; felder = ["latitude", "longitude"]; }
+        else {
+          const dLat = (Number(daten.latitude) - Number(item.latitude)) * 111195;
+          const dLon = (Number(daten.longitude) - Number(item.longitude)) * 111195 * Math.cos(Number(item.latitude) * Math.PI / 180);
+          status = Math.hypot(dLat, dLon) <= 25 ? "gleich" : "abweichend";
+          felder = status === "gleich" ? [] : ["latitude", "longitude"];
+        }
+      } else {
+        const luecken = [], diffs = [];
+        for (const f of zeile.felder) {
+          if (leer(daten[f])) continue;
+          if (leer(item[f])) luecken.push(f); else if (norm(item[f]) !== norm(daten[f])) diffs.push(f);
+        }
+        status = diffs.length ? "abweichend" : luecken.length ? "luecke" : "gleich";
+        felder = diffs.length ? zeile.felder.filter((f) => !leer(daten[f])) : luecken;
+      }
+      zeilen.push({ ...basis, status, felder });
+    }
+    return zeilen;
+  }
+
+  async ergaenzenAbgleichen() {
+    const e = this.ergaenzen;
+    const item = this.ergaenzenItem();
+    if (!e || !item || e.busy) return;
+    const url = e.mitWeb ? String(e.url || "").trim() : "";
+    if (url && !this.urlGueltigFuerAuslesen(url)) { e.fehler = "Bitte eine gültige Webseite (http:// oder https://) eingeben."; this.render(); return; }
+    if (!url && !e.mitOsm) { e.fehler = "Bitte mindestens eine Quelle wählen."; this.render(); return; }
+    e.schritt = 2; e.busy = true; e.fehler = ""; e.ereignisse = {}; e.osm = null; e.vorschlag = null; e.felder = {}; e.kiNeu = false;
+    this.render(); this.fokusTitel();
+    let kandidat = null;
+    if (e.mitOsm) {
+      try {
+        const nachricht = { latitude: Number(item.latitude), longitude: Number(item.longitude), radius: 250, erweitert: false, name: item.name };
+        if (url) nachricht.website = url;
+        const ergebnis = await this.call("hofkarte/management/discover", nachricht);
+        if (this.ergaenzen !== e) return;
+        const k = (ergebnis.kandidaten || [])[0];
+        if (k && k.konfidenz === "hoch") { kandidat = k; e.osm = { status: "ok", name: k.name, entfernung: k.entfernung_meter }; }
+        else e.osm = { status: "kein_treffer" };
+      } catch (err) {
+        if (this.ergaenzen !== e) return;
+        e.osm = { status: "fehler", text: HofkartePanel.FINDEN_FEHLERMELDUNGEN[err?.code] || err?.message || "Die Suche ist fehlgeschlagen." };
+      }
+      this.render();
+    }
+    if (!kandidat && !url) {
+      e.busy = false;
+      e.fehler = e.osm?.status === "fehler" ? e.osm.text : "In OpenStreetMap wurde kein sicherer Treffer gefunden, es gibt nichts zum Abgleichen. Gib eine Webseite an oder bearbeite den Hofladen von Hand.";
+      this.render();
+      return;
+    }
+    const nachricht = { type: "hofkarte/management/enrich" };
+    if (kandidat) nachricht.kandidat = kandidat;
+    if (url) nachricht.website = url;
+    if (e.ki && this._kiEntitaet) nachricht.ki = true;
+    const aufEreignis = (ereignis) => {
+      if (this.ergaenzen !== e || !ereignis) return;
+      if (ereignis.phase === "vorlaeufig" || ereignis.phase === "fertig") this.ergaenzenVorschlag(e, ereignis.vorschlag, ereignis.phase === "fertig");
+      else if (ereignis.phase) e.ereignisse[ereignis.phase] = ereignis;
+      this.render();
+    };
+    try {
+      this._findenUnsub = await this.hass.connection.subscribeMessage(aufEreignis, nachricht);
+      this._findenTimer = setTimeout(() => {
+        if (this.ergaenzen !== e || !e.busy) return;
+        e.busy = false;
+        e.fehler = e.vorschlag ? "Die KI hat zu lange gebraucht. Das bisher Gefundene bleibt nutzbar." : "Der Abgleich hat zu lange gedauert.";
+        this.beendeFindenAbo();
+        this.render();
+      }, 120000);
+    } catch (err) {
+      if (this.ergaenzen !== e) return;
+      e.busy = false;
+      e.fehler = HofkartePanel.FINDEN_FEHLERMELDUNGEN[err?.code] || err?.message || "Der Abgleich ist fehlgeschlagen.";
+      this.render();
+    }
+  }
+
+  /** Lücken sind vorgewählt, Abweichungen und Ergänzungen nie. Bereits getroffene Wahlen bleiben bei späteren Ständen erhalten. */
+  ergaenzenVorschlag(e, vorschlag, fertig) {
+    const item = this.ergaenzenItem();
+    const neu = vorschlag || { daten: {}, quellen: [], abweichungen: {} };
+    const hatte = !!e.vorschlag;
+    const felder = {};
+    for (const z of this.ergaenzenZeilen(item || {}, neu)) {
+      if (!z.felder.length) continue;
+      felder[z.key] = z.key in e.felder ? e.felder[z.key] : z.status === "luecke";
+    }
+    e.vorschlag = neu; e.felder = felder;
+    if (!fertig) return;
+    e.busy = false;
+    this.beendeFindenAbo();
+    if (hatte && e.ki) e.kiNeu = true;
+  }
+
+  ergaenzenAnzahl() { return Object.values(this.ergaenzen?.felder || {}).filter(Boolean).length; }
+
+  aktualisiereErgFuss() {
+    const n = this.ergaenzenAnzahl();
+    const knopf = this.shadowRoot.querySelector("[data-erg-uebernehmen]");
+    if (knopf) { knopf.textContent = `Auswahl übernehmen (${n})`; knopf.disabled = n === 0; }
+    const z = this.shadowRoot.querySelector("[data-erg-anzahl]");
+    if (z) z.textContent = `${n} gewählt`;
+  }
+
+  /** Gewählte Zeilen in das Formular übernehmen (nichts wird gespeichert, nichts ohne Wahl überschrieben). */
+  uebernehmeErgaenzung() {
+    const e = this.ergaenzen;
+    const item = this.ergaenzenItem();
+    if (!e?.vorschlag || !item) return;
+    const daten = e.vorschlag.daten || {};
+    const info = {}; const neueQuellen = []; const entfernen = new Set(); let n = 0;
+    for (const z of this.ergaenzenZeilen(item, e.vorschlag)) {
+      if (!e.felder[z.key] || !z.felder.length) continue;
+      n++;
+      for (const feld of z.felder) {
+        const liste = feld === "angebote" || feld === "zahlungsarten";
+        info[feld] = liste ? z.neueListe : daten[feld];
+        entfernen.add(feld);
+        // Bei ergänzten Listen mit bisherigen Einträgen wäre eine einzelne Quellenangabe falsch.
+        if (z.quelle && !(liste && z.status === "ergaenzung")) neueQuellen.push({ feld, quelle: z.quelle.quelle, status: z.quelle.status || "confirmed", url: z.quelle.url || null, lizenz: z.quelle.lizenz || null });
+      }
+    }
+    this.ergaenzen = null; this.beendeFindenAbo();
+    this.start(item);
+    this.uebernehmeWebseiteInfo(info);
+    if (info.latitude != null && info.longitude != null) { this.editing.latitude = info.latitude; this.editing.longitude = info.longitude; }
+    this.editing.quellen = (this.editing.quellen || []).filter((q) => !entfernen.has(q.feld)).concat(neueQuellen);
+    this.merkeQuellenSchnappschuss();
+    if (n) this.markiereGeaendert();
+    this.setAutoErmittlungStatus(n ? `${n} Angabe${n === 1 ? "" : "n"} aus dem Abgleich übernommen. Bitte prüfen und speichern.` : "Es wurde nichts übernommen.", n ? "success" : "");
+    this.render();
+  }
+
+  ergaenzenAnsicht() {
+    const e = this.ergaenzen;
+    const item = this.ergaenzenItem();
+    if (!item) { this.ergaenzen = null; return this.list(); }
+    const schritte = ["Quellen", "Vergleichen"].map((t, i) => {
+      const nr = i + 1;
+      return `<li class="web-schritt${nr === e.schritt ? " aktiv" : ""}${nr < e.schritt ? " erledigt" : ""}"${nr === e.schritt ? ' aria-current="step"' : ""}><span class="web-schritt-nr" aria-hidden="true">${nr < e.schritt ? "✓" : nr}</span><span>${this.esc(t)}</span></li>`;
+    }).join("");
+    const kopf = `<div class="top"><div><button type="button" class="secondary" data-erg-zurueck>← ${this.viewing ? "Zurück zum Detail" : "Zurück"}</button></div></div>
+      <h1 class="erfassen-titel" tabindex="-1">Angaben ergänzen</h1>
+      <div class="muted">${this.esc(item.name)}</div>
+      <ol class="web-schritte" aria-label="Fortschritt">${schritte}</ol>`;
+    return `${kopf}<div class="web-ablauf">${e.schritt === 1 ? this.ergaenzenSchritt1(e, item) : this.ergaenzenSchritt2(e, item)}</div>`;
+  }
+
+  ergaenzenSchritt1(e, item) {
+    const v = this.vollstaendigkeit(item);
+    const hatKoord = this.hatKoordinaten(item);
+    const fehler = e.fehler ? `<div class="notice error" role="alert">${this.esc(e.fehler)}</div>` : "";
+    const ok = (e.mitWeb && this.urlGueltigFuerAuslesen(e.url)) || (e.mitOsm && hatKoord);
+    return `<section class="card erg-vollst" aria-label="Vollständigkeit">
+        <strong>${v.prozent} % vollständig</strong>
+        <div class="erg-balken" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${v.prozent}"><span style="width:${v.prozent}%"></span></div>
+        <div class="muted">${v.alleFehlend.length ? `Noch offen: ${this.esc(v.alleFehlend.join(", "))}` : "Alle wichtigen Angaben sind erfasst."}</div>
+      </section>
+      <h2 class="vorort-h2">Verglichen mit</h2>
+      <p class="muted">Gefundenes wird nur vorgeschlagen. Bestehende Angaben werden nie ohne deine Wahl überschrieben.</p>
+      <label class="finden-check"><input type="checkbox" data-erg-web ${e.mitWeb ? "checked" : ""}> <span>Webseite</span></label>
+      <label>Webseite-Adresse<input type="url" data-erg-url value="${this.escAttr(e.url)}" placeholder="https://…" inputmode="url" autocomplete="off"></label>
+      <label class="finden-check"><input type="checkbox" data-erg-osm ${e.mitOsm && hatKoord ? "checked" : ""} ${hatKoord ? "" : "disabled"}> <span>OpenStreetMap (am Standort des Hofladens)${hatKoord ? "" : `<br><span class="muted">Dafür fehlen die Koordinaten.</span>`}</span></label>
+      ${this._kiEntitaet ? `<label class="finden-check"><input type="checkbox" data-erg-ki ${e.ki ? "checked" : ""}> <span>Text der Webseite mit KI auswerten<br><span class="muted">Datenschutz: Der Text wird an <b>${this.esc(this._kiEntitaet)}</b> gesendet, je nach Anbieter verlässt er dein Netzwerk. Vermutungen werden getrennt angezeigt und nie vorausgewählt.</span></span></label>` : ""}
+      ${fehler}
+      <div class="vorort-aktionen">
+        <button type="button" data-erg-start ${ok ? "" : "disabled"}>Abgleichen</button>
+        <button type="button" class="secondary" data-erg-von-hand>Von Hand bearbeiten</button>
+      </div>`;
+  }
+
+  ergaenzenStatusZeilen(e) {
+    const zeilen = [];
+    if (e.osm) {
+      if (e.osm.status === "ok") zeilen.push(`✔ OpenStreetMap: «${e.osm.name || "Treffer"}»${Number.isFinite(Number(e.osm.entfernung)) ? ` (${Math.round(e.osm.entfernung)} m)` : ""}`);
+      else if (e.osm.status === "kein_treffer") zeilen.push("ℹ OpenStreetMap: kein sicherer Treffer");
+      else zeilen.push(`ℹ OpenStreetMap: ${e.osm.text}`);
+    }
+    const web = e.ereignisse.website;
+    if (web && web.status !== "uebersprungen") zeilen.push(`${web.status === "ok" ? "✔" : "ℹ"} ${HofkartePanel.FINDEN_WEBSITE_STATUS[web.status] || web.status}`);
+    const ki = e.ereignisse.ki;
+    if (e.ki && ki) zeilen.push(`${ki.status === "ok" ? "✔" : "ℹ"} ${HofkartePanel.FINDEN_KI_STATUS[ki.status] || ki.status}`);
+    return zeilen;
+  }
+
+  ergaenzenSchritt2(e, item) {
+    const status = this.ergaenzenStatusZeilen(e).map((t) => `<div class="muted">${this.esc(t)}</div>`).join("");
+    const fehler = e.fehler ? `<div class="notice error" role="alert">${this.esc(e.fehler)}</div>` : "";
+    const laeuft = e.busy ? `<div class="notice" role="status">${e.vorschlag ? "Die KI läuft noch. Neue Ergebnisse erscheinen hier automatisch, deine Auswahl bleibt." : "Abgleich läuft …"}</div>` : "";
+    const kiNeu = e.kiNeu ? `<div class="notice" role="status">Die KI-Auswertung ist fertig. Deine bisherige Auswahl blieb unverändert.</div>` : "";
+    if (!e.vorschlag) {
+      return `${status}${laeuft}${fehler}<div class="vorort-aktionen">${!e.busy ? `<button type="button" data-erg-start>Erneut versuchen</button><button type="button" class="secondary" data-erg-von-hand>Von Hand bearbeiten</button>` : ""}</div>`;
+    }
+    const alle = this.ergaenzenZeilen(item, e.vorschlag);
+    const sichtbar = alle.filter((z) => e.filter === "alle" || ["luecke", "abweichend", "ergaenzung"].includes(z.status));
+    const quelleHtml = (q) => {
+      if (!q) return "";
+      const label = HofkartePanel.FINDEN_QUELLEN_LABEL[q.quelle] || q.quelle;
+      return this.istHttpUrl(q.url) ? `<a class="website-link" href="${this.escAttr(q.url)}" target="_blank" rel="noopener noreferrer">${this.esc(label)}</a>` : this.esc(label);
+    };
+    const zeilen = sichtbar.map((z) => {
+      const waehlbar = z.felder.length > 0;
+      return `<div class="erg-zeile card erg-${z.status}" role="listitem">
+        ${waehlbar ? `<input type="checkbox" class="erg-wahl" data-erg-feldwahl="${this.escAttr(z.key)}" aria-label="${this.escAttr(z.label)} übernehmen" ${e.felder[z.key] ? "checked" : ""}>` : `<span class="erg-wahl"></span>`}
+        <div class="erg-feld"><span class="webseite-info-label">${this.esc(z.label)}</span></div>
+        <div class="erg-wert"><span class="erg-etikett muted">Aktuell</span>${z.aktuell ? this.esc(z.aktuell) : `<span class="muted">–</span>`}</div>
+        <div class="erg-wert"><span class="erg-etikett muted">Gefunden</span>${z.gefunden ? this.esc(z.gefunden) : `<span class="muted">–</span>`}${z.quelle && z.gefunden ? ` <span class="muted quelle-badge">${quelleHtml(z.quelle)}</span>` : ""}</div>
+        <div class="erg-status"><span class="erg-badge erg-badge-${z.status}">${this.esc(HofkartePanel.ERG_STATUS[z.status])}</span></div>
+      </div>`;
+    }).join("");
+    const unterschiede = alle.filter((z) => z.felder.length).length;
+    const n = this.ergaenzenAnzahl();
+    const leer = !sichtbar.length ? `<p class="muted">${e.filter === "alle" ? "Es wurde nichts gefunden." : "Keine Unterschiede: Alles Gefundene ist schon erfasst."}</p>` : "";
+    const verm = (e.vorschlag.vermutungen || {});
+    const vermHinweis = Object.values(verm).some((l) => Array.isArray(l) && l.length) ? `<p class="muted">KI-Vermutungen (nicht belegt) werden hier nicht übernommen. Für diese Angaben bitte den Ablauf «Von Webseite» nutzen oder von Hand ergänzen.</p>` : "";
+    return `${status}${laeuft}${kiNeu}${fehler}
+      <div class="erg-leiste">
+        <div class="chip-toggles" role="group" aria-label="Anzeige">
+          <button type="button" class="chip-toggle${e.filter === "unterschiede" ? " an" : ""}" data-erg-filter="unterschiede" aria-pressed="${e.filter === "unterschiede"}">Nur Unterschiede (${unterschiede})</button>
+          <button type="button" class="chip-toggle${e.filter === "alle" ? " an" : ""}" data-erg-filter="alle" aria-pressed="${e.filter === "alle"}">Alle</button>
+        </div>
+        <div class="erg-schnell"><button type="button" class="secondary" data-erg-luecken>Nur Lücken füllen</button><button type="button" class="secondary" data-erg-nichts>Nichts wählen</button></div>
+      </div>
+      <div class="erg-liste" role="list">${zeilen}</div>${leer}${vermHinweis}
+      <div class="fussleiste"><span class="muted" data-erg-anzahl>${n} gewählt</span>
+        <button type="button" class="secondary" data-erg-zurueck>Abbrechen</button>
+        <button type="button" data-erg-uebernehmen ${n ? "" : "disabled"}>Auswahl übernehmen (${n})</button></div>`;
+  }
+
+  bindErgaenzenDelegiert() {
+    const main = this._mainEl;
+    main.addEventListener("click", (ev) => {
+      const ziel = ev.target instanceof Element ? ev.target : null;
+      const e = this.ergaenzen;
+      if (!ziel || !e) return;
+      if (ziel.closest("[data-erg-zurueck]")) { this.beendeFindenAbo(); this.ergaenzen = null; this.render(); return; }
+      if (ziel.closest("[data-erg-start]")) { this.ergaenzenAbgleichen(); return; }
+      if (ziel.closest("[data-erg-von-hand]")) { const item = this.ergaenzenItem(); this.beendeFindenAbo(); this.ergaenzen = null; if (item) this.start(item); else this.render(); return; }
+      const filter = ziel.closest("[data-erg-filter]");
+      if (filter) { e.filter = filter.dataset.ergFilter; this.render(); return; }
+      if (ziel.closest("[data-erg-luecken]")) {
+        const zeilen = this.ergaenzenZeilen(this.ergaenzenItem() || {}, e.vorschlag);
+        for (const z of zeilen) if (z.felder.length) e.felder[z.key] = z.status === "luecke";
+        this.render(); return;
+      }
+      if (ziel.closest("[data-erg-nichts]")) { for (const k of Object.keys(e.felder)) e.felder[k] = false; this.render(); return; }
+      if (ziel.closest("[data-erg-uebernehmen]")) this.uebernehmeErgaenzung();
+    });
+    main.addEventListener("change", (ev) => {
+      const ziel = ev.target instanceof Element ? ev.target : null;
+      const e = this.ergaenzen;
+      if (!ziel || !e) return;
+      if (ziel.matches("[data-erg-web]")) e.mitWeb = ziel.checked;
+      else if (ziel.matches("[data-erg-osm]")) e.mitOsm = ziel.checked;
+      else if (ziel.matches("[data-erg-ki]")) e.ki = ziel.checked;
+      else if (ziel.matches("[data-erg-feldwahl]")) { e.felder[ziel.dataset.ergFeldwahl] = ziel.checked; this.aktualisiereErgFuss(); return; }
+      else return;
+      const knopf = this.shadowRoot.querySelector("[data-erg-start]");
+      if (knopf) knopf.disabled = !((e.mitWeb && this.urlGueltigFuerAuslesen(e.url)) || (e.mitOsm && this.hatKoordinaten(this.ergaenzenItem() || {})));
+    });
+    main.addEventListener("input", (ev) => {
+      const ziel = ev.target instanceof Element ? ev.target : null;
+      const e = this.ergaenzen;
+      if (!ziel || !e || !ziel.matches("[data-erg-url]")) return;
+      e.url = ziel.value; e.fehler = "";
+      const knopf = this.shadowRoot.querySelector("[data-erg-start]");
+      if (knopf) knopf.disabled = !((e.mitWeb && this.urlGueltigFuerAuslesen(e.url)) || (e.mitOsm && this.hatKoordinaten(this.ergaenzenItem() || {})));
+    });
+    main.addEventListener("keydown", (ev) => {
+      const ziel = ev.target instanceof Element ? ev.target : null;
+      if (ziel && this.ergaenzen?.schritt === 1 && ev.key === "Enter" && ziel.matches("[data-erg-url]")) { ev.preventDefault(); this.ergaenzenAbgleichen(); }
     });
   }
 

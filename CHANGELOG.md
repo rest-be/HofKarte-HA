@@ -15,6 +15,15 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Geändert (2026.10.1-dev.22) – Detail & Erfassung, Phase 7 (Szenario 3: Ergänzen/Aktualisieren)
+
+- Neuer Ablauf **«Angaben ergänzen»** für bestehende Hofläden, erreichbar über den Knopf im Detail, den Hinweis «Noch unvollständig → Jetzt ergänzen» und «Jetzt ergänzen» auf der «Noch offen»-Seite nach der Schnellerfassung. **Schritt 1:** Vollständigkeit (Prozent, Balken, was noch offen ist) und «Verglichen mit»: Webseite (Adresse anpassbar), OpenStreetMap (am Standort des Hofladens, nur bei sicherem Treffer), KI optional mit Datenschutzhinweis. «Von Hand bearbeiten» bleibt jederzeit möglich.
+- **Schritt 2 «Vergleichen»:** Zeile für Zeile **Angabe · Aktuell · Gefunden · Status** mit Quelle. Status: **Lücke** (fehlt bisher), **Abweichend**, **Ergänzung** (Liste enthält Neues), **Gleich** (nur unter «Alle»). Filter «Nur Unterschiede / Alle», «Nur Lücken füllen», «Nichts wählen», feste Fussleiste «Auswahl übernehmen (n)».
+- **Regeln:** Lücken sind vorgewählt, **Abweichungen und Ergänzungen nie**. Bestehende Angaben werden nur mit ausdrücklicher Wahl ersetzt; Angebote/Zahlungsarten werden **ergänzt, nie ersetzt**. Koordinatenunterschiede bis 25 m gelten als gleich. Bei ergänzten Listen wird keine (falsche) Einzelquelle gesetzt. KI-Ergebnisse erscheinen nachträglich, ohne die Auswahl zu ändern; KI-Vermutungen werden hier nicht übernommen (Hinweis auf den Ablauf «Von Webseite»).
+- Die Übernahme öffnet den Editor mit den gewählten Werten als «Ungespeichert»; gespeichert wird erst dort.
+- Detail: neuer Knopf «Angaben ergänzen» in der Kopfzeile. «Jetzt ergänzen» in Detail und nach der Schnellerfassung führt in den Abgleich (statt direkt in den Editor; Zurück landet im Detail).
+- Neue Tests: `test_static_panel_js_ergaenzen.py` (8); angepasst: `test_static_panel_js_gruppen.py`, `test_static_panel_js_vorort.py`.
+
 ### Geändert (2026.10.1-dev.21) – Detail & Erfassung, Phase 6 (Szenario 2: Von Webseite)
 
 - **«Ich habe eine Webseite»** führt jetzt durch einen eigenen Ablauf mit Schrittanzeige **Webseite → Auslesen → Prüfen** (statt des Suchdialogs). Ist eine KI-Entität eingerichtet, erscheint zuerst die Wahl mit **Datenschutzhinweis** (Text geht an die gewählte Entität; Standard: aus); sonst wird sofort ausgelesen.

@@ -150,7 +150,7 @@ def test_detail_zeigt_sieben_gruppen_in_fester_reihenfolge_und_auf_einen_blick()
     assert e["offen"] == {"grunddaten": "true", "adresse": "true", "kontakt": "true", "zeiten": "true", "angebote": "true", "bilder": "false", "herkunft": "false"}
     assert e["h1"] == "Hof Voll" and e["status"].endswith("Offen bis 16:00")
     assert e["aktionen"][-3:] == ["📞 Anrufen|tel", "🔗 Webseite|https", "✉️ E-Mail|mailto"]
-    assert e["unvollst"] is False and e["hatErgaenzen"] is False
+    assert e["unvollst"] is False and e["hatErgaenzen"] is True  # «Angaben ergänzen» im Kopf, Hinweis nur bei Lücken
     assert e["zurueck"] and e["bearb"]
     assert e["menue"] == ["Löschen …"]
     assert e["heute"] == 1
@@ -163,14 +163,15 @@ def test_detail_unvollstaendig_hinweis_leerzustaende_und_ergaenzen() -> None:
         + r"""
     const t = bauen({ n: 1 });
     await sleep(80);
-    t.el.view({ ...leer, geoeffnet: null });
+    t.el.items.push({ ...leer, geoeffnet: null });
+    t.el.view(t.el.items.at(-1));
     await sleep(40);
     const hinweis = t.q(".unvollstaendig").textContent.replace(/\s+/g, " ").trim();
     const text = t.q("main").textContent;
     const status = t.q(".status-badge").textContent.trim();
     const aktionen = t.qa(".schnellaktionen a").length;
     await t.klick("[data-ergaenzen]", 60);
-    console.log(JSON.stringify({ hinweis, text: text.includes("Keine Kontaktangaben hinterlegt") && text.includes("Keine Bilder hinterlegt") && text.includes("Noch keine Bewertung"), status, aktionen, editor: !!t.q("form"), viewing: t.el.viewing }));
+    console.log(JSON.stringify({ hinweis, text: text.includes("Keine Kontaktangaben hinterlegt") && text.includes("Keine Bilder hinterlegt") && text.includes("Noch keine Bewertung"), status, aktionen, ergaenzen: t.q(".erfassen-titel")?.textContent.trim(), editor: !!t.q("form"), viewing: !!t.el.viewing }));
     process.exit(0);
     """
     )
@@ -178,7 +179,7 @@ def test_detail_unvollstaendig_hinweis_leerzustaende_und_ergaenzen() -> None:
     assert e["text"] is True
     assert e["status"] == "Unbekannt"
     assert e["aktionen"] == 0  # nur die (deaktivierten) Routenknöpfe sind Schaltflächen, keine Links
-    assert e["editor"] is True and e["viewing"] is None
+    assert e["ergaenzen"] == "Angaben ergänzen" and e["editor"] is False and e["viewing"] is True  # Abgleich statt direktem Editor
 
 
 @braucht_jsdom

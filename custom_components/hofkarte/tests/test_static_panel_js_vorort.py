@@ -240,7 +240,7 @@ def test_foto_upload_speichern_mit_bild_und_aufraeumen_beim_abbruch() -> None:
 
 
 @braucht_jsdom
-def test_abschluss_jetzt_ergaenzen_oeffnet_editor_fertig_zeigt_liste() -> None:
+def test_abschluss_jetzt_ergaenzen_oeffnet_abgleich_fertig_zeigt_liste() -> None:
     e = _node(
         _START
         + r"""
@@ -252,15 +252,15 @@ def test_abschluss_jetzt_ergaenzen_oeffnet_editor_fertig_zeigt_liste() -> None:
     };
     await lauf();
     await t.klick("[data-vorort-ergaenzen]", 100);
-    const editor = { offen: !!el.editing, name: el.editing?.name, vorOrt: el.vorOrt };
-    el.editing = null; el.render(); await sleep(30);
+    const editor = { offen: !!el.editing, titel: t.q(".erfassen-titel")?.textContent.trim(), vorOrt: el.vorOrt };
+    el.ergaenzen = null; el.viewing = null; el.render(); await sleep(30);
     await lauf();
     await t.klick("[data-vorort-fertig]", 50);
     console.log(JSON.stringify({ editor, liste: !!t.q("[data-listen-filter]"), vorOrtWeg: el.vorOrt === null, kacheln: t.kacheln().includes("Neuer Hof") }));
     process.exit(0);
     """
     )
-    assert e["editor"]["offen"] and e["editor"]["name"] == "Neuer Hof" and e["editor"]["vorOrt"] is None
+    assert e["editor"]["offen"] is False and e["editor"]["titel"] == "Angaben ergänzen" and e["editor"]["vorOrt"] is None
     assert e["liste"] and e["vorOrtWeg"]
 
 
