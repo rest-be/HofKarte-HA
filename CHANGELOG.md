@@ -15,6 +15,11 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Hinzugefügt (2026.10.1-dev.16) – Detail & Erfassung, Phase 1 (Gruppenmodell)
+
+- Gemeinsame Bausteine für Detail und Bearbeiten: sieben Gruppen in fester Reihenfolge (Grunddaten · Adresse & Standort · Kontakt & Webseite · Öffnungszeiten · Angebote & Zahlungsarten · Bilder · Herkunft der Angaben), einklappbar (Knopf mit `aria-expanded`, Tastatur Enter/Leertaste), mit Kurzzusammenfassung im eingeklappten Zustand und Vollständigkeitspunkt (✓ / ◐ / ○ mit Text, nicht nur Farbe). «Alle ausklappen/einklappen» schaltet alle Gruppen. Der Zustand gilt je Maske für die Sitzung. Die Vollständigkeit wird nur zur Anzeige berechnet. Noch nicht in Detail/Bearbeiten eingebunden (folgt in Phase 2 und 3), daher für Anwender noch keine sichtbare Änderung.
+- Plan und Testinventar: `docs/detail-erfassung-umsetzungsplan.md`, `docs/detail-erfassung-inventar.md`.
+
 ### Geändert (2026.10.1-dev.15)
 
 - «Auswählen» / «Auswahl beenden» liegt jetzt im ⋮-Menü oben rechts (nur in der Kachelansicht) statt in der Steuerleiste; die Steuerleiste ist damit in allen drei Ansichten identisch und spart Platz. Liste und Karte unverändert.

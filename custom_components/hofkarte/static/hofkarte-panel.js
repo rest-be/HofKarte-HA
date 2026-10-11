@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1-dev.15";
+const PANEL_BUILD = "2026.10.1-dev.16";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -332,6 +332,7 @@ class HofkartePanel extends HTMLElement {
     this.listenFilter = ""; // Freitextfilter in der Listenansicht
     this.karteNurGeoeffnet = false; // Filter "Nur geöffnet" - gemeinsam für Kacheln, Liste und Karte (Issue #2, GUI-Überarbeitung)
     this.uebersichtMenue = false; // ⋮-Menü der Kopfzeile (Import) geöffnet?
+    this.gruppenZustand = { detail: {}, editor: {} }; // Auf-/Zuklappzustand der Gruppen je Maske, nur für die Sitzung (id -> true/false)
     this.kachelMenue = null; // id der Kachel, deren ⋮-Menü offen ist (nur Anzeigezustand, kein Render nötig)
     this.auswahlModus = false; // Auswahlmodus der Kachelansicht (Checkboxen sichtbar)
     this.karteFehler = ""; // Fehlermeldung beim Laden der Kartenbibliothek (Issue #2)
@@ -1564,6 +1565,23 @@ class HofkartePanel extends HTMLElement {
       .notice.error{background:var(--error-color,#db4437)}
       .muted{color:var(--secondary-text-color)}
       h1,h2{font-weight:500}
+      .gruppen-leiste{display:flex;justify-content:flex-end;margin:0 0 8px}
+      .gruppe{margin-bottom:12px;padding:0}
+      .gruppe-titel{margin:0;font-size:1em}
+      .gruppe-kopf{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:8px 16px;border:0;border-radius:inherit;background:transparent;color:var(--primary-text-color);font:inherit;text-align:left;cursor:pointer}
+      .gruppe-kopf:hover{background:var(--secondary-background-color)}
+      .gruppe-kopf:focus-visible{outline:2px solid var(--primary-color);outline-offset:-2px}
+      .gruppe-name{font-weight:500;font-size:1.05em;flex:0 0 auto}
+      .gruppe-summe{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.9em}
+      .gruppe.offen .gruppe-summe{visibility:hidden}
+      .gruppe-pfeil{flex:0 0 auto;transition:transform .15s}
+      .gruppe.offen .gruppe-pfeil{transform:rotate(180deg)}
+      .gruppe-inhalt{padding:4px 16px 16px}
+      .gruppe-punkt{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:22px;height:22px;border-radius:50%;font-size:.8em;font-weight:700;border:2px solid currentColor}
+      .gruppe-punkt.ok{color:var(--success-color,#2e7d32)}
+      .gruppe-punkt.teil{color:var(--warning-color,#b26a00)}
+      .gruppe-punkt.leer{color:var(--secondary-text-color)}
+      @media(prefers-reduced-motion:reduce){.gruppe-pfeil{transition:none}}
       .pill{display:inline-block;padding:3px 10px;border-radius:12px;background:var(--secondary-background-color);margin:2px 4px 2px 0;font-size:.9em}
       .day{font-weight:500}
       .detail-section{margin-bottom:20px}
@@ -2430,6 +2448,197 @@ class HofkartePanel extends HTMLElement {
     return this.detailPillSection("Angebote", angebote);
   }
 
+  // --- Gruppenmodell: gemeinsame Gliederung für Detail und Bearbeiten -----
+  //
+  // Beide Masken zeigen dieselben sieben Gruppen in derselben Reihenfolge.
+  // Gruppen sind einklappbar, zeigen im eingeklappten Zustand eine
+  // Zusammenfassung und (ausser "Herkunft") einen Vollständigkeitspunkt.
+  // Die Vollständigkeit wird nur zur Anzeige berechnet, nichts davon wird
+  // gespeichert.
+
+  static HOF_GRUPPEN = [
+    { id: "grunddaten", titel: "Grunddaten", offen: { detail: true, editor: true } },
+    { id: "adresse", titel: "Adresse & Standort", offen: { detail: true, editor: true } },
+    { id: "kontakt", titel: "Kontakt & Webseite", offen: { detail: true, editor: false } },
+    { id: "zeiten", titel: "Öffnungszeiten", offen: { detail: true, editor: false } },
+    { id: "angebote", titel: "Angebote & Zahlungsarten", offen: { detail: true, editor: true } },
+    { id: "bilder", titel: "Bilder", offen: { detail: false, editor: false } },
+    { id: "herkunft", titel: "Herkunft der Angaben", offen: { detail: false, editor: false } },
+  ];
+
+  static PUNKT_TEXT = { ok: "vollständig", teil: "teilweise ausgefüllt", leer: "noch leer" };
+  static PUNKT_ZEICHEN = { ok: "✓", teil: "◐", leer: "○" };
+
+  /** Ist die Gruppe in der Maske ("detail" | "editor") gerade offen? */
+  gruppeOffen(modus, id) {
+    const z = this.gruppenZustand[modus] || {};
+    if (id in z) return !!z[id];
+    const g = HofkartePanel.HOF_GRUPPEN.find((x) => x.id === id);
+    return !!(g && g.offen[modus]);
+  }
+
+  /** Alle Gruppen einer Maske auf einmal öffnen oder schliessen. */
+  setzeAlleGruppen(modus, offen) {
+    this.gruppenZustand[modus] = Object.fromEntries(HofkartePanel.HOF_GRUPPEN.map((g) => [g.id, !!offen]));
+  }
+
+  alleGruppenOffen(modus) {
+    return HofkartePanel.HOF_GRUPPEN.every((g) => this.gruppeOffen(modus, g.id));
+  }
+
+  /** Fehlende Angaben und Zustand (ok/teil/leer) je Gruppe. "herkunft" hat
+   * keinen Zustand (reine Information) und zählt nicht zur Quote. */
+  vollstaendigkeit(d) {
+    const gefuellt = (v) => typeof v === "string" ? v.trim() !== "" : v != null;
+    const liste = (v) => Array.isArray(v) && v.length > 0;
+    const stufe = (anzahl, von) => anzahl === 0 ? "leer" : anzahl >= von ? "ok" : "teil";
+    const gruppen = {};
+    const fehlend = {};
+    const pruefe = (id, felder) => {
+      const fehlt = felder.filter(([, vorhanden]) => !vorhanden).map(([name]) => name);
+      fehlend[id] = fehlt;
+      gruppen[id] = stufe(felder.length - fehlt.length, felder.length);
+    };
+    pruefe("grunddaten", [["Beschreibung", gefuellt(d.beschreibung)], ["Bewertung", (d.bewertung || 0) > 0]]);
+    pruefe("adresse", [["Adresse", gefuellt(d.adresse)], ["Ort", gefuellt(d.ort)], ["Koordinaten", d.latitude != null && d.longitude != null]]);
+    // Kontakt: zwei von drei Angaben gelten als vollständig (nicht jeder Hof hat eine E-Mail-Adresse).
+    const kontakt = [["Telefon", gefuellt(d.mobilnummer)], ["E-Mail", gefuellt(d.email)], ["Webseite", gefuellt(d.website)]];
+    const kontaktVorhanden = kontakt.filter(([, v]) => v).length;
+    fehlend.kontakt = kontakt.filter(([, v]) => !v).map(([n]) => n);
+    gruppen.kontakt = stufe(kontaktVorhanden, 2);
+    if (gruppen.kontakt === "ok") fehlend.kontakt = [];
+    // Sonderöffnungszeiten sind freiwillig und zählen nicht mit.
+    pruefe("zeiten", [["Öffnungszeiten", liste(d.oeffnungszeiten)]]);
+    pruefe("angebote", [["Angebote", liste(d.angebote)], ["Zahlungsarten", liste(d.zahlungsarten)]]);
+    pruefe("bilder", [["Bilder", liste(d.bilder)]]);
+    gruppen.herkunft = null;
+    fehlend.herkunft = [];
+    const gezaehlt = Object.values(gruppen).filter((z) => z);
+    const punkte = gezaehlt.reduce((s, z) => s + (z === "ok" ? 1 : z === "teil" ? 0.5 : 0), 0);
+    return {
+      gruppen,
+      fehlend,
+      alleFehlend: HofkartePanel.HOF_GRUPPEN.flatMap((g) => fehlend[g.id] || []),
+      prozent: gezaehlt.length ? Math.round((punkte / gezaehlt.length) * 100) : 0,
+    };
+  }
+
+  /** Kurztext einer eingeklappten Gruppe (reiner Text, noch nicht escaped). */
+  gruppenZusammenfassung(d, id) {
+    const n = (v) => (Array.isArray(v) ? v.length : 0);
+    switch (id) {
+      case "grunddaten": {
+        const text = (d.beschreibung || "").trim();
+        const kurz = text.length > 70 ? `${text.slice(0, 70).trimEnd()}…` : text;
+        const sterne = (d.bewertung || 0) > 0 ? `${d.bewertung} von ${BEWERTUNG_MAX} Sternen` : "";
+        return [kurz || "Keine Beschreibung", sterne].filter(Boolean).join(" · ");
+      }
+      case "adresse": {
+        const a = [d.adresse, [d.plz, d.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+        const k = d.latitude != null && d.longitude != null ? "Koordinaten vorhanden" : "Keine Koordinaten";
+        return `${a || "Keine Adresse"} · ${k}`;
+      }
+      case "kontakt": {
+        const t = [];
+        if ((d.mobilnummer || "").trim()) t.push(d.mobilnummer.trim());
+        if ((d.email || "").trim()) t.push(d.email.trim());
+        if ((d.website || "").trim()) t.push(d.website.trim().replace(/^https?:\/\//i, "").replace(/\/$/, ""));
+        return t.length ? t.join(" · ") : "Keine Kontaktangaben";
+      }
+      case "zeiten": return this.zeitenKurz(d.oeffnungszeiten || []);
+      case "angebote": {
+        const a = n(d.angebote), z = n(d.zahlungsarten);
+        return `${a} ${a === 1 ? "Angebot" : "Angebote"} · ${z} ${z === 1 ? "Zahlungsart" : "Zahlungsarten"}`;
+      }
+      case "bilder": {
+        const b = n(d.bilder);
+        return b ? `${b} ${b === 1 ? "Bild" : "Bilder"}` : "Keine Bilder";
+      }
+      case "herkunft": {
+        const q = n(d.quellen);
+        return q ? `${q} ${q === 1 ? "Angabe" : "Angaben"} mit Quelle` : "Keine Quellen hinterlegt";
+      }
+      default: return "";
+    }
+  }
+
+  /** "Mo–Fr 08:00–18:30 · Sa 08:00–16:00": aufeinanderfolgende Tage mit
+   * gleichen Zeiten werden zusammengefasst, geschlossene Tage weggelassen. */
+  zeitenKurz(rows) {
+    if (!rows.length) return "Keine Öffnungszeiten";
+    const kurz = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+    const proTag = [];
+    for (let tag = 1; tag <= 7; tag++) {
+      const zeilen = rows.filter((r) => r.wochentag === tag).sort((a, b) => a.beginn.localeCompare(b.beginn));
+      proTag.push(!zeilen.length ? "" : zeilen.length === 1 && isFullDay(zeilen[0]) ? "24 h" : zeilen.map((r) => `${r.beginn}–${r.ende}`).join(", "));
+    }
+    const teile = [];
+    for (let i = 0; i < 7;) {
+      let j = i;
+      while (j + 1 < 7 && proTag[j + 1] === proTag[i]) j++;
+      if (proTag[i]) teile.push(`${i === j ? kurz[i] : `${kurz[i]}–${kurz[j]}`} ${proTag[i]}`);
+      i = j + 1;
+    }
+    return teile.length ? teile.join(" · ") : "Keine Öffnungszeiten";
+  }
+
+  /** Vollständigkeitspunkt: Zeichen + Text, damit der Zustand nicht nur über Farbe erkennbar ist. */
+  gruppenPunktHtml(zustand) {
+    if (!zustand) return "";
+    const text = HofkartePanel.PUNKT_TEXT[zustand];
+    return `<span class="gruppe-punkt ${zustand}" role="img" aria-label="${this.escAttr(text)}" title="${this.escAttr(text)}">${HofkartePanel.PUNKT_ZEICHEN[zustand]}</span>`;
+  }
+
+  /** Eine einklappbare Gruppe. Kopf = Knopf (Tastatur: Enter/Leertaste). Der
+   * Inhalt bleibt im DOM (hidden), damit Formularfelder beim Einklappen
+   * erhalten bleiben und mitgespeichert werden. */
+  gruppeHtml({ modus, id, zusammenfassung, zustand, inhalt }) {
+    const g = HofkartePanel.HOF_GRUPPEN.find((x) => x.id === id);
+    const offen = this.gruppeOffen(modus, id);
+    const domId = `gruppe-${modus}-${id}`;
+    return `<section class="card gruppe${offen ? " offen" : ""}" data-gruppe="${this.escAttr(id)}">
+      <h2 class="gruppe-titel"><button type="button" class="gruppe-kopf" data-gruppe-toggle="${this.escAttr(id)}" data-gruppen-modus="${this.escAttr(modus)}" aria-expanded="${offen ? "true" : "false"}" aria-controls="${domId}">
+        <span class="gruppe-name">${this.esc(g.titel)}</span>
+        ${this.gruppenPunktHtml(zustand)}
+        <span class="gruppe-summe muted" data-gruppe-summe>${this.esc(zusammenfassung)}</span>
+        <span class="gruppe-pfeil" aria-hidden="true">▾</span>
+      </button></h2>
+      <div class="gruppe-inhalt" id="${domId}" ${offen ? "" : "hidden"}>${inhalt}</div>
+    </section>`;
+  }
+
+  /** Knopf "Alle ein-/ausklappen" über den Gruppen. */
+  gruppenAlleHtml(modus) {
+    const alleOffen = this.alleGruppenOffen(modus);
+    return `<div class="gruppen-leiste"><button type="button" class="secondary" data-gruppen-alle="${this.escAttr(modus)}" aria-pressed="${alleOffen ? "true" : "false"}">${alleOffen ? "Alle einklappen" : "Alle ausklappen"}</button></div>`;
+  }
+
+  /** Schaltet eine Gruppe um, ohne die Maske neu zu rendern (Eingaben im
+   * Formular bleiben erhalten, kein Fokusverlust). */
+  schalteGruppe(modus, id, offen) {
+    (this.gruppenZustand[modus] ||= {})[id] = !!offen;
+    const abschnitt = [...this.shadowRoot.querySelectorAll("[data-gruppe]")].find((s) => s.dataset.gruppe === id && s.querySelector(`[data-gruppen-modus="${modus}"]`));
+    if (!abschnitt) return;
+    abschnitt.classList.toggle("offen", !!offen);
+    abschnitt.querySelector("[data-gruppe-toggle]")?.setAttribute("aria-expanded", offen ? "true" : "false");
+    const inhalt = abschnitt.querySelector(".gruppe-inhalt");
+    if (inhalt) inhalt.hidden = !offen;
+    this.aktualisiereGruppenAlle(modus);
+  }
+
+  schalteAlleGruppen(modus, offen) {
+    this.setzeAlleGruppen(modus, offen);
+    for (const g of HofkartePanel.HOF_GRUPPEN) this.schalteGruppe(modus, g.id, offen);
+  }
+
+  aktualisiereGruppenAlle(modus) {
+    const knopf = [...this.shadowRoot.querySelectorAll("[data-gruppen-alle]")].find((k) => k.dataset.gruppenAlle === modus);
+    if (!knopf) return;
+    const alleOffen = this.alleGruppenOffen(modus);
+    knopf.textContent = alleOffen ? "Alle einklappen" : "Alle ausklappen";
+    knopf.setAttribute("aria-pressed", alleOffen ? "true" : "false");
+  }
+
   // --- Editor ------------------------------------------------------------
 
   editor() {
@@ -2831,6 +3040,18 @@ class HofkartePanel extends HTMLElement {
       if (!ziel) return;
       // ⋮-Menü der Kopfzeile: Klick auf den Knopf schaltet um, Klick
       // irgendwo sonst schliesst es (ohne Render, nur hidden/aria).
+      const gruppeKnopf = ziel.closest("[data-gruppe-toggle]");
+      if (gruppeKnopf) {
+        const modus = gruppeKnopf.dataset.gruppenModus;
+        this.schalteGruppe(modus, gruppeKnopf.dataset.gruppeToggle, gruppeKnopf.getAttribute("aria-expanded") !== "true");
+        return;
+      }
+      const alleKnopf = ziel.closest("[data-gruppen-alle]");
+      if (alleKnopf) {
+        const modus = alleKnopf.dataset.gruppenAlle;
+        this.schalteAlleGruppen(modus, !this.alleGruppenOffen(modus));
+        return;
+      }
       const menueKnopf = ziel.closest("[data-menue-toggle]");
       if (menueKnopf) { this.schalteMenue(!this.uebersichtMenue, e.detail === 0); return; }
       const kachelKnopf = ziel.closest("[data-kachel-menue-toggle]");
