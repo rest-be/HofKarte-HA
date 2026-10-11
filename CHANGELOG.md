@@ -15,6 +15,16 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Geändert (2026.10.1-dev.18) – Detail & Erfassung, Phase 3 (Bearbeiten neu)
+
+- Das Bearbeitungsformular verwendet dieselben sieben einklappbaren Gruppen in derselben Reihenfolge wie die Detailansicht (Grunddaten inkl. Bewertung und interner Bemerkung · Adresse & Standort · Kontakt & Webseite · Öffnungszeiten · Angebote & Zahlungsarten · Bilder · Herkunft der Angaben, dort nur lesend). Standardmässig offen: Grunddaten, Adresse & Standort, Angebote & Zahlungsarten. Zusammenfassung und Vollständigkeitspunkt jeder Gruppe werden beim Tippen laufend nachgeführt.
+- «Automatisch ausfüllen» ist jetzt eine kompakte Leiste oben (gleiche Funktion, gleiche Prüfung vor der Übernahme); der Suchradius liegt in einem Aufklappbereich.
+- Angebote werden als Chips mit × bearbeitet (Enter oder «Hinzufügen», doppelte Einträge werden ignoriert). Zahlungsarten haben Schalter für Bargeld, TWINT und Karte; weitere Einträge erscheinen als Chips. Gespeichert wird weiterhin wie bisher (ein Eintrag pro Zeile im versteckten Feld).
+- Öffnungszeiten: «Auf Di–Fr kopieren» beim Montag übernimmt Modus und Zeiten auf Dienstag bis Freitag.
+- Neu: «Mein Standort verwenden» trägt Latitude/Longitude des Geräts ein (nur auf Klick, braucht HTTPS bzw. Freigabe). «Bewertung zurücksetzen» als eigener Knopf.
+- Feste Fussleiste mit «Ungespeicherte Änderungen», Abbrechen (mit Rückfrage, wenn etwas geändert wurde) und Speichern.
+- Fehlermeldungen beim Speichern und ein leeres Pflichtfeld öffnen die betroffene Gruppe automatisch.
+
 ### Geändert (2026.10.1-dev.17) – Detail & Erfassung, Phase 2 (Detailansicht neu)
 
 - Die Detailansicht ist neu gegliedert: oben der Block «Auf einen Blick» (Hauptbild, Name, Status, Sterne, Adresse und Schnellaktionen Route / Anrufen / Webseite / E-Mail, jeweils nur wenn vorhanden), darunter die sieben einklappbaren Gruppen aus dem gemeinsamen Gruppenmodell (Grunddaten, Adresse & Standort, Kontakt & Webseite, Öffnungszeiten, Angebote & Zahlungsarten, Bilder, Herkunft der Angaben). Jede Gruppe zeigt eingeklappt eine Kurzzusammenfassung und einen Vollständigkeitspunkt (✓ / ½ / leer). Bilder und Herkunft sind standardmässig eingeklappt, «Alle ausklappen/einklappen» schaltet alle Gruppen.

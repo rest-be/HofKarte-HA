@@ -178,19 +178,28 @@ def test_panel_js_geraete_entfernung_ist_vollstaendig_entfernt() -> None:
         )
 
 
-def test_panel_js_verwendet_geolocation_nur_fuer_den_finden_dialog() -> None:
+def test_panel_js_verwendet_geolocation_nur_auf_ausdruecklichen_klick() -> None:
     """Die Geräte-Entfernungs-Funktion (Issue #3) bleibt entfernt. Die
-    Browser-Geolocation-API wird seit dem Dialog "Hofladen finden"
-    (Discovery, ausdrücklicher Wunsch: aktuellen Standort übernehmen)
-    ausschliesslich in ``ermittleGeraeteStandort()`` verwendet - nirgends
-    sonst (insbesondere nicht in Detail-/Listenansicht)."""
+    Browser-Geolocation-API wird nur in zwei Funktionen verwendet, die
+    ausschliesslich durch einen Klick der Benutzerin/des Benutzers
+    ausgelöst werden: ``ermittleGeraeteStandort()`` (Dialog "Hofladen
+    finden") und ``editorMeinStandort()`` (Knopf "Mein Standort verwenden"
+    im Bearbeitungsformular) - nirgends sonst (insbesondere nicht in Detail-/
+    Listenansicht)."""
     quelltext = _lade_panel_js()
-    anfang = quelltext.index("  ermittleGeraeteStandort() {")
-    ende = quelltext.index("  setzeFindenStandortText(", anfang)
-    rest = quelltext[:anfang] + quelltext[ende:]
+    bereiche = []
+    for start, ende_marker in (("  ermittleGeraeteStandort() {", "  setzeFindenStandortText("), ("  editorMeinStandort() {", "  /** Zusammenfassung und Vollständigkeitspunkt")):
+        anfang = quelltext.index(start)
+        ende = quelltext.index(ende_marker, anfang)
+        bereiche.append((anfang, ende))
+    rest = quelltext
+    for anfang, ende in sorted(bereiche, reverse=True):
+        assert "navigator.geolocation" in quelltext[anfang:ende]
+        # unsicherer Kontext wird ausdrücklich behandelt (Browser lehnen sonst
+        # ohne Freigabe-Dialog ab, siehe CHANGELOG 0.18.0)
+        assert "isSecureContext" in quelltext[anfang:ende]
+        rest = rest[:anfang] + rest[ende:]
     assert "navigator.geolocation" not in rest
     assert "isSecureContext" not in rest
-    assert "navigator.geolocation" in quelltext[anfang:ende]
-    # unsicherer Kontext wird ausdrücklich behandelt (Browser lehnen sonst
-    # ohne Freigabe-Dialog ab, siehe CHANGELOG 0.18.0)
-    assert "isSecureContext" in quelltext[anfang:ende]
+    # Auslösung nur über Klick-Handler
+    assert 'ziel.closest("[data-mein-standort]")' in quelltext

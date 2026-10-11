@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1-dev.17";
+const PANEL_BUILD = "2026.10.1-dev.18";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -332,6 +332,7 @@ class HofkartePanel extends HTMLElement {
     this.listenFilter = ""; // Freitextfilter in der Listenansicht
     this.karteNurGeoeffnet = false; // Filter "Nur geöffnet" - gemeinsam für Kacheln, Liste und Karte (Issue #2, GUI-Überarbeitung)
     this.uebersichtMenue = false; // ⋮-Menü der Kopfzeile (Import) geöffnet?
+    this.editGeaendert = false; // ungespeicherte Änderungen im Bearbeitungsformular (nur Anzeige "Ungespeichert", Rückfrage beim Abbrechen)
     this.gruppenZustand = { detail: {}, editor: {} }; // Auf-/Zuklappzustand der Gruppen je Maske, nur für die Sitzung (id -> true/false)
     this.kachelMenue = null; // id der Kachel, deren ⋮-Menü offen ist (nur Anzeigezustand, kein Render nötig)
     this.auswahlModus = false; // Auswahlmodus der Kachelansicht (Checkboxen sichtbar)
@@ -489,8 +490,13 @@ class HofkartePanel extends HTMLElement {
       await this.call("hofkarte/management/save", { hofladen: data });
       this.message = "Änderungen gespeichert.";
       this.editing = null;
+      this.editGeaendert = false;
       await this.load();
-    } catch (err) { this.error = err?.message || "Speichern fehlgeschlagen."; this.render(); }
+    } catch (err) {
+      this.error = err?.message || "Speichern fehlgeschlagen.";
+      this.oeffneGruppeFuerFehler(this.error);
+      this.render();
+    }
   }
 
   validate(d) {
@@ -631,6 +637,7 @@ class HofkartePanel extends HTMLElement {
 
       if (!this.editing.bilder) this.editing.bilder = [];
       this.editing.bilder.push({ url, beschreibung: null, hochgeladen: true });
+      this.markiereGeaendert();
       this.setUploadStatus(`„${file.name}“ erfolgreich hochgeladen.`, "success");
       this.render();
     } catch (err) {
@@ -659,6 +666,7 @@ class HofkartePanel extends HTMLElement {
     }
 
     this.editing.bilder.splice(index, 1);
+    this.markiereGeaendert();
     this.render();
   }
 
@@ -667,6 +675,7 @@ class HofkartePanel extends HTMLElement {
     if (index <= 0 || index >= bilder.length) return;
     const [gewaehltes] = bilder.splice(index, 1);
     bilder.unshift(gewaehltes);
+    this.markiereGeaendert();
     this.render();
   }
 
@@ -934,6 +943,7 @@ class HofkartePanel extends HTMLElement {
   /** Übernimmt die im Popup bestätigten Vorschläge (Issue #9,
    * "Übernehmen") in this.editing und schliesst das Popup. */
   uebernehmeWebseiteInfoVorschlag() {
+    this.markiereGeaendert();
     const uebernommen = this.uebernehmeWebseiteInfo(this.webseiteInfoVorschlag || {});
     this.webseiteInfoVorschlag = null;
     this.autoErmittlungQuellen = null;
@@ -1002,6 +1012,7 @@ class HofkartePanel extends HTMLElement {
     }
     if (!this.editing.bilder) this.editing.bilder = [];
     this.editing.bilder.push({ url: trimmed, beschreibung: null, hochgeladen: false });
+    this.markiereGeaendert();
     this.setUploadStatus("");
     this.render();
   }
@@ -1139,11 +1150,12 @@ class HofkartePanel extends HTMLElement {
     this.osmOrteAuswahl = null; this._wartendesWebseiteErgebnis = null;
     this.osmRadius = this._osmRadiusVorgabe;
     this.editing = item ? this.clone(item) : this.empty();
+    this.editGeaendert = false;
     this.merkeQuellenSchnappschuss();
     this.render();
   }
   cancel() {
-    this.editing = null; this.error = "";
+    this.editing = null; this.error = ""; this.editGeaendert = false;
     this.webseiteInfoVorschlag = null; this.autoErmittlungQuellen = null;
     this.autoErmittlungStatusText = ""; this.autoErmittlungStatusKind = "";
     this.osmOrteAuswahl = null; this._wartendesWebseiteErgebnis = null;
@@ -1554,8 +1566,9 @@ class HofkartePanel extends HTMLElement {
       .day-block{border:1px solid var(--divider-color);border-radius:10px;padding:10px 12px;margin:8px 0}
       .day-block .day-title{font-weight:600;margin-bottom:6px}
       .day-mode{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;font-size:.9em}
-      .day-mode label{display:flex;align-items:center;gap:5px;margin:0;font-weight:normal}
-      .interval-row{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;margin:6px 0}
+      .day-mode label{display:flex;align-items:center;gap:5px;margin:0;font-weight:normal;white-space:nowrap}
+      .day-mode input[type=radio]{width:auto;margin:0}
+      .interval-row{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:end;margin:6px 0}
       .interval-row input[type=time]{max-width:140px}
       .special input[type=time]{max-width:140px}
       .special{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;align-items:end;margin:8px 0}
@@ -1581,6 +1594,25 @@ class HofkartePanel extends HTMLElement {
       .opening-table td:first-child{white-space:nowrap;padding-right:20px}
       .gruppe-inhalt .sterne-reihe{justify-content:flex-start}
       .heute-marke{display:inline-block;white-space:nowrap;margin-left:6px;padding:0 8px;border-radius:10px;font-size:.8em;background:var(--primary-color);color:var(--text-primary-color,#fff)}
+      .assistent{margin-bottom:12px;padding:12px 16px}
+      .assistent-kopf{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+      .assistent-text{flex:1 1 320px;min-width:0}
+      .assistent-text .muted{font-size:.9em;margin-top:2px}
+      .assistent-optionen{margin-top:6px}
+      .assistent-optionen summary{cursor:pointer;min-height:32px;display:flex;align-items:center}
+      .chips{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:6px 0;padding:0}
+      .chip-eintrag{display:inline-flex;align-items:center;gap:2px;padding:2px 2px 2px 12px;border-radius:16px;background:var(--secondary-background-color)}
+      .chip-eintrag button{min-width:28px;height:28px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--primary-text-color);font-size:1.1em;cursor:pointer}
+      .chip-eintrag button:hover{background:var(--divider-color)}
+      .chip-toggles{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}
+      .chip-toggle{min-height:36px;padding:0 16px;border:1px solid var(--divider-color);border-radius:18px;background:transparent;color:var(--primary-text-color);cursor:pointer}
+      .chip-toggle.an{background:var(--primary-color);border-color:var(--primary-color);color:var(--text-primary-color,#fff)}
+      .chips-neu{display:flex;gap:8px;align-items:center;margin:6px 0 4px}
+      .chips-neu input{flex:1;min-width:0}
+      .chips-editor{margin-bottom:8px}
+      .fussleiste{position:sticky;bottom:0;z-index:5;display:flex;align-items:center;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px;padding:10px 16px;border-radius:8px;background:var(--card-background-color,#fff);border:1px solid var(--divider-color);box-shadow:0 -2px 8px rgba(0,0,0,.08)}
+      .fussleiste .ungespeichert{margin-right:auto;color:var(--warning-color,#b26a00);font-weight:500}
+      .day-title .link-button{margin-left:10px;font-weight:normal;font-size:.9em}
       .gruppen-leiste{display:flex;justify-content:flex-end;margin:0 0 8px}
       .gruppe{margin-bottom:12px;padding:0}
       .gruppe-titel{margin:0;font-size:1em}
@@ -2537,6 +2569,12 @@ class HofkartePanel extends HTMLElement {
     return HofkartePanel.HOF_GRUPPEN.every((g) => this.gruppeOffen(modus, g.id));
   }
 
+  /** Koordinaten vorhanden? (Im Formular steht ein leeres Feld als "" im Zustand.) */
+  hatKoordinaten(d) {
+    const ok = (v) => v != null && v !== "" && Number.isFinite(Number(v));
+    return ok(d.latitude) && ok(d.longitude);
+  }
+
   /** Fehlende Angaben und Zustand (ok/teil/leer) je Gruppe. "herkunft" hat
    * keinen Zustand (reine Information) und zählt nicht zur Quote. */
   vollstaendigkeit(d) {
@@ -2551,7 +2589,7 @@ class HofkartePanel extends HTMLElement {
       gruppen[id] = stufe(felder.length - fehlt.length, felder.length);
     };
     pruefe("grunddaten", [["Beschreibung", gefuellt(d.beschreibung)], ["Bewertung", (d.bewertung || 0) > 0]]);
-    pruefe("adresse", [["Adresse", gefuellt(d.adresse)], ["Ort", gefuellt(d.ort)], ["Koordinaten", d.latitude != null && d.longitude != null]]);
+    pruefe("adresse", [["Adresse", gefuellt(d.adresse)], ["Ort", gefuellt(d.ort)], ["Koordinaten", this.hatKoordinaten(d)]]);
     // Kontakt: zwei von drei Angaben gelten als vollständig (nicht jeder Hof hat eine E-Mail-Adresse).
     const kontakt = [["Telefon", gefuellt(d.mobilnummer)], ["E-Mail", gefuellt(d.email)], ["Webseite", gefuellt(d.website)]];
     const kontaktVorhanden = kontakt.filter(([, v]) => v).length;
@@ -2586,7 +2624,7 @@ class HofkartePanel extends HTMLElement {
       }
       case "adresse": {
         const a = [d.adresse, [d.plz, d.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ");
-        const k = d.latitude != null && d.longitude != null ? "Koordinaten vorhanden" : "Keine Koordinaten";
+        const k = this.hatKoordinaten(d) ? "Koordinaten vorhanden" : "Keine Koordinaten";
         return `${a || "Keine Adresse"} · ${k}`;
       }
       case "kontakt": {
@@ -2696,34 +2734,25 @@ class HofkartePanel extends HTMLElement {
     const d = this.editing;
     const latValue = (d.latitude != null && d.latitude !== "") ? d.latitude : "";
     const lonValue = (d.longitude != null && d.longitude !== "") ? d.longitude : "";
+    const v = this.vollstaendigkeit(d);
 
     const specials = (d.sonderoeffnungszeiten || []).map(x => `<div class="special" data-special><label>Von<input type=date name=datum_von value="${this.escAttr(x.datum_von || "")}"></label><label>Bis<input type=date name=datum_bis value="${this.escAttr(x.datum_bis || "")}"></label><label>Beginn<input type=time name=beginn value="${this.escAttr(x.beginn || "")}"></label><label>Ende<input type=time name=ende value="${this.escAttr(x.ende || "")}"></label><label>Geschlossen<input type=checkbox name=geschlossen ${x.geschlossen ? "checked" : ""}></label><button type=button class=secondary data-remove-special>−</button></div>`).join("");
-    const text = (field) => (d[field] || []).map(x => x.name).join("\n");
-    const angeboteText = (d.angebote || []).map(x => x.name).join("\n");
 
-    return `<div class="top"><div><h1>${d.id ? "Hofladen bearbeiten" : "Neuen Hofladen erstellen"}</h1><div class="muted">${d.id ? this.esc(d.id) : "Neue stabile ID wird beim Speichern erzeugt."}</div></div></div>
-      ${this.error ? `<div class="notice error">${this.esc(this.error)}</div>` : ""}
-      <form>
-        <section class=card>
-          <h2>Allgemeine Informationen</h2>
-          <div class="fields">
+    const inhalt = {
+      grunddaten: `<div class="fields">
             <div class="field-row">${this.input("Name", "name", d.name, true)}</div>
             <div class="field-row">${this.input("Beschreibung", "beschreibung", d.beschreibung || "")}</div>
-            ${this.area("Bemerkung", "bemerkung", d.bemerkung || "")}
+            ${this.area("Interne Bemerkung", "bemerkung", d.bemerkung || "")}
           </div>
-        </section>
-
-        <section class=card>
-          <h2>Adresse</h2>
-          <div class="fields">
+          <h3 class="sub">Bewertung</h3>
+          ${this.bewertungSterne(d.bewertung || 0, true)}
+          ${(d.bewertung || 0) > 0 ? `<button type="button" class="link-button" data-bewertung-zuruecksetzen>Bewertung zurücksetzen</button>` : ""}`,
+      adresse: `<div class="fields">
             <div class="field-row">${this.input("Adresse", "adresse", d.adresse || "")}</div>
             <div class="field-row two">${this.input("PLZ", "plz", d.plz || "")}${this.input("Ort", "ort", d.ort || "")}</div>
             <div class="field-row">${this.input("Land", "land", d.land || "")}</div>
           </div>
-        </section>
-
-        <section class=card>
-          <h2>Standort / Koordinaten <span class="muted" style="font-weight:normal;font-size:.7em">(WGS84)</span></h2>
+          <h3 class="sub">Standort / Koordinaten <span class="muted" style="font-weight:normal;text-transform:none">(WGS84)</span></h3>
           <div class="coord-row">
             <div class="field-row two">
               <label>Latitude<input name="latitude" type="number" step="any" value="${this.escAttr(String(latValue))}" placeholder="z. B. 46.9480"></label>
@@ -2731,49 +2760,24 @@ class HofkartePanel extends HTMLElement {
             </div>
             <button type="button" class="info-btn" data-toggle-coord-info title="Was sind Latitude/Longitude? (Erklärung anzeigen)" aria-label="Was sind Latitude/Longitude? Erklärung anzeigen">ⓘ</button>
           </div>
-          <div class="coord-actions">${this.mapButton(latValue === "" ? NaN : Number(latValue), lonValue === "" ? NaN : Number(lonValue))}</div>
-          ${this.showCoordInfo ? this.coordInfoBox() : ""}
-        </section>
-
-        <section class=card>
-          <h2>Kontakt &amp; Webseite</h2>
-          <div class="fields">
+          <div class="coord-actions">
+            <button type="button" class="secondary" data-mein-standort>📍 Mein Standort verwenden</button>
+            ${this.mapButton(latValue === "" ? NaN : Number(latValue), lonValue === "" ? NaN : Number(lonValue))}
+          </div>
+          <div class="muted" data-standort-status aria-live="polite"></div>
+          ${this.showCoordInfo ? this.coordInfoBox() : ""}`,
+      kontakt: `<div class="fields">
             <div class="field-row">${this.input("Mobilnummer", "mobilnummer", d.mobilnummer || "")}</div>
             <div class="field-row">${this.input("E-Mail", "email", d.email || "")}</div>
             <div class="field-row">${this.input("Webseite", "website", d.website || "")}</div>
-          </div>
-        </section>
-
-        <section class=card>
-          <h2>Automatisch ausfüllen</h2>
-          <p class="muted">Ermittelt Name, Adresse, Beschreibung, Öffnungszeiten, Angebote und Zahlungsarten automatisch – über die oben eingetragene Website und/oder über die Koordinaten (freie OpenStreetMap-Overpass-API). Gefundene Angaben werden vor jeder Übernahme in einem Popup zur Prüfung angezeigt, es wird dabei nichts automatisch gespeichert (siehe README.md, Abschnitt "Datenschutz- und Standort-Hinweise").</p>
-          <div class="webseite-info-row">
-            <button type="button" class="secondary" data-auto-info-btn title="Angaben automatisch anhand der Website und/oder Koordinaten ermitteln" aria-label="Angaben automatisch anhand der Website und/oder Koordinaten ermitteln">🔍 Angaben automatisch ermitteln</button>
-            <span class="webseite-info-status muted${this.autoErmittlungStatusKind ? " " + this.autoErmittlungStatusKind : ""}" data-auto-info-status>${this.esc(this.autoErmittlungStatusText)}</span>
-          </div>
-          <div class="field-row" style="margin-top:8px">
-            <label>Suchradius für OpenStreetMap (Meter)<input name="osm_radius" type="number" min="${OSM_MIN_RADIUS_METER}" max="${OSM_MAX_RADIUS_METER}" step="10" value="${this.osmRadius}"></label>
-          </div>
-        </section>
-
-        <section class=card>
-          <h2>Öffnungszeiten</h2>
-          ${this.openingHoursEditor(d.oeffnungszeiten || [])}
-          <h3>Sonderöffnungszeiten</h3>
+          </div>`,
+      zeiten: `${this.openingHoursEditor(d.oeffnungszeiten || [])}
+          <h3 class="sub">Sonderöffnungszeiten</h3>
           <div id=specials>${specials}</div>
-          <button type=button class=secondary data-add-special>+ Sonderzeit hinzufügen</button>
-        </section>
-
-        <section class=card>
-          <h2>Angebote und Zahlungsarten</h2>
-          <p class=muted>Ein Eintrag pro Zeile.</p>
-          ${this.area("Angebote", "angebote", angeboteText)}
-          ${this.area("Zahlungsarten", "zahlungsarten", text("zahlungsarten"))}
-        </section>
-
-        <section class=card>
-          <h2>Bilder</h2>
-          <p class="muted">Das erste Bild in der Liste ist das Hauptbild. Bilder können hochgeladen oder per externer Adresse verlinkt werden.</p>
+          <button type=button class=secondary data-add-special>+ Sonderzeit hinzufügen</button>`,
+      angebote: `${this.chipsEditor("angebote", "Angebote", d.angebote)}
+          ${this.chipsEditor("zahlungsarten", "Zahlungsarten", d.zahlungsarten)}`,
+      bilder: `<p class="muted">Das erste Bild in der Liste ist das Hauptbild. Bilder können hochgeladen oder per externer Adresse verlinkt werden.</p>
           <div id="bilder-liste">${this.bilderListe(d.bilder || [])}</div>
           <div class="upload-row">
             <button type="button" class="upload-start-btn" data-start-upload title="Bild-Upload starten" aria-label="Bild-Upload starten">📤 Bild hochladen</button>
@@ -2786,21 +2790,199 @@ class HofkartePanel extends HTMLElement {
               <input type="text" data-external-url placeholder="https://beispiel.ch/bild.jpg">
               <button type="button" class="secondary" data-add-external-url>Hinzufügen</button>
             </div>
+          </details>`,
+      herkunft: `${this.detailQuellenInhalt(d.quellen)}<p class="muted small">Die Herkunft wird automatisch geführt und ist hier nicht bearbeitbar.</p>`,
+    };
+    const gruppen = HofkartePanel.HOF_GRUPPEN.map((g) => this.gruppeHtml({
+      modus: "editor", id: g.id, zusammenfassung: this.gruppenZusammenfassung(d, g.id), zustand: v.gruppen[g.id], inhalt: inhalt[g.id],
+    })).join("");
+
+    return `<div class="top"><div><h1>${d.id ? "Hofladen bearbeiten" : "Neuen Hofladen erstellen"}</h1><div class="muted">${d.id ? this.esc(d.id) : "Neue stabile ID wird beim Speichern erzeugt."}</div></div></div>
+      ${this.error ? `<div class="notice error">${this.esc(this.error)}</div>` : ""}
+      <form>
+        <section class="card assistent" aria-label="Automatisch ausfüllen">
+          <div class="assistent-kopf">
+            <div class="assistent-text"><strong>Automatisch ausfüllen</strong>
+              <div class="muted">Ermittelt Name, Adresse, Beschreibung, Öffnungszeiten, Angebote und Zahlungsarten über die eingetragene Webseite und/oder die Koordinaten (OpenStreetMap-Overpass). Gefundene Angaben werden vor der Übernahme zur Prüfung angezeigt, es wird nichts automatisch gespeichert (siehe README.md, Abschnitt «Datenschutz- und Standort-Hinweise»).</div></div>
+            <button type="button" class="secondary" data-auto-info-btn title="Angaben automatisch anhand der Website und/oder Koordinaten ermitteln" aria-label="Angaben automatisch anhand der Website und/oder Koordinaten ermitteln">🔍 Angaben automatisch ermitteln</button>
+          </div>
+          <span class="webseite-info-status muted${this.autoErmittlungStatusKind ? " " + this.autoErmittlungStatusKind : ""}" data-auto-info-status>${this.esc(this.autoErmittlungStatusText)}</span>
+          <details class="assistent-optionen">
+            <summary class="muted">Suchradius für OpenStreetMap</summary>
+            <div class="field-row"><label>Suchradius (Meter)<input name="osm_radius" type="number" min="${OSM_MIN_RADIUS_METER}" max="${OSM_MAX_RADIUS_METER}" step="10" value="${this.osmRadius}"></label></div>
           </details>
         </section>
 
-        <section class=card>
-          <h2>Bewertung</h2>
-          ${this.bewertungSterne(d.bewertung || 0, true)}
-        </section>
+        ${this.gruppenAlleHtml("editor")}
+        ${gruppen}
 
-        <div class=actions>
+        <div class="fussleiste">
+          <span class="ungespeichert" data-ungespeichert role="status" ${this.editGeaendert ? "" : "hidden"}>● Ungespeicherte Änderungen</span>
           <button type=button class=secondary data-cancel>Abbrechen</button>
           <button type=submit>Speichern</button>
         </div>
       </form>
       ${this.webseiteInfoVorschlag ? this.webseiteInfoPopup(this.webseiteInfoVorschlag) : ""}
       ${this.osmOrteAuswahl ? this.osmOrteAuswahlPopup(this.osmOrteAuswahl) : ""}`;
+  }
+
+  // --- Bearbeiten: Hilfen für die neuen Eingabeelemente ------------------
+
+  static CHIP_VORSCHLAEGE = { angebote: [], zahlungsarten: ["Bargeld", "TWINT", "Karte"] };
+
+  markiereGeaendert() {
+    this.editGeaendert = true;
+    const marke = this.shadowRoot?.querySelector("[data-ungespeichert]");
+    if (marke) marke.hidden = false;
+  }
+
+  /** Listen-Eingabe als Chips (Angebote, Zahlungsarten). Das versteckte
+   * Textfeld mit dem Feldnamen bleibt die einzige Datenquelle (ein Eintrag
+   * pro Zeile) - so bleibt das Speichern (leseEinfacheFelder/lines)
+   * unverändert. */
+  chipsEditor(feld, label, eintraege) {
+    const namen = (eintraege || []).map((x) => x.name);
+    return `<div class="chips-editor" data-chips="${this.escAttr(feld)}">
+      <h3 class="sub">${this.esc(label)}</h3>
+      <textarea name="${this.escAttr(feld)}" hidden>${this.esc(namen.join("\n"))}</textarea>
+      <div data-chips-inhalt>${this.chipsInhaltHtml(feld, namen)}</div>
+      <div class="chips-neu">
+        <input type="text" data-chip-eingabe="${this.escAttr(feld)}" placeholder="${this.escAttr(label)} hinzufügen …" aria-label="${this.escAttr(label)} hinzufügen" autocomplete="off">
+        <button type="button" class="secondary" data-chip-hinzufuegen="${this.escAttr(feld)}">Hinzufügen</button>
+      </div>
+    </div>`;
+  }
+
+  chipsInhaltHtml(feld, namen) {
+    const vorschlaege = HofkartePanel.CHIP_VORSCHLAEGE[feld] || [];
+    const klein = (t) => t.trim().toLowerCase();
+    const aktiv = new Set(namen.map(klein));
+    const toggles = vorschlaege.map((n) => `<button type="button" class="chip-toggle${aktiv.has(klein(n)) ? " an" : ""}" data-chip-vorschlag="${this.escAttr(n)}" data-chip-feld="${this.escAttr(feld)}" aria-pressed="${aktiv.has(klein(n)) ? "true" : "false"}">${aktiv.has(klein(n)) ? "✓ " : ""}${this.esc(n)}</button>`).join("");
+    const eigene = namen.filter((n) => !vorschlaege.some((vs) => klein(vs) === klein(n)));
+    const chips = eigene.map((n) => `<li class="chip-eintrag"><span>${this.esc(n)}</span><button type="button" data-chip-entfernen="${this.escAttr(n)}" data-chip-feld="${this.escAttr(feld)}" aria-label="${this.escAttr(n)} entfernen">×</button></li>`).join("");
+    return `${toggles ? `<div class="chip-toggles" role="group" aria-label="Häufige Einträge">${toggles}</div>` : ""}
+      <ul class="chips">${chips || (toggles ? "" : '<li class="muted">Noch nichts erfasst</li>')}</ul>`;
+  }
+
+  chipsLesen(feld) {
+    const ta = this.shadowRoot.querySelector(`textarea[name="${feld}"]`);
+    return String(ta?.value || "").split("\n").map((x) => x.trim()).filter(Boolean);
+  }
+
+  chipsSchreiben(feld, namen) {
+    const ta = this.shadowRoot.querySelector(`textarea[name="${feld}"]`);
+    if (!ta) return;
+    ta.value = namen.join("\n");
+    const inhalt = ta.closest("[data-chips]")?.querySelector("[data-chips-inhalt]");
+    if (inhalt) inhalt.innerHTML = this.chipsInhaltHtml(feld, namen);
+    this.markiereGeaendert();
+    this.aktualisiereGruppenKoepfe();
+  }
+
+  chipHinzufuegen(feld, text) {
+    const name = String(text || "").replace(/\s+/g, " ").trim();
+    if (!name) return;
+    const namen = this.chipsLesen(feld);
+    if (namen.some((n) => n.toLowerCase() === name.toLowerCase())) return;
+    this.chipsSchreiben(feld, [...namen, name]);
+  }
+
+  chipEntfernen(feld, name) {
+    this.chipsSchreiben(feld, this.chipsLesen(feld).filter((n) => n.toLowerCase() !== String(name).toLowerCase()));
+  }
+
+  chipUmschalten(feld, name) {
+    const namen = this.chipsLesen(feld);
+    if (namen.some((n) => n.toLowerCase() === name.toLowerCase())) this.chipEntfernen(feld, name);
+    else this.chipHinzufuegen(feld, name);
+  }
+
+  /** "Auf Di–Fr kopieren": übernimmt Modus und Zeiten des Montags auf Dienstag bis Freitag. */
+  kopiereMontagAufWerktage() {
+    const f = this.shadowRoot.querySelector("form");
+    if (!f) return;
+    const modus = f.querySelector('input[name="day_mode_1"]:checked')?.value || "geschlossen";
+    const zeiten = [...f.querySelectorAll('[data-day-interval="1"]')].map((r) => ({ beginn: r.querySelector("[name=beginn]").value, ende: r.querySelector("[name=ende]").value }));
+    for (let tag = 2; tag <= 5; tag++) {
+      const radio = f.querySelector(`input[name="day_mode_${tag}"][value="${modus}"]`);
+      if (radio) radio.checked = true;
+      const container = f.querySelector(`[data-day-intervals="${tag}"]`);
+      if (!container) continue;
+      container.style.display = modus === "zeiten" ? "" : "none";
+      container.querySelectorAll(`[data-day-interval="${tag}"]`).forEach((r) => r.remove());
+      const knopf = container.querySelector("[data-add-interval]");
+      for (const z of (zeiten.length ? zeiten : [{ beginn: "", ende: "" }])) {
+        const el = document.createElement("div");
+        el.innerHTML = this.intervalRow(tag, z);
+        const zeile = el.firstElementChild;
+        zeile.querySelector("[data-remove-interval]")?.addEventListener("click", () => zeile.remove());
+        container.insertBefore(zeile, knopf);
+      }
+    }
+    this.markiereGeaendert();
+    this.aktualisiereGruppenKoepfe();
+  }
+
+  /** Mein Standort -> Latitude/Longitude im Formular (nur Felder, kein Render). */
+  editorMeinStandort() {
+    const status = (text, kind = "") => {
+      const el = this.shadowRoot.querySelector("[data-standort-status]");
+      if (el) { el.textContent = text; el.className = `muted${kind ? " " + kind : ""}`; }
+    };
+    if (typeof window !== "undefined" && window.isSecureContext === false) {
+      status("Der Gerätestandort braucht eine sichere Verbindung (HTTPS oder localhost). Bitte Koordinaten von Hand eintragen.");
+      return;
+    }
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      status("Gerätestandort nicht verfügbar. Bitte Koordinaten von Hand eintragen.");
+      return;
+    }
+    status("Standort des Geräts wird ermittelt …");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const f = this.shadowRoot.querySelector("form");
+        if (!f || !this.editing) return;
+        f.elements["latitude"].value = String(Number(pos.coords.latitude.toFixed(6)));
+        f.elements["longitude"].value = String(Number(pos.coords.longitude.toFixed(6)));
+        const genau = Number.isFinite(pos.coords.accuracy) ? ` (±${Math.round(pos.coords.accuracy)} m)` : "";
+        status(`Standort des Geräts übernommen${genau}.`, "success");
+        this.markiereGeaendert();
+        this.aktualisiereGruppenKoepfe();
+      },
+      () => status("Gerätestandort nicht verfügbar (Freigabe verweigert?). Bitte Koordinaten von Hand eintragen."),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  }
+
+  /** Zusammenfassung und Vollständigkeitspunkt der Gruppen live aus dem
+   * Formular aktualisieren (ohne Render, nur Anzeige). */
+  aktualisiereGruppenKoepfe() {
+    if (!this.editing) return;
+    const f = this.shadowRoot.querySelector("form");
+    if (!f) return;
+    const d = { ...this.editing, ...this.leseEinfacheFelder(f) };
+    d.latitude = f.elements["latitude"]?.value ?? ""; d.longitude = f.elements["longitude"]?.value ?? "";
+    const v = this.vollstaendigkeit(d);
+    for (const g of HofkartePanel.HOF_GRUPPEN) {
+      const kopf = [...f.querySelectorAll("[data-gruppe-toggle]")].find((k) => k.dataset.gruppeToggle === g.id);
+      if (!kopf) continue;
+      const summe = kopf.querySelector("[data-gruppe-summe]");
+      if (summe) summe.textContent = this.gruppenZusammenfassung(d, g.id);
+      const alt = kopf.querySelector(".gruppe-punkt");
+      const zustand = v.gruppen[g.id];
+      if (alt && zustand) {
+        const neu = document.createElement("div");
+        neu.innerHTML = this.gruppenPunktHtml(zustand);
+        alt.replaceWith(neu.firstElementChild);
+      }
+    }
+  }
+
+  /** Nach einem Fehler beim Speichern die betroffene Gruppe öffnen. */
+  oeffneGruppeFuerFehler(text) {
+    const t = String(text || "");
+    const ziele = [[/Name/, "grunddaten"], [/Latitude|Longitude|Koordinaten/, "adresse"], [/Webseite|E-Mail/, "kontakt"], [/Öffnungszeit|Zeiten/, "zeiten"]];
+    for (const [muster, id] of ziele) if (muster.test(t)) (this.gruppenZustand.editor ||= {})[id] = true;
   }
 
   /** Bestätigungs-Popup für die von "🔍 Angaben automatisch ermitteln"
@@ -2950,6 +3132,7 @@ class HofkartePanel extends HTMLElement {
     if (!this.editing) return;
     this.erfasseFormularZustand();
     this.editing.bewertung = (this.editing.bewertung === wert) ? 0 : wert;
+    this.markiereGeaendert();
     this.render();
   }
 
@@ -2991,7 +3174,7 @@ class HofkartePanel extends HTMLElement {
       const intervalsHtml = (mode === "zeiten" ? dayRows : []).map(r => this.intervalRow(day, r)).join("");
 
       blocks.push(`<div class="day-block" data-day-block="${day}">
-        <div class="day-title">${WEEKDAYS[day - 1]}</div>
+        <div class="day-title">${WEEKDAYS[day - 1]}${day === 1 ? ' <button type="button" class="link-button" data-kopiere-montag>Auf Di–Fr kopieren</button>' : ""}</div>
         <div class="day-mode">
           <label><input type="radio" name="day_mode_${day}" value="geschlossen" ${mode === "geschlossen" ? "checked" : ""}> Geschlossen</label>
           <label><input type="radio" name="day_mode_${day}" value="24h" ${mode === "24h" ? "checked" : ""}> 24 Stunden geöffnet</label>
@@ -3086,11 +3269,49 @@ class HofkartePanel extends HTMLElement {
    * daher keine Listener pro Kachel/Zeile/Render mehr. */
   bindDelegiert() {
     const main = this._mainEl;
+    // Bearbeiten: Enter im Chip-Eingabefeld fügt hinzu (statt das Formular abzuschicken).
+    main.addEventListener("keydown", (e) => {
+      const ziel = e.target instanceof Element ? e.target : null;
+      if (!ziel || e.key !== "Enter" || !ziel.matches("[data-chip-eingabe]")) return;
+      e.preventDefault();
+      this.chipHinzufuegen(ziel.dataset.chipEingabe, ziel.value);
+      ziel.value = "";
+    });
+    // Bearbeiten: Änderungen erkennen ("Ungespeichert") und Gruppenköpfe live nachführen.
+    const aenderung = (e) => {
+      const ziel = e.target instanceof Element ? e.target : null;
+      if (!this.editing || !ziel || !ziel.closest("form") || !ziel.name || ziel.name === "osm_radius") return;
+      this.markiereGeaendert();
+      this.aktualisiereGruppenKoepfe();
+    };
+    main.addEventListener("input", aenderung);
+    main.addEventListener("change", aenderung);
+    // Ungültiges Pflichtfeld in einer eingeklappten Gruppe: Gruppe öffnen, damit der Browser fokussieren kann.
+    main.addEventListener("invalid", (e) => {
+      const abschnitt = e.target instanceof Element ? e.target.closest("[data-gruppe]") : null;
+      const kopf = abschnitt?.querySelector("[data-gruppe-toggle]");
+      if (kopf && kopf.getAttribute("aria-expanded") !== "true") this.schalteGruppe(kopf.dataset.gruppenModus, kopf.dataset.gruppeToggle, true);
+    }, true);
     main.addEventListener("click", (e) => {
       const ziel = e.target instanceof Element ? e.target : null;
       if (!ziel) return;
       // ⋮-Menü der Kopfzeile: Klick auf den Knopf schaltet um, Klick
       // irgendwo sonst schliesst es (ohne Render, nur hidden/aria).
+      // --- Bearbeiten: Chips, Zeiten kopieren, Standort, Bewertung ---
+      const chipEntf = ziel.closest("[data-chip-entfernen]");
+      if (chipEntf) { this.chipEntfernen(chipEntf.dataset.chipFeld, chipEntf.dataset.chipEntfernen); return; }
+      const chipVor = ziel.closest("[data-chip-vorschlag]");
+      if (chipVor) { this.chipUmschalten(chipVor.dataset.chipFeld, chipVor.dataset.chipVorschlag); return; }
+      const chipAdd = ziel.closest("[data-chip-hinzufuegen]");
+      if (chipAdd) {
+        const feld = chipAdd.dataset.chipHinzufuegen;
+        const eingabe = [...this.shadowRoot.querySelectorAll("[data-chip-eingabe]")].find((x) => x.dataset.chipEingabe === feld);
+        if (eingabe) { this.chipHinzufuegen(feld, eingabe.value); eingabe.value = ""; eingabe.focus(); }
+        return;
+      }
+      if (ziel.closest("[data-kopiere-montag]")) { this.kopiereMontagAufWerktage(); return; }
+      if (ziel.closest("[data-mein-standort]")) { this.editorMeinStandort(); return; }
+      if (ziel.closest("[data-bewertung-zuruecksetzen]")) { this.setBewertung(this.editing?.bewertung || 0); return; }
       const gruppeKnopf = ziel.closest("[data-gruppe-toggle]");
       if (gruppeKnopf) {
         const modus = gruppeKnopf.dataset.gruppenModus;
@@ -3250,7 +3471,10 @@ class HofkartePanel extends HTMLElement {
 
     this.shadowRoot.querySelector("[data-edit-from-detail]")?.addEventListener("click", (e) => this.start(this.items.find(x => x.id === e.target.dataset.editFromDetail)));
     this.shadowRoot.querySelector("[data-back]")?.addEventListener("click", () => this.closeView());
-    this.shadowRoot.querySelector("[data-cancel]")?.addEventListener("click", () => this.cancel());
+    this.shadowRoot.querySelector("[data-cancel]")?.addEventListener("click", () => {
+      if (this.editGeaendert && !confirm("Ungespeicherte Änderungen verwerfen?")) return;
+      this.cancel();
+    });
     this.shadowRoot.querySelector("form")?.addEventListener("submit", e => { e.preventDefault(); this.save(); });
 
     this.shadowRoot.querySelector('[data-toggle-coord-info]')?.addEventListener("click", () => { this.showCoordInfo = !this.showCoordInfo; this.render(); });
