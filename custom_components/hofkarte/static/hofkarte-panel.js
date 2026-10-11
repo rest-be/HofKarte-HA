@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1-dev.19";
+const PANEL_BUILD = "2026.10.1-dev.20";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -332,6 +332,8 @@ class HofkartePanel extends HTMLElement {
     this.listenFilter = ""; // Freitextfilter in der Listenansicht
     this.karteNurGeoeffnet = false; // Filter "Nur geöffnet" - gemeinsam für Kacheln, Liste und Karte (Issue #2, GUI-Überarbeitung)
     this.uebersichtMenue = false; // ⋮-Menü der Kopfzeile (Import) geöffnet?
+    this.vorOrt = null; // Ablauf "Vor Ort erfassen" (Schnellerfassung), null = geschlossen
+    this._vorOrtToken = 0; // verwirft Antworten veralteter Standort-/Suchläufe
     this.erfassen = null; // Einstiegsseite "Hofladen erfassen" (null = geschlossen, sonst { name, url })
     this.editGeaendert = false; // ungespeicherte Änderungen im Bearbeitungsformular (nur Anzeige "Ungespeichert", Rückfrage beim Abbrechen)
     this.gruppenZustand = { detail: {}, editor: {} }; // Auf-/Zuklappzustand der Gruppen je Maske, nur für die Sitzung (id -> true/false)
@@ -604,43 +606,44 @@ class HofkartePanel extends HTMLElement {
     el.className = `upload-status muted${kind ? " " + kind : ""}`;
   }
 
-  async uploadBild(file) {
-    if (!file) return;
-
+  /** Validiert und lädt eine Bilddatei über Home Assistants image_upload
+   * hoch; liefert die Bild-URL oder wirft einen Error mit lesbarer Meldung. */
+  async uploadeBildDatei(file) {
     if (!HofkartePanel.UPLOAD_ERLAUBTE_TYPEN.includes(file.type)) {
-      this.setUploadStatus("Nicht unterstütztes Dateiformat. Erlaubt: JPEG, PNG, GIF.", "error");
-      return;
+      throw new Error("Nicht unterstütztes Dateiformat. Erlaubt: JPEG, PNG, GIF.");
     }
     if (file.size > HofkartePanel.UPLOAD_MAX_BYTES) {
-      this.setUploadStatus("Datei ist zu gross (maximal 10 MB erlaubt).", "error");
-      return;
+      throw new Error("Datei ist zu gross (maximal 10 MB erlaubt).");
     }
+    const formData = new FormData();
+    formData.append("file", file);
+    // Home Assistants /api/*-Endpunkte erfordern eine Authentifizierung
+    // per Bearer-Token (kein Cookie-basiertes Login) – ohne den
+    // Authorization-Header schlägt der Upload mit "invalid
+    // authentication" fehl, obwohl man in der Oberfläche angemeldet
+    // ist. this.hass.auth.accessToken wird vom Frontend automatisch
+    // aktuell gehalten (Token-Refresh), siehe auch this.call(), das für
+    // WebSocket-Befehle bereits über dieselbe hass-Verbindung läuft.
+    const response = await fetch("/api/image/upload", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${this.hass.auth.accessToken}` },
+      body: formData,
+    });
+    if (response.status === 401) {
+      throw new Error("Anmeldung abgelaufen. Bitte Seite neu laden und erneut versuchen.");
+    }
+    if (!response.ok) {
+      throw new Error(response.status === 413 ? "Datei ist zu gross." : `Upload fehlgeschlagen (${response.status}).`);
+    }
+    const ergebnis = await response.json();
+    return `${window.location.origin}/api/image/serve/${ergebnis.id}/original`;
+  }
 
+  async uploadBild(file) {
+    if (!file) return;
     this.setUploadStatus(`„${file.name}“ wird hochgeladen …`);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      // Home Assistants /api/*-Endpunkte erfordern eine Authentifizierung
-      // per Bearer-Token (kein Cookie-basiertes Login) – ohne den
-      // Authorization-Header schlägt der Upload mit "invalid
-      // authentication" fehl, obwohl man in der Oberfläche angemeldet
-      // ist. this.hass.auth.accessToken wird vom Frontend automatisch
-      // aktuell gehalten (Token-Refresh), siehe auch this.call(), das für
-      // WebSocket-Befehle bereits über dieselbe hass-Verbindung läuft.
-      const response = await fetch("/api/image/upload", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${this.hass.auth.accessToken}` },
-        body: formData,
-      });
-      if (response.status === 401) {
-        throw new Error("Anmeldung abgelaufen. Bitte Seite neu laden und erneut versuchen.");
-      }
-      if (!response.ok) {
-        throw new Error(response.status === 413 ? "Datei ist zu gross." : `Upload fehlgeschlagen (${response.status}).`);
-      }
-      const ergebnis = await response.json();
-      const url = `${window.location.origin}/api/image/serve/${ergebnis.id}/original`;
-
+      const url = await this.uploadeBildDatei(file);
       if (!this.editing.bilder) this.editing.bilder = [];
       this.editing.bilder.push({ url, beschreibung: null, hochgeladen: true });
       this.markiereGeaendert();
@@ -1397,8 +1400,9 @@ class HofkartePanel extends HTMLElement {
 
   currentView() {
     if (this.importDialog) return this.importKonflikte();
-    if (this.editing) { this.erfassen = null; return this.editor(); }
+    if (this.editing) { this.erfassen = null; this.vorOrt = null; return this.editor(); }
     if (this.viewing) return this.detail();
+    if (this.vorOrt) return this.vorOrtAnsicht();
     if (this.erfassen) return this.erfassenEinstieg();
     return this.list();
   }
@@ -1635,6 +1639,28 @@ class HofkartePanel extends HTMLElement {
       .erfassen-icon.neutral{color:var(--secondary-text-color)}
       .erfassen-hinweis{margin-top:16px;padding:14px 18px}
       .erfassen-fuss{margin-top:12px;font-size:.9em}
+      .erfassen-erweitert{align-self:flex-start;font-size:.9em}
+      .vorort{display:flex;flex-direction:column;gap:14px;margin-top:14px;max-width:640px}
+      .vorort label{margin:0}
+      .vorort-h2{margin:6px 0 0;font-size:1em}
+      .vorort-standort{display:flex;gap:12px;align-items:center;padding:12px 14px}
+      .vorort-standort-text{flex:1;min-width:0}
+      .vorort-liste{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+      .vorort-treffer{display:flex;gap:12px;align-items:center;width:100%;min-height:72px;padding:14px;text-align:left;color:var(--primary-text-color);cursor:pointer;border:2px solid transparent;font:inherit}
+      .vorort-treffer.wahrscheinlich{border-color:var(--primary-color)}
+      .vorort-treffer-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+      .vorort-treffer-text .status-badge,.vorort-treffer-text .finden-warnung{align-self:flex-start;width:auto}
+      .vorort-treffer-name{font-weight:500;font-size:1.05em}
+      .vorort-aktionen{display:flex;flex-direction:column;gap:8px}
+      .vorort-aktionen button{min-height:48px}
+      .vorort-fotoknopf{min-height:56px;justify-content:center}
+      .vorort-foto{display:flex;gap:12px;align-items:center}
+      .vorort-foto img{width:96px;height:96px;object-fit:cover;border-radius:8px}
+      .vorort-hinweis{margin:0}
+      .vorort-fertig{text-align:center;padding:12px 0}
+      .vorort-haken{width:64px;height:64px;font-size:2em}
+      .vorort-offen ul{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+      .vorort-offen li{display:flex;gap:10px;align-items:center}
       .gruppen-leiste{display:flex;justify-content:flex-end;margin:0 0 8px}
       .gruppe{margin-bottom:12px;padding:0}
       .gruppe-titel{margin:0;font-size:1em}
@@ -3295,6 +3321,7 @@ class HofkartePanel extends HTMLElement {
     // Bearbeiten: Enter im Chip-Eingabefeld fügt hinzu (statt das Formular abzuschicken).
     main.addEventListener("keydown", (e) => {
       const ziel = e.target instanceof Element ? e.target : null;
+      if (ziel && e.key === "Enter" && ziel.matches("[data-vorort-name], [data-vorort-website]")) { e.preventDefault(); this.speichereVorOrt(); return; }
       if (ziel && e.key === "Enter" && ziel.matches("[data-erfassen-url]")) { e.preventDefault(); this.erfassenAuslesen(); return; }
       if (!ziel || e.key !== "Enter" || !ziel.matches("[data-chip-eingabe]")) return;
       e.preventDefault();
@@ -3302,7 +3329,7 @@ class HofkartePanel extends HTMLElement {
       ziel.value = "";
     });
     // Bearbeiten: Änderungen erkennen ("Ungespeichert") und Gruppenköpfe live nachführen.
-    main.addEventListener("input", (e) => { if (e.target instanceof Element) this.erfassenEingabe(e.target); });
+    main.addEventListener("input", (e) => { if (e.target instanceof Element) { this.erfassenEingabe(e.target); this.vorOrtEingabe(e.target); } });
     const aenderung = (e) => {
       const ziel = e.target instanceof Element ? e.target : null;
       if (!this.editing || !ziel || !ziel.closest("form") || !ziel.name || ziel.name === "osm_radius") return;
@@ -3324,6 +3351,28 @@ class HofkartePanel extends HTMLElement {
       // irgendwo sonst schliesst es (ohne Render, nur hidden/aria).
       if (ziel.closest("[data-erfassen-open]")) { this.erfassen = { name: "", url: "" }; this.render(); this.shadowRoot.querySelector(".erfassen-titel")?.focus?.(); return; }
       if (ziel.closest("[data-erfassen-zurueck]")) { this.erfassen = null; this.render(); return; }
+      if (ziel.closest("[data-vorort-start]")) { this.starteVorOrt({ name: this.erfassen?.name || "" }); return; }
+      if (ziel.closest("[data-vorort-zurueck]")) {
+        if (this.vorOrt?.schritt === 2) { this.vorOrt.schritt = 1; this.vorOrt.fehler = ""; this.render(); } else { this.beendeVorOrt(); this.render(); }
+        return;
+      }
+      if (ziel.closest("[data-vorort-neu-standort]")) { this.ermittleVorOrtStandort(); return; }
+      const vorOrtRadius = ziel.closest("[data-vorort-radius]");
+      if (vorOrtRadius && this.vorOrt) { this.vorOrt.radius = Number(vorOrtRadius.dataset.vorortRadius); this.sucheVorOrt(); return; }
+      const vorOrtKandidat = ziel.closest("[data-vorort-kandidat]");
+      if (vorOrtKandidat) { this.waehleVorOrtKandidat(Number(vorOrtKandidat.dataset.vorortKandidat)); return; }
+      if (ziel.closest("[data-vorort-keiner]")) { this.waehleVorOrtKandidat(null); return; }
+      if (ziel.closest("[data-vorort-foto]")) { this.shadowRoot.querySelector("[data-vorort-foto-input]")?.click(); return; }
+      if (ziel.closest("[data-vorort-foto-entfernen]")) { this.loescheVorOrtFoto(); return; }
+      if (ziel.closest("[data-vorort-speichern]")) { this.speichereVorOrt(); return; }
+      if (ziel.closest("[data-vorort-ergaenzen]")) {
+        const id = this.vorOrt?.gespeichert?.id;
+        const item = this.items.find((x) => x.id === id) || this.vorOrt?.gespeichert;
+        this.vorOrt = null; this.erfassen = null;
+        if (item) this.start(item); else this.render();
+        return;
+      }
+      if (ziel.closest("[data-vorort-fertig]")) { this.vorOrt = null; this.erfassen = null; this.render(); return; }
       // --- Bearbeiten: Chips, Zeiten kopieren, Standort, Bewertung ---
       const chipEntf = ziel.closest("[data-chip-entfernen]");
       if (chipEntf) { this.chipEntfernen(chipEntf.dataset.chipFeld, chipEntf.dataset.chipEntfernen); return; }
@@ -3415,6 +3464,12 @@ class HofkartePanel extends HTMLElement {
     main.addEventListener("change", (e) => {
       const ziel = e.target instanceof Element ? e.target : null;
       if (!ziel) return;
+      if (ziel.matches("[data-vorort-foto-input]")) {
+        const datei = ziel.files?.[0];
+        ziel.value = "";
+        this.ladeVorOrtFoto(datei);
+        return;
+      }
       if (ziel.matches("[data-auswahl-alle-box]")) {
         this.gefilterteItems().forEach((item) => { if (ziel.checked) this.auswahl.add(item.id); else this.auswahl.delete(item.id); });
         this.aktualisiereAuswahlAnzeige();
@@ -3696,7 +3751,8 @@ class HofkartePanel extends HTMLElement {
           <h3 id="erf-1">Ich stehe vor dem Hofladen</h3>
           <p class="muted">Dein Standort wird verwendet, Hofläden in der Nähe werden vorgeschlagen.</p>
           <label>Name (optional)<input type="text" data-erfassen-name value="${this.escAttr(e.name)}" placeholder="z. B. Hofladen Seeblick" autocomplete="off"></label>
-          <button type="button" class="mit-icon erfassen-aktion" data-finden-open>${this.icon("standort")}Standort verwenden</button>
+          <button type="button" class="mit-icon erfassen-aktion" data-vorort-start>${this.icon("standort")}Standort verwenden</button>
+          <button type="button" class="link-button erfassen-erweitert" data-finden-open>Erweiterte Suche (Koordinaten, KI …)</button>
         </section>
         <section class="card erfassen-karte" aria-labelledby="erf-2">
           ${kreis("web")}
@@ -3734,6 +3790,273 @@ class HofkartePanel extends HTMLElement {
     const website = this.erfassen.url.trim();
     this.oeffneFinden({ website, ohneStandort: true });
     this.reichereFindenAn({ ohneKandidat: true });
+  }
+
+  // --- Erfassen: Szenario 1 "Vor Ort" (Schnellerfassung) --------------------
+
+  static VORORT_RADIEN = [100, 250, 500];
+  static OSM_LIZENZ = "© OpenStreetMap-Mitwirkende (ODbL)";
+
+  starteVorOrt({ name = "" } = {}) {
+    this.vorOrt = {
+      schritt: 1, name: String(name || "").trim(), website: "", latitude: null, longitude: null, genauigkeit: null,
+      standort: "suche", standortText: "", radius: 250, busy: false, fehler: "", kandidaten: [], gewaehlt: null,
+      bild: null, bildStatus: "", bildKind: "", speichert: false, gespeichert: null,
+    };
+    this.render();
+    this.ermittleVorOrtStandort();
+  }
+
+  /** Gerätestandort auf ausdrücklichen Klick holen (Browser-Geolocation) und danach in der Nähe suchen. */
+  ermittleVorOrtStandort() {
+    const v = this.vorOrt;
+    if (!v) return;
+    const token = ++this._vorOrtToken;
+    const fehler = (text) => { if (this.vorOrt !== v || token !== this._vorOrtToken) return; v.standort = "fehler"; v.standortText = text; this.render(); };
+    v.standort = "suche"; v.standortText = "Standort des Geräts wird ermittelt …"; v.kandidaten = []; v.fehler = "";
+    if (typeof window !== "undefined" && window.isSecureContext === false) {
+      fehler("Der Gerätestandort braucht eine sichere Verbindung (HTTPS oder localhost).");
+      return;
+    }
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      fehler("Der Gerätestandort ist nicht verfügbar.");
+      return;
+    }
+    this.render();
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (this.vorOrt !== v || token !== this._vorOrtToken) return;
+        v.latitude = Number(pos.coords.latitude.toFixed(6));
+        v.longitude = Number(pos.coords.longitude.toFixed(6));
+        v.genauigkeit = Number.isFinite(pos.coords.accuracy) ? Math.round(pos.coords.accuracy) : null;
+        v.standort = "ok";
+        this.sucheVorOrt();
+      },
+      () => fehler("Der Gerätestandort ist nicht verfügbar (Freigabe verweigert?)."),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  }
+
+  async sucheVorOrt() {
+    const v = this.vorOrt;
+    if (!v || v.latitude == null || v.longitude == null) return;
+    const token = ++this._vorOrtToken;
+    v.busy = true; v.fehler = ""; v.kandidaten = [];
+    this.render();
+    const nachricht = { latitude: v.latitude, longitude: v.longitude, radius: v.radius, erweitert: false };
+    if (v.name.trim()) nachricht.name = v.name.trim();
+    try {
+      const ergebnis = await this.call("hofkarte/management/discover", nachricht);
+      if (this.vorOrt !== v || token !== this._vorOrtToken) return;
+      v.kandidaten = ergebnis.kandidaten || [];
+    } catch (err) {
+      if (this.vorOrt !== v || token !== this._vorOrtToken) return;
+      v.fehler = HofkartePanel.FINDEN_FEHLERMELDUNGEN[err?.code] || err?.message || "Die Suche ist fehlgeschlagen.";
+    }
+    v.busy = false;
+    this.render();
+  }
+
+  waehleVorOrtKandidat(index) {
+    const v = this.vorOrt;
+    if (!v) return;
+    const k = index == null ? null : v.kandidaten[index];
+    v.gewaehlt = k || null;
+    if (k) { if (k.name) v.name = k.name; v.website = k.website || ""; }
+    v.fehler = ""; v.schritt = 2;
+    this.render();
+  }
+
+  /** Eingaben der Schnellerfassung sichern (ohne Render, Fokus bleibt). */
+  vorOrtEingabe(ziel) {
+    if (!this.vorOrt) return;
+    if (ziel.matches("[data-vorort-name]")) this.vorOrt.name = ziel.value;
+    if (ziel.matches("[data-vorort-website]")) this.vorOrt.website = ziel.value;
+  }
+
+  async ladeVorOrtFoto(file) {
+    const v = this.vorOrt;
+    if (!v || !file) return;
+    v.bildStatus = "Foto wird hochgeladen …"; v.bildKind = "";
+    this.render();
+    try {
+      const url = await this.uploadeBildDatei(file);
+      if (this.vorOrt !== v) return;
+      v.bild = { url }; v.bildStatus = ""; v.bildKind = "";
+    } catch (err) {
+      if (this.vorOrt !== v) return;
+      v.bildStatus = err?.message || "Upload fehlgeschlagen."; v.bildKind = "error";
+    }
+    this.render();
+  }
+
+  async loescheVorOrtFoto() {
+    const v = this.vorOrt;
+    if (!v?.bild) return;
+    const id = this.extractImageId(v.bild.url);
+    v.bild = null; v.bildStatus = "";
+    this.render();
+    if (id) { try { await this.call("image/delete", { image_id: id }); } catch { /* bereits entfernt: unkritisch */ } }
+  }
+
+  /** Verlässt den Ablauf; ein hochgeladenes, nicht gespeichertes Foto wird aufgeräumt. */
+  beendeVorOrt() {
+    const v = this.vorOrt;
+    this._vorOrtToken++;
+    this.vorOrt = null;
+    if (v?.bild && !v.gespeichert) {
+      const id = this.extractImageId(v.bild.url);
+      if (id) this.call("image/delete", { image_id: id }).catch(() => {});
+    }
+  }
+
+  async speichereVorOrt() {
+    const v = this.vorOrt;
+    if (!v || v.speichert) return;
+    const name = v.name.trim();
+    const website = v.website.trim();
+    const k = v.gewaehlt;
+    const lat = k ? k.latitude : v.latitude;
+    const lon = k ? k.longitude : v.longitude;
+    v.fehler = "";
+    if (!name) v.fehler = "Bitte einen Namen eingeben.";
+    else if (website && !this.isPlausibleUrl(website)) v.fehler = "Die Webseite muss eine gültige http(s)-Adresse sein (z. B. https://www.beispiel.ch).";
+    else if (!isValidWgs84(Number(lat), Number(lon))) v.fehler = "Es liegt kein gültiger Standort vor. Bitte den Standort neu ermitteln.";
+    if (v.fehler) { this.render(); this.shadowRoot.querySelector(v.fehler.startsWith("Bitte einen Namen") ? "[data-vorort-name]" : "[data-vorort-website]")?.focus(); return; }
+    const doppelt = this.findeBestehenden({ name, latitude: Number(lat), longitude: Number(lon) });
+    if (doppelt && !confirm(`Möglicherweise schon erfasst: «${doppelt.name}». Trotzdem als neuen Hofladen speichern?`)) return;
+
+    const osmUrl = k?.refs?.[0] ? `https://www.openstreetmap.org/${k.refs[0]}` : null;
+    const quellen = [];
+    if (k) {
+      const osm = (feld) => quellen.push({ feld, quelle: "openstreetmap", status: "confirmed", url: osmUrl, lizenz: HofkartePanel.OSM_LIZENZ });
+      if (k.name && k.name === name) osm("name");
+      for (const feld of ["adresse", "plz", "ort"]) if (k[feld]) osm(feld);
+      osm("latitude"); osm("longitude");
+      if (k.website && k.website === website) osm("website");
+    }
+    const data = {
+      id: "", name, beschreibung: null, bemerkung: null,
+      adresse: k?.adresse || null, plz: k?.plz || null, ort: k?.ort || null, land: null,
+      website: website || null, mobilnummer: null, email: null,
+      latitude: Number(lat), longitude: Number(lon),
+      oeffnungszeiten: [], sonderoeffnungszeiten: [], angebote: [], zahlungsarten: [],
+      bilder: v.bild ? [{ url: v.bild.url, beschreibung: null, hochgeladen: true }] : [],
+      quellen, bewertung: 0,
+    };
+    v.speichert = true;
+    this.render();
+    try {
+      const ergebnis = await this.call("hofkarte/management/save", { hofladen: data });
+      if (this.vorOrt !== v) return;
+      v.gespeichert = ergebnis?.hofladen || data;
+      v.schritt = 3;
+      v.speichert = false;
+      await this.load();
+    } catch (err) {
+      if (this.vorOrt !== v) return;
+      v.speichert = false;
+      v.fehler = err?.message || "Speichern fehlgeschlagen.";
+      this.render();
+    }
+  }
+
+  /** Noch offene Angaben nach der Schnellerfassung (nur die wichtigsten vier). */
+  vorOrtOffen(item) {
+    const fehlend = this.vollstaendigkeit(item).alleFehlend;
+    const anzeige = { "Öffnungszeiten": "Öffnungszeiten", Angebote: "Angebote", Zahlungsarten: "Zahlungsarten", Bilder: "Foto" };
+    return Object.keys(anzeige).filter((n) => fehlend.includes(n)).map((n) => anzeige[n]);
+  }
+
+  vorOrtAnsicht() {
+    const v = this.vorOrt;
+    const titel = v.schritt === 1 ? "Vor Ort erfassen" : v.schritt === 2 ? "Schnell erfassen" : "Gespeichert";
+    const unter = v.schritt === 1 ? "Schritt 1 von 2 · Hofladen wählen" : v.schritt === 2 ? "Schritt 2 von 2 · Angaben" : "";
+    const zurueck = v.schritt === 3 ? "" : `<div class="top"><div><button type="button" class="secondary" data-vorort-zurueck>${v.schritt === 1 ? "← Einstieg" : "← Zu den Treffern"}</button></div></div>`;
+    const kopf = `${zurueck}<h1 class="erfassen-titel">${this.esc(titel)}</h1>${unter ? `<div class="muted">${unter}</div>` : ""}`;
+    const fehler = v.fehler ? `<div class="notice error" role="alert">${this.esc(v.fehler)}</div>` : "";
+    if (v.schritt === 1) return `${kopf}<div class="vorort">${this.vorOrtSchritt1()}${fehler}</div>`;
+    if (v.schritt === 2) return `${kopf}<div class="vorort">${fehler}${this.vorOrtSchritt2()}</div>`;
+    return `${kopf}<div class="vorort">${this.vorOrtSchritt3()}</div>`;
+  }
+
+  vorOrtSchritt1() {
+    const v = this.vorOrt;
+    let standort;
+    if (v.standort === "ok") {
+      standort = `<span class="gruppe-punkt ok" aria-hidden="true">✓</span><div class="vorort-standort-text"><strong>Standort ermittelt</strong><div class="muted">${this.esc(v.latitude.toFixed(4))}, ${this.esc(v.longitude.toFixed(4))}${v.genauigkeit != null ? ` · Genauigkeit ±${this.esc(v.genauigkeit)} m` : ""}</div></div><button type="button" class="secondary" data-vorort-neu-standort>Neu</button>`;
+    } else if (v.standort === "fehler") {
+      standort = `<span class="gruppe-punkt leer" aria-hidden="true"></span><div class="vorort-standort-text"><strong>Standort nicht verfügbar</strong><div class="muted">${this.esc(v.standortText)}</div></div><button type="button" class="secondary" data-vorort-neu-standort>Erneut versuchen</button>`;
+    } else {
+      standort = `<span class="gruppe-punkt teil" aria-hidden="true">…</span><div class="vorort-standort-text"><strong>${this.esc(v.standortText)}</strong></div>`;
+    }
+    const radien = HofkartePanel.VORORT_RADIEN.map((r) => `<button type="button" class="chip-toggle${v.radius === r ? " an" : ""}" data-vorort-radius="${r}" aria-pressed="${v.radius === r ? "true" : "false"}">${r} m</button>`).join("");
+    let liste = "";
+    if (v.standort === "ok") {
+      if (v.busy) liste = `<p class="muted" role="status">Suche in der Nähe läuft …</p>`;
+      else if (!v.fehler) {
+        const eintraege = v.kandidaten.map((k, i) => {
+          const bestehend = this.findeBestehenden(k);
+          const adresse = [k.adresse, [k.plz, k.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+          const dist = Number.isFinite(Number(k.entfernung_meter)) ? `${Math.round(k.entfernung_meter)} m` : "";
+          return `<li><button type="button" class="card vorort-treffer${i === 0 && k.konfidenz === "hoch" ? " wahrscheinlich" : ""}" data-vorort-kandidat="${i}">
+            <span class="vorort-treffer-text"><span class="vorort-treffer-name">${this.esc(k.name || "(ohne Namen)")}</span>
+            <span class="muted">${this.esc([adresse, dist].filter(Boolean).join(" · "))}</span>
+            ${i === 0 && k.konfidenz === "hoch" ? `<span class="status-badge status-open">Wahrscheinlich dieser</span>` : ""}
+            ${bestehend ? `<span class="finden-warnung">⚠ Möglicherweise schon erfasst: ${this.esc(bestehend.name)}</span>` : ""}</span>
+            <span aria-hidden="true">›</span></button></li>`;
+        }).join("");
+        liste = v.kandidaten.length
+          ? `<h2 class="vorort-h2">In der Nähe</h2><ul class="vorort-liste">${eintraege}</ul>`
+          : `<p class="muted">Im Umkreis von ${v.radius} m wurde in OpenStreetMap nichts gefunden. Vergrössere den Umkreis oder erfasse den Hofladen neu.</p>`;
+      }
+    }
+    return `<section class="card vorort-standort" aria-live="polite">${standort}</section>
+      ${v.standort === "ok" ? `<div class="chip-toggles" role="group" aria-label="Umkreis">${radien}</div>` : ""}
+      ${liste}
+      <div class="vorort-aktionen"><button type="button" class="secondary" data-vorort-keiner>Keiner davon, neu erfassen</button></div>`;
+  }
+
+  vorOrtSchritt2() {
+    const v = this.vorOrt;
+    const k = v.gewaehlt;
+    const lat = k ? k.latitude : v.latitude, lon = k ? k.longitude : v.longitude;
+    const adresse = k ? [k.adresse, [k.plz, k.ort].filter(Boolean).join(" ")].filter(Boolean).join(", ") : "";
+    const hatKoord = Number.isFinite(Number(lat)) && Number.isFinite(Number(lon));
+    const foto = v.bild
+      ? `<div class="vorort-foto">${this.bildHtml(v.bild.url, "Aufgenommenes Foto", true)}<button type="button" class="secondary" data-vorort-foto-entfernen>Foto entfernen</button></div>`
+      : `<button type="button" class="secondary mit-icon vorort-fotoknopf" data-vorort-foto>${this.icon("hochladen")}Foto aufnehmen</button>`;
+    return `<p class="muted">Nur das Nötigste. Alles andere ergänzt du später in Ruhe.</p>
+      <label>Name (Pflichtfeld)<input type="text" data-vorort-name value="${this.escAttr(v.name)}" autocomplete="off" required></label>
+      <section class="card vorort-standort">
+        <span class="gruppe-punkt ${hatKoord ? "ok" : "leer"}" aria-hidden="true">${hatKoord ? "✓" : ""}</span>
+        <div class="vorort-standort-text"><strong>${hatKoord ? "Standort übernommen" : "Kein Standort"}</strong>
+        <div class="muted">${hatKoord ? `${this.esc(Number(lat).toFixed(4))}, ${this.esc(Number(lon).toFixed(4))}` : ""}${adresse ? ` · ${this.esc(adresse)}` : ""}</div></div>
+      </section>
+      ${foto}
+      <input type="file" data-vorort-foto-input accept="image/*" capture="environment" hidden>
+      ${v.bildStatus ? `<div class="muted${v.bildKind ? " " + v.bildKind : ""}" role="status">${this.esc(v.bildStatus)}</div>` : ""}
+      <label>Webseite (optional)<input type="url" data-vorort-website value="${this.escAttr(v.website)}" placeholder="https://…" inputmode="url" autocomplete="off"></label>
+      <div class="notice vorort-hinweis">Öffnungszeiten, Angebote und Zahlungsarten kannst du später ergänzen.</div>
+      <div class="vorort-aktionen">
+        <button type="button" data-vorort-speichern ${v.speichert ? "disabled" : ""}>${v.speichert ? "Speichern …" : "Speichern"}</button>
+      </div>`;
+  }
+
+  vorOrtSchritt3() {
+    const v = this.vorOrt;
+    const g = v.gespeichert || {};
+    const offen = this.vorOrtOffen(g);
+    return `<section class="vorort-fertig"><span class="gruppe-punkt ok vorort-haken" aria-hidden="true">✓</span>
+      <h2>${this.esc(g.name || "Hofladen")} gespeichert</h2><p class="muted">Danke, der Hofladen ist erfasst.</p></section>
+      <section class="card vorort-offen"><h3>Noch offen</h3>
+        ${offen.length ? `<ul>${offen.map((n) => `<li><span class="gruppe-punkt leer" aria-hidden="true"></span>${this.esc(n)}</li>`).join("")}</ul>` : `<p class="muted">Alle wichtigen Angaben sind erfasst.</p>`}
+      </section>
+      <div class="vorort-aktionen">
+        ${offen.length ? `<button type="button" data-vorort-ergaenzen>Jetzt ergänzen</button>` : ""}
+        <button type="button" class="secondary" data-vorort-fertig>Fertig</button>
+      </div>
+      <p class="muted small">Offene Angaben erscheinen später als Hinweis im Detail des Hofladens.</p>`;
   }
 
   oeffneFinden({ name = "", website = "", ohneStandort = false } = {}) {

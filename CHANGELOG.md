@@ -15,6 +15,13 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Geändert (2026.10.1-dev.20) – Detail & Erfassung, Phase 5 (Szenario 1: Vor Ort / Schnellerfassung)
+
+- **«Ich stehe vor dem Hofladen»** startet jetzt einen eigenen, mobil-ersten Ablauf statt des bisherigen Suchdialogs. **Schritt 1:** Der Gerätestandort wird auf den ausdrücklichen Klick hin ermittelt (mit Genauigkeit); danach erscheint die Liste «In der Nähe» mit Entfernung, dem Hinweis «Wahrscheinlich dieser» beim besten Treffer und der Warnung «Möglicherweise schon erfasst». Der Umkreis lässt sich per Chips (100/250/500 m) ändern; «Keiner davon, neu erfassen» führt direkt zur Erfassung. Verweigerter Standort, unsichere Verbindung und fehlgeschlagene Suche zeigen verständliche Hinweise mit «Erneut versuchen».
+- **Schritt 2 «Schnell erfassen»:** Name (Pflicht, bei Treffer vorbelegt), übernommener Standort, **Foto aufnehmen** (Kamera auf dem Telefon), Webseite (optional), Speichern. Übernommene OpenStreetMap-Angaben werden mit Quelle und Lizenz (ODbL) vermerkt. Doppelte Hofläden werden vor dem Speichern abgefragt; ein nicht gespeichertes, hochgeladenes Foto wird beim Abbrechen wieder entfernt.
+- **Abschluss «Gespeichert»** mit Liste **«Noch offen»** (Öffnungszeiten, Angebote, Zahlungsarten, Foto) sowie «Jetzt ergänzen» (öffnet den Editor) und «Fertig».
+- Intern: Bild-Upload in `uploadeBildDatei()` ausgelagert (Editor und Schnellerfassung nutzen ihn gemeinsam); Standortabfrage ist nun in drei Funktionen erlaubt, jeweils nur auf Klick. Neue Tests: `test_static_panel_js_vorort.py` (10).
+
 ### Geändert (2026.10.1-dev.19) – Detail & Erfassung, Phase 4 (Einstieg «Hofladen erfassen»)
 
 - Die beiden Kopfzeilen-Knöpfe «Hofladen finden» und «Hofladen» sind durch einen Knopf **«Hofladen erfassen»** ersetzt. Er öffnet eine Einstiegsseite mit drei Wegen: **Ich stehe vor dem Hofladen** (Standort verwenden, optional Name; öffnet den bisherigen Suchdialog mit dem Namen vorbelegt), **Ich habe eine Webseite** (Webseite einfügen; «Auslesen» ist nur bei einer gültigen http(s)-Adresse aktiv und wertet die Webseite direkt aus, ohne Standortabfrage; Enter im Feld genügt) und **Von Hand erfassen** (leeres Formular). Schliesst man den Suchdialog, landet man wieder auf der Einstiegsseite.

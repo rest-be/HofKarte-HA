@@ -180,7 +180,7 @@ def test_panel_js_geraete_entfernung_ist_vollstaendig_entfernt() -> None:
 
 def test_panel_js_verwendet_geolocation_nur_auf_ausdruecklichen_klick() -> None:
     """Die Geräte-Entfernungs-Funktion (Issue #3) bleibt entfernt. Die
-    Browser-Geolocation-API wird nur in zwei Funktionen verwendet, die
+    Browser-Geolocation-API wird nur in drei Funktionen verwendet, die
     ausschliesslich durch einen Klick der Benutzerin/des Benutzers
     ausgelöst werden: ``ermittleGeraeteStandort()`` (Dialog "Hofladen
     finden") und ``editorMeinStandort()`` (Knopf "Mein Standort verwenden"
@@ -188,7 +188,7 @@ def test_panel_js_verwendet_geolocation_nur_auf_ausdruecklichen_klick() -> None:
     Listenansicht)."""
     quelltext = _lade_panel_js()
     bereiche = []
-    for start, ende_marker in (("  ermittleGeraeteStandort() {", "  setzeFindenStandortText("), ("  editorMeinStandort() {", "  /** Zusammenfassung und Vollständigkeitspunkt")):
+    for start, ende_marker in (("  ermittleGeraeteStandort() {", "  setzeFindenStandortText("), ("  editorMeinStandort() {", "  /** Zusammenfassung und Vollständigkeitspunkt"), ("  ermittleVorOrtStandort() {", "  async sucheVorOrt() {")):
         anfang = quelltext.index(start)
         ende = quelltext.index(ende_marker, anfang)
         bereiche.append((anfang, ende))
@@ -203,3 +203,4 @@ def test_panel_js_verwendet_geolocation_nur_auf_ausdruecklichen_klick() -> None:
     assert "isSecureContext" not in rest
     # Auslösung nur über Klick-Handler
     assert 'ziel.closest("[data-mein-standort]")' in quelltext
+    assert 'ziel.closest("[data-vorort-start]")' in quelltext and 'ziel.closest("[data-vorort-neu-standort]")' in quelltext
