@@ -15,13 +15,14 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
-## [2026.10.1-rc.1] - Release Candidate (develop)
+## [2026.10.1] - 2026-10-12
 
-Kein produktiver Release. Fasst die Entwicklungsversionen
-`2026.10.1-dev.1` bis `dev.24` zusammen: Hofladen-Discovery (Erfassen aus
-dem Netz), überarbeitete Übersicht, neue Detail- und Erfassungsmasken und
-ein neues App-Icon. Der Test der KI-Auswertung mit Ollama (Discovery
-Phase 8) sowie ein Test auf iPhone und Mac-App stehen noch aus.
+Fasst die Entwicklungsversionen `2026.10.1-dev.1` bis `dev.24` und den
+Release Candidate `2026.10.1-rc.1` zusammen: Hofladen-Discovery (Erfassen
+aus dem Netz), überarbeitete Übersicht, neue Detail- und Erfassungsmasken
+und ein neues App-Icon. Gegenüber `rc.1` ändert sich nur die Versionsnummer.
+Die KI-Auswertung wurde noch nicht mit einem lokalen Modell (Ollama) im
+Feld gemessen; ebenso fehlt ein Test auf iPhone und Mac-App.
 
 ### Hinzugefügt
 
@@ -91,7 +92,7 @@ Phase 8) sowie ein Test auf iPhone und Mac-App stehen noch aus.
 
 ### Hinweise
 
-- Version und Panel-Version (`PANEL_BUILD`) lauten `2026.10.1-rc.1`; nach dem
+- Version und Panel-Version (`PANEL_BUILD`) lauten `2026.10.1`; nach dem
   Update Home Assistant neu starten und das Panel im Browser hart neu laden.
 - Der Testlauf zeigt 4 bekannte Altfehler, die nur in der Sandbox
   (Home Assistant 2024.3 statt ≥ 2025.1) auftreten:

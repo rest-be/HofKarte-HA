@@ -1,7 +1,4 @@
-# HofKarte 2026.10.1 (Release Candidate 1)
-
-> **Release Candidate `2026.10.1-rc.1`.** Zum Testen, noch kein produktiver
-> Release. Offene Punkte stehen unten unter «Offen bis zum Release».
+# HofKarte 2026.10.1
 
 Dieses Release bringt das **Erfassen neuer Hofläden aus dem Netz**
 (Hofladen-Discovery), eine **überarbeitete Verwaltungsoberfläche** und ein
@@ -55,11 +52,9 @@ neues App-Icon. Ein Update wird empfohlen.
 - Das Icon erscheint in Home Assistant ab Version mit lokalen Brand-Bildern;
   ältere Versionen zeigen weiterhin das Standard-Symbol.
 
-## Offen bis zum Release
+## Bekannte Einschränkungen
 
-- Test der KI-Auswertung mit Ollama (Discovery Phase 8) und Eintrag der
-  Ergebnisse in README/Handbuch.
-- Test auf dem iPhone (Kamera, Standortfreigabe, Abläufe «Webseite» und
-  «Angaben ergänzen») und in der Mac-App.
-- Entscheid: GUI und Discovery gemeinsam als 2026.10.1 oder GUI als 2026.10.2.
-- Nach bestandenem Test: Version `2026.10.1` (bzw. `2026.10.2`) in `manifest.json`, Tag und Merge nach `main` durch den Projektbetreuer.
+- Die optionale KI-Auswertung wurde noch nicht mit einem lokalen Modell
+  (Ollama) im Feld gemessen; Qualität und Dauer hängen vom Modell ab.
+- Abläufe «Webseite» und «Angaben ergänzen» sind auf dem iPhone und in der
+  Mac-App noch nicht ausdrücklich getestet.
