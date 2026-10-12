@@ -273,3 +273,89 @@ Sicherheitsmassnahmen bzw. bewusste Abgrenzungen:
   `ws_save`-Befehl. Bei mehreren Treffern wird zunächst eine
   Trefferauswahl gezeigt, bevor der gewählte Treffer im bereits aus
   Issue #9 bekannten Bestätigungs-Popup zur Prüfung erscheint.
+
+### Funktion „Hofladen finden“ (`discovery/`, ab `2026.10.1`)
+
+Der Dialog „🔎 Hofladen finden“ sucht Hofläden in OpenStreetMap, wertet
+auf Wunsch deren Website aus und schlägt die Angaben zur Übernahme in ein
+neues Formular vor. Er erweitert die beiden obigen Funktionen um zwei
+bewusst begrenzte Ausnahmen und eine dritte, ausschliesslich
+opt-in Ausnahme (optionale KI-Auswertung, siehe unten). Ohne diese Wahl
+bleibt es bei **keinem KI-, Cloud- oder Scraping-Dienst**.
+
+- **Ausdrücklicher Klick, nur Administratoren:** Die WebSocket-Befehle
+  `hofkarte/management/discover` und `…/enrich` verlangen
+  Administratorrechte (`require_admin`). Es läuft nichts im Hintergrund
+  oder automatisch; gespeichert wird erst im bestehenden `ws_save`-Pfad
+  nach Prüfung im Formular.
+- **Overpass (Suche):** Dieselben festen, freien Overpass-Instanzen wie
+  bei „Ort in der Nähe suchen“ (`OVERPASS_URLS`), Zielliste nie durch
+  Benutzereingaben beeinflusst, Radius serverseitig auf 50 m bis 5 km
+  begrenzt (Schema und defensive Klammerung), Antwortgrössen- und
+  Zeitlimit, kurzer Zwischenspeicher (10 Minuten, höchstens 32 Einträge).
+  Eine HTTP-200-Antwort mit leerer Trefferliste und Overpass-Fehlerhinweis
+  (`remark`) wird als Fehler gemeldet, nicht als „keine Treffer“. Dabei
+  werden Koordinaten übertragen, die der Benutzer im Dialog gewählt hat.
+- **Website-Abruf mit `robots.txt` (neue Ausnahme):** Im Gegensatz zu
+  „Infos ermitteln“ (eine vom Benutzer angegebene Seite) liest die
+  Anreicherung höchstens **4 Seiten desselben Hosts**: die Startseite und
+  Links von ihr (eine Ebene tief, nur Seiten wie Kontakt/Öffnungszeiten/
+  Hofladen), nacheinander mit **1 Sekunde Pause**, ohne Dateien (PDF,
+  Bilder), ohne Logins, mit Gesamtzeitlimit. Vor dem ersten Abruf wird
+  `robots.txt` nach RFC 9309 ausgewertet: `Disallow` für `HofKarte`
+  bzw. `*` wird beachtet, 4xx bedeutet „alles erlaubt“, 5xx oder
+  Netzwerkfehler bedeuten konservativ „nichts abrufen“. Die Anfragen
+  tragen den erkennbaren `User-Agent`
+  `HofKarte/HomeAssistant (+https://github.com/rest-be/HofKarte-HA)`.
+- **SSRF-Schutz unverändert:** Alle Abrufe laufen über die gehärtete
+  Session aus `webseite_info.py` (öffentliche Adressen, DNS-Prüfung mit
+  IP-Bindung, Weiterleitungen einzeln geprüft, Grössen-/Typ-/Zeitlimits).
+  Links werden nur innerhalb desselben Hosts verfolgt.
+- **Herkunftsnachweis (`quellen`):** Jeder übernommene Wert trägt seine
+  Quelle (OpenStreetMap oder Website, mit Adresse) und den Status
+  `confirmed`/`inferred`. OpenStreetMap-Werte werden mit „©
+  OpenStreetMap-Mitwirkende (ODbL)“ gekennzeichnet. Das Feld wird beim
+  Einlesen streng bereinigt (bekannte Felder, nur http(s)-URLs, eine
+  Quelle je Feld, höchstens 20 Einträge). Beschreibungstexte werden
+  **nicht** automatisch übernommen.
+- **Standort des Geräts (Browser):** Beim Öffnen des Dialogs fragt der
+  Browser (nach Freigabe durch den Benutzer) den aktuellen Gerätestandort
+  ab, um die Koordinaten vorzubelegen. Das ist die einzige Verwendung der
+  Geolocation-API im Panel; der Wert verlässt das Gerät nur als
+  Suchkoordinaten an den eigenen Home-Assistant-Server und von dort an
+  Overpass, und wird nicht gespeichert. Ohne sicheren Kontext (HTTPS) oder
+  ohne Freigabe fällt der Dialog auf die in Home Assistant konfigurierte
+  Position zurück.
+- **Optionale KI-Auswertung (neue, opt-in Ausnahme):** Standardmässig
+  ist **kein** KI-Dienst beteiligt. Wählt die Administratorin im Options
+  Flow eine Entität der Home-Assistant-Integration „AI Task“
+  (`ki_entitaet`, Domain `ai_task`) und kreuzt sie im Dialog **je Suche**
+  ausdrücklich an („Website-Text mit KI auswerten“), sendet HofKarte den
+  sichtbaren Text der bereits abgerufenen Seiten (höchstens 6 000 Zeichen
+  je Seite, 15 000 gesamt, ohne Skripte/Stile) über
+  `ai_task.generate_data` an diese Entität. Je nach Anbieter (lokal, z. B.
+  Ollama, oder Cloud) **verlässt der Website-Text das Netzwerk**; der
+  Dialog nennt die Entität vorab. HofKarte hat weder eigene
+  Anbieteranbindungen noch Zugangsdaten. Schutzmassnahmen:
+  - *Kein Vertrauen in Seitentext (Prompt-Injection):* Die KI erhält nur
+    Text und keine Werkzeuge; die Antwort ist per Schema auf drei Felder
+    begrenzt (`angebote`, `zahlungsarten`, `oeffnungszeiten`), zusätzliche
+    Felder werden ignoriert. Werte werden wie Benutzereingaben begrenzt
+    (Länge, Anzahl, kein HTML) und nie als URL oder Befehl verwendet.
+    Ein Test belegt, dass eine „Ignoriere alle Anweisungen“-Seite keine
+    anderen Felder verändert.
+  - *Grounding statt Selbstauskunft:* Ein Wert gilt nur als belegt, wenn
+    er als ganzes Wort im Seitentext steht (Prüfung durch HofKarte, nicht
+    durch die KI). Unbelegtes erscheint ausschliesslich getrennt als
+    „Vermutung“, nie vorausgewählt, und wird als `inferred` mit Quelle
+    `ki` gespeichert. Öffnungszeiten werden nur übernommen, wenn der
+    wörtliche Ausschnitt belegt ist und der bestehende Parser ihn versteht.
+  - *Ausfall ohne Folgen:* 60 s Zeitlimit; bei Fehler, Zeitüberschreitung
+    oder unbrauchbarer Antwort bleibt das Ergebnis ohne KI unverändert und
+    der Dialog nennt den Grund. Übernommen wird nur per Klick.
+  - *Nur auf Anforderung, nur Administratoren:* Die Option steuert nur die
+    Verfügbarkeit; die KI läuft nur, wenn die Nachricht `ki: true` enthält.
+    Ohne gültige `ai_task`-Entität wird nichts gesendet.
+- **Panel-Härtung:** Alle Werte aus OpenStreetMap, Websites und KI werden
+  vor der Darstellung HTML-escaped (durch einen Test abgesichert), Links nur
+  für http(s)-Adressen mit `rel="noopener noreferrer"`.

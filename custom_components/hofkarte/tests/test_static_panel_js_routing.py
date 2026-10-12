@@ -120,15 +120,18 @@ def test_panel_js_routing_urls_kodieren_das_ziel() -> None:
 
 def test_panel_js_routing_auswahl_ersetzt_kartenbutton_in_drei_ansichten() -> None:
     """Regressionstest für Issue #3: ``routingAuswahl()`` muss die neue,
-    einzige Kartenlogik in Kacheln- (``listCard``), Listen-
-    (``listTable``) und Detailansicht (``detail``) sein - nicht mehr
-    ``mapButton()`` an diesen drei Stellen."""
+    einzige Kartenlogik in der Detailansicht (``detail``) sein - nicht mehr
+    ``mapButton()``. Kacheln und Listenzeilen (GUI-Überarbeitung Phase 2/3)
+    bieten die Routen im gemeinsamen ⋮-Menü (``aktionenMenueHtml``) an, mit
+    denselben Hilfsfunktionen (``ermittleRoutingZiel``)."""
     quelltext = _lade_panel_js()
     treffer = re.findall(r"this\.routingAuswahl\(", quelltext)
-    assert len(treffer) == 3, (
-        f"Erwartet genau 3 Aufrufstellen (Kacheln/Liste/Detail), "
-        f"gefunden: {len(treffer)}."
+    assert len(treffer) == 1, (
+        f"Erwartet genau 1 Aufrufstelle (Detail), gefunden: {len(treffer)}."
     )
+    menue = quelltext[quelltext.index("  aktionenMenueHtml(item"):quelltext.index("  listCard(item) {")]
+    assert "ermittleRoutingZiel(item)" in menue and "googleMapsRoutenUrl(ziel)" in menue
+    assert quelltext.count("this.aktionenMenueHtml(item)") == 2, "Kachel und Listenzeile"
 
 
 def test_panel_js_editor_behaelt_unveraenderten_mapbutton() -> None:
@@ -175,9 +178,29 @@ def test_panel_js_geraete_entfernung_ist_vollstaendig_entfernt() -> None:
         )
 
 
-def test_panel_js_verwendet_keine_geolocation_api_mehr() -> None:
-    """Ohne die Geräte-Entfernungs-Funktion gibt es keinen verbleibenden
-    Grund mehr, die Browser-Geolocation-API zu verwenden."""
+def test_panel_js_verwendet_geolocation_nur_auf_ausdruecklichen_klick() -> None:
+    """Die Geräte-Entfernungs-Funktion (Issue #3) bleibt entfernt. Die
+    Browser-Geolocation-API wird nur in drei Funktionen verwendet, die
+    ausschliesslich durch einen Klick der Benutzerin/des Benutzers
+    ausgelöst werden: ``ermittleGeraeteStandort()`` (Dialog "Hofladen
+    finden") und ``editorMeinStandort()`` (Knopf "Mein Standort verwenden"
+    im Bearbeitungsformular) - nirgends sonst (insbesondere nicht in Detail-/
+    Listenansicht)."""
     quelltext = _lade_panel_js()
-    assert "navigator.geolocation" not in quelltext
-    assert "isSecureContext" not in quelltext
+    bereiche = []
+    for start, ende_marker in (("  ermittleGeraeteStandort() {", "  setzeFindenStandortText("), ("  editorMeinStandort() {", "  /** Zusammenfassung und Vollständigkeitspunkt"), ("  ermittleVorOrtStandort() {", "  async sucheVorOrt() {")):
+        anfang = quelltext.index(start)
+        ende = quelltext.index(ende_marker, anfang)
+        bereiche.append((anfang, ende))
+    rest = quelltext
+    for anfang, ende in sorted(bereiche, reverse=True):
+        assert "navigator.geolocation" in quelltext[anfang:ende]
+        # unsicherer Kontext wird ausdrücklich behandelt (Browser lehnen sonst
+        # ohne Freigabe-Dialog ab, siehe CHANGELOG 0.18.0)
+        assert "isSecureContext" in quelltext[anfang:ende]
+        rest = rest[:anfang] + rest[ende:]
+    assert "navigator.geolocation" not in rest
+    assert "isSecureContext" not in rest
+    # Auslösung nur über Klick-Handler
+    assert 'ziel.closest("[data-mein-standort]")' in quelltext
+    assert 'ziel.closest("[data-vorort-start]")' in quelltext and 'ziel.closest("[data-vorort-neu-standort]")' in quelltext

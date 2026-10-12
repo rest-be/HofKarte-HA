@@ -15,6 +15,369 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+## [2026.10.1] - 2026-10-12
+
+Fasst die Entwicklungsversionen `2026.10.1-dev.1` bis `dev.24` und den
+Release Candidate `2026.10.1-rc.1` zusammen: Hofladen-Discovery (Erfassen
+aus dem Netz), überarbeitete Übersicht, neue Detail- und Erfassungsmasken
+und ein neues App-Icon. Gegenüber `rc.1` ändert sich nur die Versionsnummer.
+Die KI-Auswertung wurde noch nicht mit einem lokalen Modell (Ollama) im
+Feld gemessen; ebenso fehlt ein Test auf iPhone und Mac-App.
+
+### Hinzugefügt
+
+- **Hofladen-Discovery (Open-Source-Variante)** in `custom_components/hofkarte/discovery/`:
+  Kandidaten aus OpenStreetMap (Overpass, Suchprofil `farmshop`,
+  Zusammenführen von Dubletten, Fehlerantworten werden nie als «keine Treffer»
+  gewertet oder gecacht), Bewertung nach Entfernung/Namen/Website
+  (hohe/mittlere/niedrige Sicherheit), Anreicherung aus der Website
+  (`robots.txt` beachtend, höchstens 4 Seiten, 1 s Pause) mit Herkunft je Feld
+  (`quellen`: Quelle, Status, URL, Lizenz). WebSocket-Befehle
+  `hofkarte/management/discover` und `.../enrich` (Subscription mit Ereignissen
+  `osm`, `website`, `vorlaeufig`, `ki`, `fertig`), nur für Administratoren.
+- **Optionale KI-Auswertung** über Home Assistants `ai_task.generate_data`
+  (Options-Flow-Feld «KI-Entität», leer = aus; je Ablauf ein nie
+  vorangekreuztes Kästchen mit Datenschutzhinweis). Grounding durch HofKarte:
+  nur wörtlich im Seitentext stehende Werte gelten als belegt, alles andere
+  erscheint getrennt als «Vermutung», nicht vorausgewählt, und wird als
+  `ki`/`inferred` gespeichert. Festes Schema, Eingabelimits, entschärfter
+  Seitentext, keine Werkzeuge, Zeitlimit, Ausfall ohne Folgen.
+- **Herkunft der Angaben** im Detail unter «Quellen»; OpenStreetMap-Daten mit
+  Lizenzhinweis (© OpenStreetMap-Mitwirkende, ODbL).
+- **Neu: Erfassen und Ergänzen** (Panel):
+  - Einstieg **«Hofladen erfassen»** mit drei Wegen; Dublettenprüfung vor dem
+    Speichern.
+  - **Vor Ort / Schnellerfassung:** Standort auf Klick (nur HTTPS), Treffer in
+    der Nähe mit Entfernung, Umkreis 100/250/500 m, Name, Foto (Kamera),
+    Webseite; Abschluss mit Liste «Noch offen».
+  - **Von Webseite:** Schrittanzeige Webseite → Auslesen → Prüfen, KI optional
+    und nachträglich, «Vorliegendes prüfen», Prüfansicht mit Quelle,
+    Abweichungswarnung, getrennten KI-Vermutungen und Vorschau-Karte.
+  - **Angaben ergänzen / aktualisieren:** Vergleichstabelle Aktuell · Gefunden ·
+    Status (Lücke, Abweichend, Ergänzung, Gleich); Lücken vorgewählt,
+    Abweichungen nie, Listen werden ergänzt statt ersetzt; Übernahme ins
+    Formular, gespeichert wird erst dort.
+- **Serverseitige Hofladen-Felder** `geoeffnet`, `hauptbild_url`,
+  `status_wechsel` (nächster Öffnungs-/Schliesszeitpunkt).
+- **Neues App-Icon** (`brand/icon.png` 256 px, `brand/icon@2x.png` 512 px).
+- Neue Dokumente: `RELEASE_NOTES_2026.10.1.md`,
+  `docs/detail-erfassung-umsetzungsplan.md`, `docs/detail-erfassung-inventar.md`.
+
+### Geändert
+
+- **Überarbeitete Übersicht** (Kacheln, Liste, Karte): gemeinsame Kopfzeile und
+  Steuerleiste (Suche, «Nur geöffnet», Sortierung, Ansichtsumschalter), ganze
+  Kachel anklickbar, ⋮-Menüs (Route, Bearbeiten, Löschen), Auswahlmodus mit
+  Kontextleiste (Export), sortierbare Liste mit `aria-sort`, Karte mit
+  Seitenliste, Info-Popup und Legende; Tastaturbedienung der Menüs.
+- **Neue Detailansicht** («Auf einen Blick», Schnellaktionen, sieben
+  aufklappbare Gruppen mit Kurzfassung und Vollständigkeitspunkt, «Noch
+  unvollständig» mit «Jetzt ergänzen») und **neues Bearbeitungsformular** mit
+  denselben Gruppen (Chips für Angebote, Schalter für Zahlungsarten, Öffnungszeiten
+  mit «Auf Di–Fr kopieren», feste Fussleiste mit «Ungespeichert»,
+  Abbrechen mit Rückfrage). Datenformat und Selektoren des Speicherns
+  unverändert.
+- **Zugänglichkeit:** Fokus auf die Überschrift bei Schrittwechseln,
+  Statusmeldungen mit Text für Screenreader, `aria-current` in der
+  Schrittanzeige, `prefers-reduced-motion`, Touch-Ziele ≥ 44 px.
+- Dokumentation (README, Handbuch, `docs/gui-ueberarbeitung.md`,
+  CONTRIBUTING) auf den neuen Stand gebracht; README-Status auf
+  «Release Candidate».
+- Der frühere Suchdialog bleibt als «Erweiterte Suche» erhalten.
+
+### Behoben
+
+- Deckende ⋮-Menüs in Themes mit halbtransparenten Kartenfarben.
+- Tests: `pyflakes` ohne Findings (Fixture-Import in `test_discovery_llm.py`).
+
+### Hinweise
+
+- Version und Panel-Version (`PANEL_BUILD`) lauten `2026.10.1`; nach dem
+  Update Home Assistant neu starten und das Panel im Browser hart neu laden.
+- Der Testlauf zeigt 4 bekannte Altfehler, die nur in der Sandbox
+  (Home Assistant 2024.3 statt ≥ 2025.1) auftreten:
+  `test_options_flow_rejects_radius_out_of_range`,
+  `test_ws_import_commit_ohne_eingerichtete_integration_sendet_fehler`,
+  `test_ws_import_commit_ohne_eintraege_sendet_fehler`,
+  `test_ws_osm_info_liefert_ermittelte_orte`.
+
+<details>
+<summary>Entwicklungsverlauf 2026.10.1-dev.1 bis dev.24 (Einzeleinträge)</summary>
+
+### Geändert (2026.10.1-dev.24) – App-Icon, Release-Entwurf
+
+- **Neues Icon** (Karotte als Kartenmarker auf Feldern): `brand/icon.png` (256 × 256) und `brand/icon@2x.png` (512 × 512) ersetzt (bisher 1254 × 1254 px, unnötig gross).
+- Neu: `RELEASE_NOTES_2026.10.1.md` als **Entwurf** (Phase 9 bleibt offen: KI-Messung mit Ollama, Test auf iPhone/Mac, Versionsentscheid, RC).
+
+### Geändert (2026.10.1-dev.23) – Detail & Erfassung, Phase 8 (Zugänglichkeit, Doku, Aufräumen)
+
+- **Fokusführung:** Beim Wechsel eines Schritts (Einstieg, Schnellerfassung, Webseite, Abgleich) springt der Fokus auf die Seitenüberschrift; sie bleibt dort, auch wenn ein asynchrones Ergebnis (Standort, Suche, Auslesen) neu zeichnet. Überschriften sind fokussierbar (`tabindex="-1"`).
+- **Screenreader:** Statusmeldungen der Abläufe tragen neben dem Symbol einen Text («Erledigt:», «Hinweis:», `.sr-nur`); Symbole sind `aria-hidden`. Schrittanzeige mit `aria-current="step"`, Auswahlfelder im Abgleich mit Namen.
+- **Kontrast:** Der aktive Schritt verwendet die Textfarbe auf Primärfarbe des Themes (`--text-primary-color`).
+- **Bewegung:** Es gibt nur noch eine Animation (Gruppenpfeil); sie respektiert `prefers-reduced-motion` (per Test abgesichert).
+- **Doku:** README, Handbuch (Kapitel 4: «Hofladen erfassen», «Angaben ergänzen und aktualisieren», Detail/Bearbeiten neu), `docs/gui-ueberarbeitung.md` (Abschnitt «Detail & Erfassung»), CONTRIBUTING (Testanzahl).
+- **Aufräumen:** ungenutzte Methode `websiteLinkBlock` und der nicht mehr genutzte Parameter `ohneStandort` entfernt. Der Suchdialog bleibt bewusst als «Erweiterte Suche» erhalten (Koordinaten von Hand, Umkreis bis 5 km, erweiterte Tags).
+- Neue Tests: `test_static_panel_js_a11y.py` (4).
+
+### Geändert (2026.10.1-dev.22) – Detail & Erfassung, Phase 7 (Szenario 3: Ergänzen/Aktualisieren)
+
+- Neuer Ablauf **«Angaben ergänzen»** für bestehende Hofläden, erreichbar über den Knopf im Detail, den Hinweis «Noch unvollständig → Jetzt ergänzen» und «Jetzt ergänzen» auf der «Noch offen»-Seite nach der Schnellerfassung. **Schritt 1:** Vollständigkeit (Prozent, Balken, was noch offen ist) und «Verglichen mit»: Webseite (Adresse anpassbar), OpenStreetMap (am Standort des Hofladens, nur bei sicherem Treffer), KI optional mit Datenschutzhinweis. «Von Hand bearbeiten» bleibt jederzeit möglich.
+- **Schritt 2 «Vergleichen»:** Zeile für Zeile **Angabe · Aktuell · Gefunden · Status** mit Quelle. Status: **Lücke** (fehlt bisher), **Abweichend**, **Ergänzung** (Liste enthält Neues), **Gleich** (nur unter «Alle»). Filter «Nur Unterschiede / Alle», «Nur Lücken füllen», «Nichts wählen», feste Fussleiste «Auswahl übernehmen (n)».
+- **Regeln:** Lücken sind vorgewählt, **Abweichungen und Ergänzungen nie**. Bestehende Angaben werden nur mit ausdrücklicher Wahl ersetzt; Angebote/Zahlungsarten werden **ergänzt, nie ersetzt**. Koordinatenunterschiede bis 25 m gelten als gleich. Bei ergänzten Listen wird keine (falsche) Einzelquelle gesetzt. KI-Ergebnisse erscheinen nachträglich, ohne die Auswahl zu ändern; KI-Vermutungen werden hier nicht übernommen (Hinweis auf den Ablauf «Von Webseite»).
+- Die Übernahme öffnet den Editor mit den gewählten Werten als «Ungespeichert»; gespeichert wird erst dort.
+- Detail: neuer Knopf «Angaben ergänzen» in der Kopfzeile. «Jetzt ergänzen» in Detail und nach der Schnellerfassung führt in den Abgleich (statt direkt in den Editor; Zurück landet im Detail).
+- Neue Tests: `test_static_panel_js_ergaenzen.py` (8); angepasst: `test_static_panel_js_gruppen.py`, `test_static_panel_js_vorort.py`.
+
+### Geändert (2026.10.1-dev.21) – Detail & Erfassung, Phase 6 (Szenario 2: Von Webseite)
+
+- **«Ich habe eine Webseite»** führt jetzt durch einen eigenen Ablauf mit Schrittanzeige **Webseite → Auslesen → Prüfen** (statt des Suchdialogs). Ist eine KI-Entität eingerichtet, erscheint zuerst die Wahl mit **Datenschutzhinweis** (Text geht an die gewählte Entität; Standard: aus); sonst wird sofort ausgelesen.
+- **Auslesen:** Fortschritt je Quelle (Webseite, KI). Bei KI-Auswertung kann das bereits Vorliegende vorab mit **«Vorliegendes prüfen»** angesehen werden; die KI-Ergebnisse erscheinen nachträglich, ohne die bereits getroffene Auswahl zu ändern (Hinweis «Die KI-Auswertung ist fertig»).
+- **Prüfen:** Feld für Feld mit Auswahlfeld, Quelle (Link) und Abweichungswarnung; **Vermutungen der KI getrennt, markiert und nie vorausgewählt**; **Vorschau-Karte** (rechts, mobil darunter) mit den gewählten Angaben; **«In Formular übernehmen (n)»** öffnet den Editor mit Herkunftsangaben (KI-Vermutungen als «inferred»). Nichts gefunden / Webseite gesperrt / Fehler: verständliche Meldung, «Erneut versuchen» bzw. «Von Hand erfassen» (Webseite wird übernommen).
+- Server: `hofkarte/management/enrich` sendet bei KI-Auswertung zusätzlich das Ereignis `vorlaeufig` (Zwischenstand vor der KI); bestehende Clients ignorieren es.
+- Intern: `uebernehmeVorschlag()` gemeinsam für Suchdialog und Webseiten-Ablauf. Neue Tests: `test_static_panel_js_webseite.py` (8), angepasst: `test_discovery_llm.py`, `test_static_panel_js_erfassen.py`.
+
+### Geändert (2026.10.1-dev.20) – Detail & Erfassung, Phase 5 (Szenario 1: Vor Ort / Schnellerfassung)
+
+- **«Ich stehe vor dem Hofladen»** startet jetzt einen eigenen, mobil-ersten Ablauf statt des bisherigen Suchdialogs. **Schritt 1:** Der Gerätestandort wird auf den ausdrücklichen Klick hin ermittelt (mit Genauigkeit); danach erscheint die Liste «In der Nähe» mit Entfernung, dem Hinweis «Wahrscheinlich dieser» beim besten Treffer und der Warnung «Möglicherweise schon erfasst». Der Umkreis lässt sich per Chips (100/250/500 m) ändern; «Keiner davon, neu erfassen» führt direkt zur Erfassung. Verweigerter Standort, unsichere Verbindung und fehlgeschlagene Suche zeigen verständliche Hinweise mit «Erneut versuchen».
+- **Schritt 2 «Schnell erfassen»:** Name (Pflicht, bei Treffer vorbelegt), übernommener Standort, **Foto aufnehmen** (Kamera auf dem Telefon), Webseite (optional), Speichern. Übernommene OpenStreetMap-Angaben werden mit Quelle und Lizenz (ODbL) vermerkt. Doppelte Hofläden werden vor dem Speichern abgefragt; ein nicht gespeichertes, hochgeladenes Foto wird beim Abbrechen wieder entfernt.
+- **Abschluss «Gespeichert»** mit Liste **«Noch offen»** (Öffnungszeiten, Angebote, Zahlungsarten, Foto) sowie «Jetzt ergänzen» (öffnet den Editor) und «Fertig».
+- Intern: Bild-Upload in `uploadeBildDatei()` ausgelagert (Editor und Schnellerfassung nutzen ihn gemeinsam); Standortabfrage ist nun in drei Funktionen erlaubt, jeweils nur auf Klick. Neue Tests: `test_static_panel_js_vorort.py` (10).
+
+### Geändert (2026.10.1-dev.19) – Detail & Erfassung, Phase 4 (Einstieg «Hofladen erfassen»)
+
+- Die beiden Kopfzeilen-Knöpfe «Hofladen finden» und «Hofladen» sind durch einen Knopf **«Hofladen erfassen»** ersetzt. Er öffnet eine Einstiegsseite mit drei Wegen: **Ich stehe vor dem Hofladen** (Standort verwenden, optional Name; öffnet den bisherigen Suchdialog mit dem Namen vorbelegt), **Ich habe eine Webseite** (Webseite einfügen; «Auslesen» ist nur bei einer gültigen http(s)-Adresse aktiv und wertet die Webseite direkt aus, ohne Standortabfrage; Enter im Feld genügt) und **Von Hand erfassen** (leeres Formular). Schliesst man den Suchdialog, landet man wieder auf der Einstiegsseite.
+- Beim Speichern eines **neuen** Hofladens wird geprüft, ob es ihn schon gibt (gleicher Name oder Hofladen im Umkreis von 100 m); bei einem Treffer erscheint eine Rückfrage («Möglicherweise schon erfasst: … Trotzdem speichern?»). Das gilt jetzt auch für die Erfassung von Hand und gilt nicht beim Bearbeiten bestehender Hofläden.
+- Intern: Der bisherige Dialog «Hofladen finden» bleibt unverändert und wird in den Phasen 5 und 6 durch die Schnellerfassung vor Ort bzw. den Webseiten-Ablauf mit Prüfansicht ersetzt.
+
+### Geändert (2026.10.1-dev.18) – Detail & Erfassung, Phase 3 (Bearbeiten neu)
+
+- Das Bearbeitungsformular verwendet dieselben sieben einklappbaren Gruppen in derselben Reihenfolge wie die Detailansicht (Grunddaten inkl. Bewertung und interner Bemerkung · Adresse & Standort · Kontakt & Webseite · Öffnungszeiten · Angebote & Zahlungsarten · Bilder · Herkunft der Angaben, dort nur lesend). Standardmässig offen: Grunddaten, Adresse & Standort, Angebote & Zahlungsarten. Zusammenfassung und Vollständigkeitspunkt jeder Gruppe werden beim Tippen laufend nachgeführt.
+- «Automatisch ausfüllen» ist jetzt eine kompakte Leiste oben (gleiche Funktion, gleiche Prüfung vor der Übernahme); der Suchradius liegt in einem Aufklappbereich.
+- Angebote werden als Chips mit × bearbeitet (Enter oder «Hinzufügen», doppelte Einträge werden ignoriert). Zahlungsarten haben Schalter für Bargeld, TWINT und Karte; weitere Einträge erscheinen als Chips. Gespeichert wird weiterhin wie bisher (ein Eintrag pro Zeile im versteckten Feld).
+- Öffnungszeiten: «Auf Di–Fr kopieren» beim Montag übernimmt Modus und Zeiten auf Dienstag bis Freitag.
+- Neu: «Mein Standort verwenden» trägt Latitude/Longitude des Geräts ein (nur auf Klick, braucht HTTPS bzw. Freigabe). «Bewertung zurücksetzen» als eigener Knopf.
+- Feste Fussleiste mit «Ungespeicherte Änderungen», Abbrechen (mit Rückfrage, wenn etwas geändert wurde) und Speichern.
+- Fehlermeldungen beim Speichern und ein leeres Pflichtfeld öffnen die betroffene Gruppe automatisch.
+
+### Geändert (2026.10.1-dev.17) – Detail & Erfassung, Phase 2 (Detailansicht neu)
+
+- Die Detailansicht ist neu gegliedert: oben der Block «Auf einen Blick» (Hauptbild, Name, Status, Sterne, Adresse und Schnellaktionen Route / Anrufen / Webseite / E-Mail, jeweils nur wenn vorhanden), darunter die sieben einklappbaren Gruppen aus dem gemeinsamen Gruppenmodell (Grunddaten, Adresse & Standort, Kontakt & Webseite, Öffnungszeiten, Angebote & Zahlungsarten, Bilder, Herkunft der Angaben). Jede Gruppe zeigt eingeklappt eine Kurzzusammenfassung und einen Vollständigkeitspunkt (✓ / ½ / leer). Bilder und Herkunft sind standardmässig eingeklappt, «Alle ausklappen/einklappen» schaltet alle Gruppen.
+- Hinweis «Noch unvollständig: …» mit «Jetzt ergänzen» (öffnet vorerst das Bearbeitungsformular; der Abgleich folgt in Phase 7).
+- Öffnungszeiten: der heutige Wochentag ist markiert; Sonderöffnungszeiten stehen in derselben Gruppe.
+- Status mit Uhrzeit: «Offen bis 16:00» bzw. «Geschlossen · öffnet Mo 08:00». Dafür liefert der Server in `hofkarte/management/list` ein neues Feld `status_wechsel` (berechnet mit denselben Funktionen wie die Sensoren «Nächste Öffnung/Schliessung»); ohne Feld oder bei unbekanntem Status bleibt es bei «Geöffnet/Geschlossen/Unbekannt». Das Feld ist nicht Teil des Exports.
+- ⋮-Menü in der Detailansicht mit «Löschen …»; «Bearbeiten» bleibt als Knopf in der Kopfzeile.
+
+### Hinzugefügt (2026.10.1-dev.16) – Detail & Erfassung, Phase 1 (Gruppenmodell)
+
+- Gemeinsame Bausteine für Detail und Bearbeiten: sieben Gruppen in fester Reihenfolge (Grunddaten · Adresse & Standort · Kontakt & Webseite · Öffnungszeiten · Angebote & Zahlungsarten · Bilder · Herkunft der Angaben), einklappbar (Knopf mit `aria-expanded`, Tastatur Enter/Leertaste), mit Kurzzusammenfassung im eingeklappten Zustand und Vollständigkeitspunkt (✓ / ◐ / ○ mit Text, nicht nur Farbe). «Alle ausklappen/einklappen» schaltet alle Gruppen. Der Zustand gilt je Maske für die Sitzung. Die Vollständigkeit wird nur zur Anzeige berechnet. Noch nicht in Detail/Bearbeiten eingebunden (folgt in Phase 2 und 3), daher für Anwender noch keine sichtbare Änderung.
+- Plan und Testinventar: `docs/detail-erfassung-umsetzungsplan.md`, `docs/detail-erfassung-inventar.md`.
+
+### Geändert (2026.10.1-dev.15)
+
+- «Auswählen» / «Auswahl beenden» liegt jetzt im ⋮-Menü oben rechts (nur in der Kachelansicht) statt in der Steuerleiste; die Steuerleiste ist damit in allen drei Ansichten identisch und spart Platz. Liste und Karte unverändert.
+
+### Geändert (2026.10.1-dev.14) – GUI-Überarbeitung, Phase 5 (Feinschliff)
+
+- Behoben: Das ⋮-Menü der Kacheln war weiterhin durchsichtig, wenn das HA-Theme halbtransparente Kartenfarben oder Verläufe als Hintergrund nutzt. Das Menü berechnet beim Öffnen eine deckende Farbe aus den Hintergründen der Elternelemente; ein offenes Kachelmenü liegt zudem über den Nachbarkacheln.
+- Tastatur/Zugänglichkeit: Menüs öffnen per Tastatur mit Fokus auf dem ersten Eintrag; Pfeil hoch/runter, Pos1 und Ende bewegen den Fokus (WAI-ARIA Menu Pattern); Escape schliesst und gibt den Fokus zurück.
+- Doku: README und Handbuch beschreiben die überarbeitete Übersicht (Steuerleiste, Kacheln, Liste, Karte, Auswahlmodus, Tastatur).
+- Tests: 2 neue jsdom-Tests (deckendes Menü, Tastaturbedienung).
+
+### Geändert (2026.10.1-dev.13) – GUI-Überarbeitung, Phase 4 (Karte)
+
+- Karte: Seitenliste mit allen Treffern (gleiche Suche, «Nur geöffnet» und Sortierung wie Kacheln/Liste) neben der Karte; auf schmalen Bildschirmen Karte oben, Liste darunter.
+- Synchronisierung: Eintrag in der Liste wählen zentriert die Karte und öffnet das Popup (bei Clustern wird zum Marker gezoomt); Marker anklicken hebt den Eintrag in der Liste hervor. Hofläden ohne Koordinaten bleiben in der Liste (Details), erscheinen aber nicht auf der Karte.
+- Info-Karte im Popup: Name, Adresse, Status, Bewertung, «Details» und «Route».
+- Legende der Markerfarben (Geöffnet / Geschlossen / Unbekannt); Kartenhöhe 560 px.
+- Tests: 2 neue jsdom-Tests mit echtem Leaflet.
+
+### Geändert (2026.10.1-dev.12) – GUI-Überarbeitung, Phase 3 (Liste)
+
+- Liste: Spalten Auswahl · Name & Adresse · Ort · Status · Bewertung · ⋮-Aktionen; Sortierköpfe mit `aria-sort`, feststehender Tabellenkopf, Hover- und Auswahl-Hervorhebung. Auf schmalen Bildschirmen entfallen Ort und Bewertung.
+- Kopf-Checkbox wählt alle sichtbaren (gefilterten) Hofläden, mit Teilzustand.
+- Je Zeile dasselbe ⋮-Menü wie in den Kacheln (Route, Bearbeiten, Löschen zuunterst); ein gemeinsamer Aufbau (`aktionenMenueHtml`). Neue Sortieroption «Ort».
+- Behoben: Das ⋮-Menü (Kachel, Liste, Kopfzeile) war in manchen HA-Themes durchsichtig; es hat jetzt einen deckenden Hintergrund.
+
+### Geändert (2026.10.1-dev.11) – GUI-Überarbeitung, Phase 2 (Kacheln)
+
+- Kacheln: die ganze Kachel ist klickbar (öffnet die Details); Aktionen Route (Google/Apple Maps), Bearbeiten und Löschen liegen im ⋮-Menü der Kachel (Löschen zuunterst, rot, mit bestehender Rückfrage). Es ist immer nur ein Kachelmenü offen; Schliessen per Klick daneben oder Escape.
+- Auswahl: Checkboxen erscheinen nur im neuen «Auswählen»-Modus (Schalter in der Steuerleiste); gewählte Kacheln sind hervorgehoben, die Kontextleiste (Export) bleibt im Modus sichtbar.
+- Raster `repeat(auto-fill, minmax(260px, 1fr))`, einheitliche Kopfzeile je Kachel (Name, Adresse, Status, Bewertung, Webseite).
+- Tests: Anpassung bestehender Kacheltests, 2 neue Tests.
+
+### Geändert (2026.10.1-dev.10) – GUI-Überarbeitung, Phase 1
+
+- Übersicht (Kacheln, Liste, Karte): gemeinsame **Kopfzeile** („Hofladen finden“,
+  „+ Hofladen“, ⋮-Menü mit Import) und gemeinsame **Steuerleiste** mit Suche, Filter
+  „Nur geöffnet“, Sortierung (Spalte + Richtung) und Ansichtsumschalter mit Icons.
+- Suche, „Nur geöffnet“ und Sortierung gelten jetzt in **allen drei Ansichten** und
+  bleiben beim Wechsel der Ansicht erhalten (Karte: filtert die Marker). Der Filter
+  „Nur geöffnet“ der Karte ist damit der gemeinsame Filter; die Suche war bisher nur
+  in der Liste vorhanden. Standardsortierung ist Name aufsteigend (vorher in der Liste
+  unsortiert, solange keine Spalte gewählt war).
+- Export: neue **Kontextleiste** („n ausgewählt · Alle auswählen · Auswahl aufheben ·
+  Export“), nur sichtbar, wenn etwas gewählt ist; „Alle auswählen“ wählt nur die
+  gefilterten Hofläden. Import liegt im ⋮-Menü.
+- Zähler („3 von 8 Hofläden“) und Leerzustand „Keine Treffer“ mit „Filter
+  zurücksetzen“; Teil-Updates beim Tippen (Fokus bleibt erhalten).
+- Touch-Ziele ≥ 44 px, sichtbarer Fokus, ⋮-Menü per Escape/Klick daneben schliessbar.
+- Tests: `tests/test_static_panel_js_uebersicht.py` (7 Verhaltenstests).
+
+### Geändert (2026.10.1-dev.9)
+
+- „Hofladen finden“, Schritt 1: Ist keine KI-Entität gewählt, zeigt der
+  Dialog statt nichts einen Hinweis, wie die KI-Auswertung aktiviert wird
+  (zuvor fehlte das Kästchen dann ohne Erklärung).
+
+### Hinzugefügt (2026.10.1-dev.8, Hofladen-Discovery Phase 4: optionale KI)
+
+- **Optionale KI-Auswertung** in „Hofladen finden“ über Home Assistants
+  `ai_task.generate_data` (kein eigenes Provider-System, keine
+  Zugangsdaten). Aktivierung zweistufig: Options-Flow-Feld
+  **KI-Entität** (leer = aus) und Kästchen „Website-Text mit KI
+  auswerten“ je Suche (nie vorangekreuzt, nennt die Entität und den
+  Datenabfluss).
+- Die KI ergänzt nur Angebote, Zahlungsarten und Öffnungszeiten. **Grounding
+  durch HofKarte:** nur wörtlich im Seitentext stehende Werte gelten als
+  belegt (`website_ki`, `confirmed`); unbelegte erscheinen getrennt als
+  „Vermutungen“, nicht vorausgewählt, und werden als `ki`/`inferred`
+  gespeichert. Öffnungszeiten nur mit belegtem Ausschnitt, den der
+  bestehende Parser versteht.
+- Schutz: festes Schema (drei Felder), Eingabelimits, entschärfter
+  Seitentext (6 000/15 000 Zeichen), keine Werkzeuge, 60 s Zeitlimit,
+  Ausfall ohne Folgen. Test für Prompt-Injection.
+- `ws_enrich` akzeptiert `ki`; `ws_settings` liefert `ki_entitaet`;
+  neues Ereignis `ki`.
+
+### Dokumentation (2026.10.1-dev.7, Phase 6)
+
+- `SECURITY.md`: neuer Abschnitt „Hofladen finden“ mit den beiden neuen
+  Ausnahmen (mehrseitiger Website-Abruf mit `robots.txt`, Standort des
+  Geräts im Browser) und den Schutzmassnahmen.
+- `README.md`, `docs/handbuch.md`: Anleitung „Hofladen finden“,
+  Datenschutz-Abschnitt (sechs statt vier Ausnahmen), Einschränkungen.
+- `docs/architecture.md`: Abschnitt „Hofladen-Discovery“.
+- `CONTRIBUTING.md`: Teststand aktualisiert.
+
+### Behoben (2026.10.1-dev.6)
+
+- Dialog „Hofladen finden“, Schritt 2 und 3: Radio-Button bzw. Checkbox
+  wurden durch die globale Regel `input{width:100%}` auf volle Breite
+  gezogen, der Text rutschte an den rechten Rand und war nicht lesbar.
+  Auswahlelemente haben jetzt feste Breite, der Text nutzt die restliche
+  Zeile (in Chromium bei 1000 und 380 px Breite geprüft).
+
+### Geändert (2026.10.1-dev.5)
+
+- Die Kopfzeile des Verwaltungs-Panels zeigt die geladene Panel-Fassung
+  („Panel 2026.10.1-dev.5“). So lässt sich ohne Entwicklerwerkzeuge
+  prüfen, ob der Browser/die App das aktuelle Panel-Skript verwendet
+  (veralteter Cache). Neue Versionsnummer erzwingt zugleich eine neue
+  Skript-URL (`?v=`).
+
+### Hinzugefügt (2026.10.1-dev.4, Hofladen-Discovery Phase 5: Oberfläche)
+
+- **Dialog „🔎 Hofladen finden“** im Verwaltungs-Panel (Listenansicht,
+  neben „+ Neuer Hofladen“), drei Schritte:
+  1. *Suchen:* Name und Website optional, Koordinaten, Umkreis (50 m bis
+     5 km, Standard 2 km), erweiterte Suche. Beim Öffnen wird der
+     **aktuelle Standort des Geräts** übernommen (Browser-Geolocation, mit
+     Freigabe-Abfrage); ohne Freigabe/HTTPS bleibt der Standort der
+     Home-Assistant-Installation eingetragen. Gesucht wird nie
+     automatisch, sondern erst auf „Suchen“.
+  2. *Kandidat wählen:* sortiert nach Score mit Konfidenz und Gründen
+     (Nähe, Name, Website); Hinweis, wenn der Hofladen schon erfasst sein
+     könnte; „Manuell erfassen“ und – bei angegebener Website – „Nur
+     Website auswerten“ als Ausweg bei Lücken in OpenStreetMap.
+  3. *Angaben prüfen:* Live-Fortschritt der Anreicherung, je Feld Quelle
+     (mit Link), Hinweis bei abweichenden Quellen, Auswahl per Häkchen;
+     „In Formular übernehmen“ öffnet das normale Bearbeitungsformular.
+     Der Dialog speichert nichts.
+- **Neues optionales Feld `quellen`** im Hofladen (Herkunft je Feld:
+  `feld`, `quelle`, `status`, `url`, `lizenz`), validiert (bekannte
+  Felder, nur http(s)-URLs, höchstens eine Angabe je Feld, höchstens 20),
+  abwärtskompatibel (leer bei allen bestehenden Hofläden). Das Panel
+  behält die Herkunft eines Feldes nur, solange es nach der Übernahme
+  nicht von Hand geändert wurde. Die Detailansicht zeigt einen Abschnitt
+  „Herkunft der Angaben“ (mit ODbL-Hinweis für OpenStreetMap).
+- Geändert: Der Regressionstest `test_panel_js_verwendet_keine_geolocation_api_mehr`
+  (Issue #3, Geräte-Entfernung bleibt entfernt) wurde zu
+  `…_nur_fuer_den_finden_dialog`: die Browser-Geolocation darf jetzt
+  ausschliesslich in `ermittleGeraeteStandort()` vorkommen, inklusive
+  ausdrücklicher Prüfung auf einen sicheren Kontext (HTTPS/localhost).
+
+### Hinzugefügt (2026.10.1-dev.3, Hofladen-Discovery Phase 3: Anreicherung)
+
+- **WebSocket-Befehl `hofkarte/management/enrich`** (nur Administratoren,
+  Subscription, deterministisch, ohne KI): reichert einen Kandidaten
+  (Ergebnis von `discover`) und/oder eine Website-Adresse an. Das
+  Ergebnis bestätigt die Subscription, danach folgen Ereignisse
+  `osm` → `website` → `fertig`; `fertig` enthält den Vorschlag im
+  bestehenden Hofladen-Format mit `quellen` je Feld und `abweichungen`.
+  Gespeichert wird nichts. Probleme bei der Website stehen als `status`
+  im Ereignis `website` und brechen nichts ab. Fehlercodes `not_ready`,
+  `invalid_format`.
+- **`discovery/website.py`:** konservativer Mehrseiten-Abruf. `robots.txt`
+  wird vor jedem Abruf ausgewertet (RFC 9309: 4xx = erlaubt, 5xx oder
+  Netzwerkfehler = nichts abrufen, `Disallow` für `HofKarte`/`*`
+  respektiert), eigener User-Agent mit Projekt-URL, höchstens 4 Seiten
+  (Startseite plus Kontakt-/Öffnungszeiten-/Laden-Links desselben Hosts,
+  eine Ebene), Pause zwischen Seiten, keine Dateien/Logins. SSRF-Schutz
+  und Extraktion von `webseite_info.py` werden wiederverwendet.
+- **`discovery/provenance.py`:** Zusammenführung von OSM und Website mit
+  Quellenpriorität je Feld (OSM-Angaben tragen „© OpenStreetMap-
+  Mitwirkende (ODbL)“). Beschreibungstexte werden nicht übernommen.
+- `webseite_info._hole_html` akzeptiert optional `headers` und
+  `erlaubte_typen`; `WebseiteNichtErreichbarError.status` trägt den
+  HTTP-Status. Ohne diese Angaben unverändertes Verhalten.
+- Noch nicht enthalten: das persistente Feld `quellen` im gespeicherten
+  Hofladen-Modell (folgt als eigener Schritt, zusammen mit der
+  Oberfläche).
+
+### Hinzugefügt (2026.10.1-dev.2, Hofladen-Discovery Phase 2: Bewertung)
+
+- **`discovery/scoring.py`:** Kandidaten werden mit einem Score (0..1) und
+  einer Konfidenz („hoch“/„mittel“/„niedrig“) bewertet. Signale: Nähe
+  (bis 25 m volle Punktzahl, danach glatter Abfall), Namensähnlichkeit
+  (nur eines von mehreren Signalen, da OSM-Namen oft vom Betriebsnamen
+  abweichen), Website-Domain (stark, namensunabhängig). Bei ≤ 25 m
+  mindestens 0,85; unbenannte Kandidaten werden nicht abgewertet.
+  Schwellen sind Startwerte, kalibriert an den Messdaten (Phase 0);
+  der Name verbessert bei grossem Koordinatenversatz die Trefferlage
+  gegenüber reiner Distanz.
+- `hofkarte/management/discover` nimmt optional `name` und `website`
+  entgegen und liefert pro Kandidat `score`, `konfidenz` und `signale`;
+  die Liste ist nach Score sortiert (ohne Angaben: nach Nähe).
+
+### Hinzugefügt (2026.10.1-dev.1, Hofladen-Discovery Phase 1)
+
+- **Hofladen-Discovery (Open-Source-Variante, ohne KI):** neues Paket
+  `custom_components/hofkarte/discovery/` ermittelt Hofladen-Kandidaten
+  für eine Koordinate aus OpenStreetMap (Overpass) – nur Vorschläge,
+  nichts wird gespeichert.
+  - `profile.py`: Suchprofil `farmshop` als Daten. Standardfilter ist
+    nur `["shop"="farm"]` (in der Messung günstig und mit allen in OSM
+    vorhandenen Hofläden); weitere Filter nur über `erweitert=true`
+    (nicht gemessen).
+  - `overpass.py`: Query, Antwortprüfung, Kandidaten, Cache. Eine
+    Antwort mit leerem `elements` und `remark` „runtime error“ gilt als
+    Fehler (nicht als „keine Treffer“) und wird nie gecacht. Unbenannte
+    Objekte und Namensvarianten (`brand`, `operator`, `alt_name`,
+    `name:fr`, …) bleiben Kandidaten. Doppelt erfasste Objekte
+    (Gebäude + Punkt, ≤ 30 m, gleicher/ähnlicher Name, gleiche
+    Website-Domain oder ein Objekt ohne Namen) werden zu einem Kandidaten
+    zusammengeführt.
+  - `text.py` (`difflib`, keine neue Abhängigkeit) und `geo.py`.
+- **WebSocket-Befehl `hofkarte/management/discover`** (nur Administratoren):
+  `latitude`, `longitude`, optional `radius` (Standard 2 000 m, 50–5 000 m)
+  und `erweitert`. Fehlercodes `not_ready`, `invalid_coordinates`,
+  `unreachable`; keine Treffer ergeben eine leere Liste.
+- Der HTTP-Abruf (mehrere Overpass-Instanzen, Gesamtbudget, Grössenlimit)
+  wird von `osm_info.py` wiederverwendet und blieb unverändert; die
+  Funktion „Ort in der Nähe suchen“ verhält sich wie bisher.
+
+</details>
+
 ## [2026.10.0] - 2026-10-06
 
 Enthält die in den Entwicklungsversionen `2026.10.0-dev.4` bis `-dev.7`

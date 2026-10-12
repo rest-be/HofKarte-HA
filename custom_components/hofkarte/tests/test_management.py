@@ -1912,3 +1912,29 @@ async def test_ws_upload_image_mit_echter_image_upload_komponente(
     )
     assert kaputt.results == []
     assert kaputt.errors[0][1] in ("invalid_data", "upload_failed")
+
+
+def test_serialize_hofladen_status_wechsel_offen_bis_und_oeffnet() -> None:
+    from datetime import datetime, time, timezone
+
+    hofladen = Hofladen(
+        id="hof-5",
+        name="Hofladen Fünf",
+        oeffnungszeiten=(
+            Oeffnungszeit(wochentag=1, beginn=time(8, 0), ende=time(12, 0)),
+            Oeffnungszeit(wochentag=3, beginn=time(9, 30), ende=time(11, 0)),
+        ),
+    )
+    offen = _serialize_hofladen(hofladen, now=datetime(2026, 1, 5, 10, 0, tzinfo=timezone.utc))
+    assert offen["status_wechsel"] == {"art": "schliesst", "zeit": "12:00", "wochentag": 1, "heute": True}
+    zu = _serialize_hofladen(hofladen, now=datetime(2026, 1, 5, 14, 0, tzinfo=timezone.utc))
+    assert zu["status_wechsel"] == {"art": "oeffnet", "zeit": "09:30", "wochentag": 3, "heute": False}
+
+
+def test_serialize_hofladen_status_wechsel_none_ohne_oeffnungszeiten() -> None:
+    from datetime import datetime, timezone
+
+    hofladen = Hofladen(id="hof-6", name="Hofladen Sechs")
+    serialisiert = _serialize_hofladen(hofladen, now=datetime(2026, 1, 5, 10, 0, tzinfo=timezone.utc))
+    assert serialisiert["geoeffnet"] is None
+    assert serialisiert["status_wechsel"] is None

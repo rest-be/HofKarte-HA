@@ -41,6 +41,8 @@ STANDARD_ZAHLUNGSARTEN: tuple[str, ...] = (
 CONF_LISTEN_SORT_SPALTE = "listen_sort_spalte"
 CONF_LISTEN_SORT_RICHTUNG = "listen_sort_richtung"
 CONF_OSM_RADIUS_METER = "osm_radius_meter"
+# Optionale KI-Entität (Domain ``ai_task``) für "Hofladen finden"; leer = aus.
+CONF_KI_ENTITAET = "ki_entitaet"
 
 DEFAULT_LISTEN_SORT_SPALTE = "name"
 DEFAULT_LISTEN_SORT_RICHTUNG = "asc"
@@ -79,6 +81,7 @@ MAX_LAENGE_TELEFON = 40
 MAX_ANZAHL_ANGEBOTE = 50
 MAX_ANZAHL_ZAHLUNGSARTEN = 30
 MAX_ANZAHL_BILDER = 20
+MAX_ANZAHL_QUELLEN = 20  # Herkunftsangaben je Hofladen (höchstens eine je übernommenem Feld)
 MAX_ANZAHL_OEFFNUNGSZEITEN = 100
 MAX_ANZAHL_SONDEROEFFNUNGSZEITEN = 100
 MAX_IMPORT_EINTRAEGE = 500  # Datensätze je Import

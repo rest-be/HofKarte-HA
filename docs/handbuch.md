@@ -106,66 +106,81 @@ können Hofläden verwaltet werden:
 
 ### Übersicht: Kacheln, Liste oder Karte
 
-Oben auf der Übersichtsseite steht ein Umschalter
-„🔲 Kacheln“/„📋 Liste“/„🗺️ Karte“ zur Verfügung:
+Die Übersicht hat in allen drei Ansichten dieselbe **Kopf- und
+Steuerleiste**:
+
+- **Kopfzeile:** „Hofladen erfassen“ (Einstieg für neue Hofläden, siehe unten) und ein
+  ⋮-Menü mit dem Import (JSON) und – nur bei Kacheln – „Auswählen“.
+- **Suche** nach Name oder Ort, der Filter **„Nur geöffnet“** (fehlende
+  Öffnungszeiten zählen dabei **nicht** als geöffnet), die **Sortierung**
+  (Name, Adresse, Ort, Status, Bewertung; Pfeil kehrt die Richtung um)
+  und der Umschalter **Kacheln / Liste / Karte**. Suche, Filter und
+  Sortierung gelten gemeinsam für alle drei Ansichten und bleiben beim
+  Wechsel erhalten. Darunter zeigt ein Zähler „x von y Hofläden“ das
+  Ergebnis; ohne Treffer erscheint ein Hinweis mit „Filter
+  zurücksetzen“.
+
+Die drei Ansichten:
 
 - **Kacheln** (Standardansicht): eine Kachel pro Hofladen mit Hauptbild
-  (oder einem neutralen Platzhalter, falls keines hinterlegt ist),
-  Name, Adresse, anklickbarer Webseite (sofern hinterlegt und gültig),
-  einem Hinweis „🟢 Geöffnet“/„🔴 Geschlossen“/„Unbekannt“, einer ggf.
-  vergebenen Sterne-Bewertung neben diesem Status-Hinweis sowie – bei
-  hinterlegter Adresse oder gültigen Koordinaten – einer kompakten
-  Routing-Auswahl (siehe unten).
-- **Liste:** eine Tabelle mit den Spalten Name, Adresse, Status,
-  Bewertung und Route, **jede Spalte einzeln sortierbar** (Klick auf
-  die Kopfzeile, erneuter Klick kehrt die Richtung um). Welches Feld
-  beim Öffnen vorausgewählt ist, lässt sich über den Options Flow
-  dauerhaft vorgeben (siehe Kapitel 3). Ein Freitextfeld oberhalb der
-  Tabelle filtert nach Name oder Adresse; jede Zeile hat ebenfalls die
-  Routing-Auswahl.
-- **Karte:** eine eingebettete Karte mit einer Stecknadel je Hofladen
-  mit hinterlegten Koordinaten – je nach Öffnungsstatus grün
-  (geöffnet) oder grau (geschlossen) eingefärbt, sonst in der
-  bisherigen Standardfarbe. Ein Klick auf eine Stecknadel öffnet
-  ein kleines Fenster mit dem Namen des Hofladens und einem Button
-  „Zur Detailansicht“. Die Karte passt ihren Ausschnitt automatisch so
-  an, dass alle angezeigten Stecknadeln sichtbar sind. Eine Checkbox
-  „Nur aktuell geöffnete Hofläden anzeigen“ blendet Hofläden aus, die
-  gerade nicht geöffnet sind oder deren Status unbekannt ist (fehlende
-  Öffnungszeiten zählen dabei **nicht** als geöffnet). Sind für keinen
-  Hofladen Koordinaten hinterlegt, erscheint statt einer leeren Karte
-  ein entsprechender Hinweis. Die Kartenkacheln werden von
-  OpenStreetMap geladen, sobald diese Ansicht zum ersten Mal geöffnet
-  wird (siehe Kapitel 14, Datenschutz).
+  (oder neutralem Platzhalter), Name, Adresse, Öffnungsstatus
+  („🟢 Geöffnet“/„🔴 Geschlossen“/„Unbekannt“), Sterne-Bewertung und
+  anklickbarer Webseite. **Die ganze Kachel ist anklickbar** und öffnet
+  die Detailansicht. Das **⋮-Menü** der Kachel enthält Route (Google
+  Maps / Apple Maps), Bearbeiten und – zuunterst, rot – Löschen (mit
+  Rückfrage). Checkboxen erscheinen nur im **Auswahlmodus** (⋮-Menü oben
+  rechts: „Auswählen“, Beenden mit „Auswahl beenden“; nur bei Kacheln).
+- **Liste:** eine Tabelle mit Auswahl-Checkbox, Name (mit Adresse
+  darunter), Ort, Status, Bewertung und ⋮-Menü (gleiche Einträge wie
+  bei den Kacheln). Die Spaltenköpfe sind sortierbar (Klick, erneuter
+  Klick kehrt um); die Kopf-Checkbox wählt alle sichtbaren Zeilen. Auf
+  schmalen Bildschirmen entfallen Ort und Bewertung. Welches Feld beim
+  Öffnen vorausgewählt ist, lässt sich über den Options Flow vorgeben
+  (siehe Kapitel 3).
+- **Karte:** links eine Liste aller Treffer, rechts die eingebettete
+  Karte (auf Mobilgeräten Karte oben, Liste darunter) mit einer
+  Stecknadel je Hofladen mit hinterlegten Koordinaten. Die Farben (grün
+  geöffnet, grau geschlossen, sonst Standardfarbe) erklärt eine Legende
+  unter der Karte. Ein Klick auf einen Listeneintrag zentriert die Karte
+  und öffnet die Info-Karte (Name, Adresse, Status, Bewertung,
+  „Details“, „Route“); umgekehrt hebt ein Klick auf eine Stecknadel den
+  Eintrag in der Liste hervor. Hofläden ohne Koordinaten stehen in der
+  Liste („keine Koordinaten“), erscheinen aber nicht auf der Karte. Sind
+  für keinen Hofladen Koordinaten hinterlegt, erscheint statt der Karte
+  ein Hinweis. Die Kartenkacheln werden von OpenStreetMap geladen, sobald
+  diese Ansicht zum ersten Mal geöffnet wird (siehe Kapitel 14,
+  Datenschutz).
 
-In den Ansichten „Kacheln“ und „Liste“ öffnet ein Klick auf den
-**Namen** eines Hofladens direkt dessen Detailansicht (Kapitel 4
-unten) – zusätzlich zu den bestehenden Buttons
-„Details“/„Bearbeiten“/„Löschen“. In der Kartenansicht führt
-stattdessen der Button „Zur Detailansicht“ im Popup einer Stecknadel
-zum selben Ziel. Der Hinweis „Geöffnet“/„Geschlossen“ wird serverseitig
-berechnet und stimmt daher stets mit dem tatsächlichen Zustand der
-Entity „Geöffnet“ (Kapitel 5) überein.
+**Tastatur:** Das ⋮-Menü öffnet sich per Enter/Leertaste mit Fokus auf dem
+ersten Eintrag; Pfeil hoch/runter, Pos1 und Ende bewegen den Fokus,
+Escape schliesst das Menü und setzt den Fokus auf den Knopf zurück.
 
-- **Neuer Hofladen:** über die Verwaltungsseite anlegen (Name,
-  Beschreibung, Bemerkung, Adresse, PLZ/Ort, Land, Koordinaten,
-  Webseite, Öffnungszeiten, Sortiment, Bilder).
-- **Bearbeiten:** bestehenden Hofladen in der Liste auswählen, Felder
-  ändern, speichern.
-- **Details ansehen:** über den Button „Details“ eine **reine
-  Anzeigeansicht** öffnen – übersichtlich strukturiert, ohne
-  editierbare Felder. Gedacht für den schnellen Überblick, ohne
-  versehentlich etwas zu verändern. Über den Button „Bearbeiten“ in der
-  Detailansicht gelangt man bei Bedarf gezielt in den Bearbeitungsmodus.
+Der Öffnungsstatus wird serverseitig berechnet und stimmt daher stets
+mit der Entity „Geöffnet“ (Kapitel 5) überein.
+
+- **Neuer Hofladen:** über „Hofladen erfassen“ (drei Wege, siehe „Hofladen erfassen“ unten).
+- **Bearbeiten:** bestehenden Hofladen öffnen und „Bearbeiten“ wählen. Das
+  Formular hat dieselben sieben Gruppen wie die Detailansicht
+  (Grunddaten, Adresse, Kontakt, Öffnungszeiten, Angebote, Bilder,
+  Herkunft); Angebote sind Chips, Zahlungsarten Schalter. Eine feste
+  Fussleiste zeigt „Ungespeichert“ und fragt beim Abbrechen nach.
+- **Details ansehen:** Klick auf Kachel oder Zeile öffnet eine **reine
+  Anzeigeansicht**: oben „Auf einen Blick“ (Bild, Status, Sterne, Adresse,
+  Schnellaktionen), darunter die sieben Gruppen als Akkordeon mit
+  Kurzfassung und Vollständigkeitspunkt (✓ voll, ½ teilweise, leer),
+  „Alle ein-/ausklappen“, die Öffnungszeiten mit Markierung von „heute“.
+  „Noch unvollständig“ führt mit „Jetzt ergänzen“ in den Abgleich.
 - **Löschen:** Hofladen kontrolliert entfernen (inklusive des
   zugehörigen Geräts und aller Entities in Home Assistant).
 
 ### Hofläden exportieren und importieren
 
-In den Ansichten „Kacheln“ und „Liste“ steht neben jedem Hofladen eine
-Checkbox „Auswählen“ zur Verfügung (in der Listenansicht als eigene
-Spalte). Über der Übersicht erscheinen dazu passend die Buttons
-„Alle auswählen“, „Auswahl aufheben“, „⬇️ Export“ und „⬆️ Import“:
+In der Ansicht „Liste“ steht in jeder Zeile eine Auswahl-Checkbox, in
+den „Kacheln“ erscheinen die Checkboxen nach „Auswählen“ im ⋮-Menü oben rechts. Sobald
+etwas gewählt ist (bzw. im Auswahlmodus), zeigt eine Leiste die Anzahl
+und die Buttons „Alle auswählen“ (nur die gerade sichtbaren Treffer),
+„Auswahl aufheben“ und „Export“. Der Import (JSON) liegt im ⋮-Menü der
+Kopfzeile:
 
 - **Export:** Mindestens einen Hofladen auswählen und auf „⬇️ Export“
   klicken – der Browser lädt eine einzelne JSON-Datei mit allen
@@ -325,6 +340,101 @@ gemeinsam in der Statusanzeige ausgewiesen; liefert nur eine der
 beiden Quellen ein Ergebnis, öffnet sich trotzdem das
 Bestätigungs-Popup mit den Angaben der erfolgreichen Quelle.
 
+### Hofladen erfassen
+
+Der Button **„Hofladen erfassen“** oben in der Übersicht öffnet eine
+Einstiegsseite mit drei Wegen. Vor dem Speichern eines neuen Hofladens
+prüft HofKarte, ob es ihn schon gibt (gleicher Name oder Hofladen im
+Umkreis von 100 m) und fragt bei einem Treffer nach.
+
+**Weg 1 – Ich stehe vor dem Hofladen (Schnellerfassung, mobil zuerst).**
+*Schritt 1:* Mit „Standort verwenden“ wird der Standort deines Geräts
+ermittelt (Browser-Freigabe, nur über HTTPS; die Genauigkeit wird
+angezeigt). Treffer aus OpenStreetMap erscheinen unter „In der Nähe“ mit
+Entfernung; der beste Treffer trägt „Wahrscheinlich dieser“, bereits
+erfasste Hofläden werden mit „Möglicherweise schon erfasst“ markiert. Den
+Umkreis stellst du mit den Knöpfen 100 / 250 / 500 m. „Keiner davon, neu
+erfassen“ überspringt die Auswahl. Wurde der Standort verweigert oder gibt
+es keine Treffer, steht ein verständlicher Hinweis mit „Erneut versuchen“.
+*Schritt 2:* Name (Pflicht, bei einem Treffer vorbelegt), übernommener
+Standort, „Foto aufnehmen“ (auf dem Telefon öffnet sich die Kamera) und
+optional die Webseite; „Speichern“. *Abschluss:* „Gespeichert“ mit der Liste
+**„Noch offen“** (Öffnungszeiten, Angebote, Zahlungsarten, Foto) und den
+Knöpfen „Jetzt ergänzen“ und „Fertig“. Übernommene OpenStreetMap-Angaben
+werden mit Quelle und Lizenz vermerkt.
+
+**Weg 2 – Ich habe eine Webseite.** Schrittanzeige *Webseite → Auslesen →
+Prüfen*. Ist eine KI-Entität eingerichtet, kommt zuerst eine Wahl mit
+Datenschutzhinweis (Kästchen „Text der Webseite mit KI auswerten“, nie
+vorangekreuzt); sonst wird sofort ausgelesen. Beim *Auslesen* siehst du den
+Fortschritt je Quelle; mit KI lässt sich das bereits Vorliegende vorab mit
+„Vorliegendes prüfen“ ansehen, die KI-Ergebnisse folgen später und ändern
+deine Auswahl nicht. In der *Prüfansicht* steht jede Angabe (Name, Adresse,
+Webseite, Telefon, E-Mail, Öffnungszeiten, Angebote, Zahlungsarten) mit
+Auswahlfeld, Quelle (als Link) und – falls die Quellen voneinander abweichen –
+einer Warnung. **Vermutungen der KI** stehen getrennt, sind **nie
+vorausgewählt** und werden, wenn du sie übernimmst, als „vermutet“ vermerkt.
+Rechts (mobil darunter) zeigt die **Vorschau**, was übernommen würde.
+„In Formular übernehmen (n)“ öffnet das Formular; erst dort speicherst du.
+Ist nichts Verwertbares zu finden (z. B. `robots.txt` sperrt), erscheint
+eine Meldung mit „Von Hand erfassen“ (die Webseite wird übernommen).
+
+**Weg 3 – Von Hand erfassen.** Leeres Formular.
+
+Die **„Erweiterte Suche (Koordinaten, KI …)“** auf der Einstiegsseite öffnet
+den früheren Suchdialog mit Koordinatenfeldern, Umkreis bis 5 km und
+erweiterter Suche. Eine Beschreibung wird nie automatisch erzeugt.
+
+### Angaben ergänzen und aktualisieren
+
+Für einen **bestehenden** Hofladen gleicht „Angaben ergänzen“ (Knopf im
+Detail, Hinweis „Noch unvollständig → Jetzt ergänzen“ oder „Noch offen“ nach
+der Schnellerfassung) fehlende oder veraltete Angaben mit Webseite und/oder
+OpenStreetMap ab.
+
+*Schritt 1 – Quellen:* Die Vollständigkeit (Prozent, was noch offen ist) wird
+angezeigt. „Verglichen mit“: Webseite (Adresse änderbar), OpenStreetMap (am
+Standort des Hofladens; nur bei einem sicheren Treffer) und – falls
+eingerichtet – KI (mit Datenschutzhinweis, nie vorangekreuzt). „Von Hand
+bearbeiten“ öffnet direkt das Formular.
+
+*Schritt 2 – Vergleichen:* Pro Angabe siehst du **Aktuell**, **Gefunden**,
+die Quelle und einen **Status**:
+
+| Status | Bedeutung | Vorauswahl |
+|---|---|---|
+| Lücke | bisher nichts erfasst, gefunden wurde etwas | ja |
+| Abweichend | andere Angabe als bisher | nie |
+| Ergänzung | Liste (Angebote, Zahlungsarten) enthält Neues | nie |
+| Gleich | stimmt überein (Koordinaten bis 25 m) | nur unter „Alle“ sichtbar |
+
+Filter „Nur Unterschiede / Alle“, „Nur Lücken füllen“, „Nichts wählen“.
+„Auswahl übernehmen (n)“ in der festen Fussleiste öffnet das Formular mit den
+gewählten Werten als „Ungespeichert“; **ohne ausdrückliche Wahl wird nichts
+überschrieben**, und Angebote/Zahlungsarten werden ergänzt, nie ersetzt. KI-Vermutungen
+übernimmt der Abgleich nicht; dafür dient der Weg „Ich habe eine Webseite“.
+
+**Optional: KI-Auswertung.** Unter Einstellungen → Geräte & Dienste →
+HofKarte → Konfigurieren kannst du eine „AI Task“-Entität wählen (leer =
+aus). Die Abläufe nennen die Entität: Der Text der Website wird dorthin
+gesendet und verlässt je nach Anbieter dein Netzwerk (bei lokalen Modellen
+wie Ollama nicht). Was die KI nennt und **wörtlich auf der Seite steht**,
+erscheint bei den normalen Angaben mit dem Vermerk „Website (KI-gestützt)“.
+Antwortet die KI nicht, zu langsam oder unbrauchbar, bleibt das Ergebnis
+ohne KI.
+
+**Hinweise.** Die Website wird nur gelesen, wenn ihre `robots.txt` das
+erlaubt (höchstens 4 Seiten, mit Pause). Die Quellen der übernommenen
+Angaben stehen später in der Detailansicht unter „Quellen“.
+OpenStreetMap-Angaben stammen von © OpenStreetMap-Mitwirkenden (ODbL).
+Fehlermeldungen („Dienst nicht erreichbar“, „robots.txt sperrt“) erscheinen
+direkt in der Ansicht.
+
+**Bedienung ohne Maus.** Alle Abläufe sind per Tastatur bedienbar; beim
+Wechsel eines Schritts springt der Fokus auf die Überschrift, Schritte und
+Statusmeldungen sind für Screenreader beschriftet, und Animationen
+respektieren die Systemeinstellung «Bewegung reduzieren».
+
 ## 5. Entities
 
 Für **jeden** Hofladen legt HofKarte automatisch folgende sechs
@@ -426,9 +536,10 @@ Speichern kontrollieren. Der Button ist ausgegraut/deaktiviert, solange
 keine gültigen Koordinaten eingegeben sind. Die Kartenansicht ist rein
 informativ – es lassen sich dort keine Daten verändern.
 
-**Route zum Hofladen öffnen:** In den Ansichten „Kacheln“, „Liste“ und
-„Details“ steht statt dieses Kartenlinks eine kompakte Routing-Auswahl
-mit zwei Icon-Buttons zur Verfügung:
+**Route zum Hofladen öffnen:** In den Kacheln und der Liste liegt die Route
+im ⋮-Menü des Hofladens („Route (Google Maps)“ / „Route (Apple Maps)“), in
+der Detailansicht stehen statt des Kartenlinks zwei Icon-Buttons zur
+Verfügung:
 
 - 🗺️ öffnet eine Wegbeschreibung zum Hofladen in **Google Maps**.
 - 🧭 öffnet dieselbe Wegbeschreibung in **Apple Maps**.
@@ -760,7 +871,7 @@ unverändert (siehe Kapitel 14).
 ## 14. Datenschutz
 
 - **Keine Cloud, kein externer Dienst:** HofKarte kommuniziert nicht mit
-  externen Servern – mit vier Ausnahmen: Wird für einen Hofladen ein
+  externen Servern – mit sieben Ausnahmen (drei davon betreffen das Erfassen und Ergänzen, siehe unten): Wird für einen Hofladen ein
   Hauptbild über eine externe URL hinterlegt, ruft Home Assistant diese
   URL beim Anzeigen des Bildes ab (siehe Kapitel 5, „Hauptbild“); und
   öffnet man in der Übersicht die Kartenansicht „🗺️ Karte“, lädt der
@@ -783,7 +894,15 @@ unverändert (siehe Kapitel 14).
   bei den Kartenkacheln werden bei der Koordinatensuche tatsächlich
   hofladenspezifische Standortdaten an einen externen Dienst
   übertragen (weiterhin kein kommerzieller Cloud- oder KI-Dienst).
-  Ausserhalb dieser vier Fälle findet keine Telemetrie und keine
+  Bei den Abläufen „Hofladen erfassen“ und „Angaben ergänzen“ (Kapitel 4, nur auf ausdrücklichen
+  Klick, nur Administratoren) werden die gewählten Suchkoordinaten an die
+  freien OpenStreetMap-Overpass-Instanzen gesendet, und die Website des
+  gewählten Hofladens wird – unter Beachtung ihrer `robots.txt` –
+  gelesen. Dein **Browser** fragt dafür nach Freigabe den Gerätestandort
+  ab; er wird nicht gespeichert. Nur wenn du eine KI-Entität gewählt und
+  die Option im Dialog angekreuzt hast, wird der Website-Text zusätzlich an
+  diese Entität gesendet (je nach Anbieter ausserhalb deines Netzwerks).
+  Ausserhalb dieser sieben Fälle findet keine Telemetrie und keine
   Datenübertragung an Dritte statt.
 - **Standort (Home-Assistant-Server):** Der Entfernungs-Sensor
   (Kapitel 7) liest ausschliesslich die statische, in Home Assistant

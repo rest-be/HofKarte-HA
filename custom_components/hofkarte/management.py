@@ -29,6 +29,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CONF_LISTEN_SORT_RICHTUNG,
     CONF_LISTEN_SORT_SPALTE,
+    CONF_KI_ENTITAET,
     CONF_OSM_RADIUS_METER,
     DEFAULT_LISTEN_SORT_RICHTUNG,
     DEFAULT_LISTEN_SORT_SPALTE,
@@ -40,7 +41,10 @@ from .coordinator import HofKarteUpdateCoordinator, HofladenVersionConflictError
 from .data_provider import DuplicateHofladenIdError, HofladenNotFoundError
 from .images import get_main_image_url
 from .models import Hofladen
-from .opening_hours import is_open
+from .opening_hours import get_next_closing, get_next_opening, is_open
+from .discovery import enrich as discovery_enrich
+from .discovery import overpass as discovery_overpass
+from .discovery import scoring as discovery_scoring
 from .osm_info import (
     MAX_RADIUS_METER,
     MIN_RADIUS_METER,
@@ -66,6 +70,8 @@ WS_IMPORT_PREVIEW = "hofkarte/management/import_preview"
 WS_IMPORT_COMMIT = "hofkarte/management/import_commit"
 WS_WEBSEITE_INFO = "hofkarte/management/webseite_info"
 WS_OSM_INFO = "hofkarte/management/osm_info"
+WS_DISCOVER = "hofkarte/management/discover"
+WS_ENRICH = "hofkarte/management/enrich"
 WS_SETTINGS = "hofkarte/management/settings"
 WS_UPLOAD_IMAGE = "hofkarte/management/upload_image"
 
@@ -110,6 +116,32 @@ def _json_value(value: Any) -> Any:
     return value
 
 
+def _status_wechsel(
+    hofladen: Hofladen, now: datetime, geoeffnet: bool | None
+) -> dict[str, Any] | None:
+    """Nächster Statuswechsel für die Anzeige („Offen bis 16:00“).
+
+    Nutzt dieselben Funktionen wie die Sensoren (``get_next_closing`` bzw.
+    ``get_next_opening``), damit keine zweite Fachlogik entsteht. Liefert
+    ``{"art": "schliesst" | "oeffnet", "zeit": "HH:MM", "wochentag": 1-7,
+    "heute": bool}`` in der Zeitzone von ``now``; ``wochentag`` ist ISO
+    (1 = Montag). ``None``, wenn der Status unbekannt ist oder kein
+    Zeitpunkt gefunden wird.
+    """
+    if geoeffnet is None:
+        return None
+    zeitpunkt = get_next_closing(hofladen, now) if geoeffnet else get_next_opening(hofladen, now)
+    if zeitpunkt is None:
+        return None
+    lokal = zeitpunkt.astimezone(now.tzinfo) if now.tzinfo else zeitpunkt
+    return {
+        "art": "schliesst" if geoeffnet else "oeffnet",
+        "zeit": lokal.strftime("%H:%M"),
+        "wochentag": lokal.isoweekday(),
+        "heute": lokal.date() == now.date(),
+    }
+
+
 def _serialize_hofladen(hofladen: Any, *, now: datetime) -> dict[str, Any]:
     """Rohdaten eines Hofladens für die Verwaltungsoberfläche serialisieren.
 
@@ -122,6 +154,9 @@ def _serialize_hofladen(hofladen: Any, *, now: datetime) -> dict[str, Any]:
     - ``geoeffnet`` (``True``/``False``/``None`` für „unbekannt“) über
       ``opening_hours.is_open`` – exakt dieselbe Funktion, die auch der
       Binary Sensor „Geöffnet“ verwendet (siehe ``binary_sensor.py``).
+    - ``status_wechsel`` (``dict | None``): wann der Status das nächste Mal
+      wechselt, für Texte wie „Offen bis 16:00“ / „Öffnet Mo 08:00“ (siehe
+      ``_status_wechsel``). ``None``, wenn der Status unbekannt ist.
     - ``hauptbild_url`` (``str | None``) über ``images.get_main_image_url``
       – exakt dieselbe Funktion (inkl. Sicherheitsprüfung gegen
       private/interne IP-Literale), die auch das ``image``-Entity für
@@ -133,7 +168,9 @@ def _serialize_hofladen(hofladen: Any, *, now: datetime) -> dict[str, Any]:
     werden.
     """
     daten = _json_value(hofladen)
-    daten["geoeffnet"] = is_open(hofladen, now)
+    geoeffnet = is_open(hofladen, now)
+    daten["geoeffnet"] = geoeffnet
+    daten["status_wechsel"] = _status_wechsel(hofladen, now, geoeffnet)
     daten["hauptbild_url"] = get_main_image_url(hofladen.bilder)
     return daten
 
@@ -221,6 +258,15 @@ def _settings(coordinator: HofKarteUpdateCoordinator) -> dict[str, Any]:
     }
 
 
+def _ki_entitaet(coordinator: HofKarteUpdateCoordinator) -> str | None:
+    """Im Options Flow gewählte ``ai_task``-Entität (leer/ungültig = aus)."""
+    optionen = (coordinator.config_entry.options if coordinator.config_entry else None) or {}
+    wert = optionen.get(CONF_KI_ENTITAET)
+    if isinstance(wert, str) and wert.startswith("ai_task."):
+        return wert
+    return None
+
+
 @websocket_api.websocket_command({vol.Required("type"): WS_SETTINGS})
 @websocket_api.require_admin
 @callback
@@ -238,7 +284,10 @@ def ws_settings(
         connection.send_error(msg["id"], "not_ready", str(err))
         return
 
-    connection.send_result(msg["id"], {"einstellungen": _settings(coordinator)})
+    connection.send_result(
+        msg["id"],
+        {"einstellungen": _settings(coordinator), "ki_entitaet": _ki_entitaet(coordinator)},
+    )
 
 
 @websocket_api.websocket_command({vol.Required("type"): WS_LIST})
@@ -701,6 +750,158 @@ async def ws_osm_info(
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): WS_DISCOVER,
+        vol.Required("latitude"): vol.Coerce(float),
+        vol.Required("longitude"): vol.Coerce(float),
+        vol.Optional("radius", default=discovery_overpass.STANDARD_RADIUS_METER): vol.All(
+            vol.Coerce(int),
+            vol.Range(
+                min=discovery_overpass.MIN_RADIUS_METER,
+                max=discovery_overpass.MAX_RADIUS_METER,
+            ),
+        ),
+        vol.Optional("erweitert", default=False): bool,
+        # Was über den gesuchten Hofladen bereits bekannt ist (Bewertung).
+        vol.Optional("name"): vol.All(str, vol.Length(max=200)),
+        vol.Optional("website"): vol.All(str, vol.Length(max=500)),
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_discover(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Hofladen-Kandidaten in der Umgebung einer Koordinate suchen
+    (Hofladen-Discovery, Phase 1; ohne KI, nur OpenStreetMap/Overpass).
+
+    Liefert ausschliesslich **Vorschläge zur Überprüfung**; es wird nichts
+    gespeichert. Die Kandidaten sind bewertet (``score`` 0..1,
+    ``konfidenz``, ``signale``) und nach Score absteigend sortiert; optional
+    angegebene ``name``/``website`` fliessen als Signale ein (siehe
+    ``discovery/scoring.py``). Fehlercodes: ``not_ready`` (HofKarte nicht eindeutig
+    eingerichtet), ``invalid_coordinates``, ``unreachable``. Keine Treffer
+    sind kein Fehler: das Ergebnis enthält dann eine leere Liste, damit die
+    Oberfläche die manuelle Erfassung anbieten kann."""
+    try:
+        _get_coordinator(hass)
+    except ValueError as err:
+        connection.send_error(msg["id"], "not_ready", str(err))
+        return
+
+    try:
+        kandidaten = await discovery_overpass.async_suche(
+            hass,
+            msg["latitude"],
+            msg["longitude"],
+            radius_meter=msg["radius"],
+            erweitert=msg["erweitert"],
+        )
+    except discovery_overpass.DiscoveryUngueltigeKoordinatenError as err:
+        connection.send_error(msg["id"], "invalid_coordinates", str(err))
+        return
+    except discovery_overpass.DiscoveryNichtErreichbarError as err:
+        connection.send_error(msg["id"], "unreachable", str(err))
+        return
+
+    connection.send_result(
+        msg["id"],
+        {
+            "radius": msg["radius"],
+            "kandidaten": [
+                b.als_dict()
+                for b in discovery_scoring.bewerte(
+                    kandidaten,
+                    discovery_scoring.Anfrage(
+                        name=msg.get("name") or None, website=msg.get("website") or None
+                    ),
+                )
+            ],
+        },
+    )
+
+
+_KANDIDAT_SCHEMA = vol.Schema(
+    {
+        vol.Optional("refs", default=list): [vol.All(str, vol.Length(max=64))],
+        vol.Optional("name"): vol.Any(None, vol.All(str, vol.Length(max=300))),
+        vol.Optional("weitere_namen", default=list): [vol.All(str, vol.Length(max=300))],
+        vol.Required("latitude"): vol.Coerce(float),
+        vol.Required("longitude"): vol.Coerce(float),
+        vol.Optional("entfernung_meter"): vol.Any(None, vol.Coerce(float)),
+        vol.Optional("typ", default=list): [vol.All(str, vol.Length(max=100))],
+        vol.Optional("adresse"): vol.Any(None, vol.All(str, vol.Length(max=300))),
+        vol.Optional("plz"): vol.Any(None, vol.All(str, vol.Length(max=300))),
+        vol.Optional("ort"): vol.Any(None, vol.All(str, vol.Length(max=300))),
+        vol.Optional("website"): vol.Any(None, vol.All(str, vol.Length(max=500))),
+        vol.Optional("telefon"): vol.Any(None, vol.All(str, vol.Length(max=300))),
+        vol.Optional("email"): vol.Any(None, vol.All(str, vol.Length(max=300))),
+        vol.Optional("oeffnungszeiten"): vol.Any(None, vol.All(str, vol.Length(max=300))),
+        # Bewertungsfelder aus ``discover`` werden akzeptiert und ignoriert.
+        vol.Optional("score"): object,
+        vol.Optional("konfidenz"): object,
+        vol.Optional("signale"): object,
+    }
+)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): WS_ENRICH,
+        vol.Optional("kandidat"): _KANDIDAT_SCHEMA,
+        vol.Optional("website"): vol.All(str, vol.Length(max=500)),
+        # Opt-in je Anfrage: Website-Text an die im Options Flow gewählte
+        # ``ai_task``-Entität senden (ohne Entität: Status "nicht_konfiguriert").
+        vol.Optional("ki", default=False): bool,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_enrich(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Kandidaten anreichern (Subscription, deterministisch, ohne KI).
+
+    Mindestens ``kandidat`` (Ergebnis von ``discover``) oder ``website``
+    ist erforderlich. Das Ergebnis des Befehls bestätigt die Subscription;
+    danach folgen Ereignisse ``{"phase": "osm"|"website"|"fertig", ...}``
+    (``fertig`` trägt den ``vorschlag`` mit ``daten``, ``quellen`` und
+    ``abweichungen``). Probleme bei der Website (robots.txt, nicht
+    erreichbar, ...) stehen als ``status`` im Ereignis ``website`` und
+    brechen die Anreicherung nicht ab. Gespeichert wird nichts.
+    Fehlercodes: ``not_ready``, ``invalid_format``."""
+    try:
+        coordinator = _get_coordinator(hass)
+    except ValueError as err:
+        connection.send_error(msg["id"], "not_ready", str(err))
+        return
+    if not msg.get("kandidat") and not (msg.get("website") or "").strip():
+        connection.send_error(
+            msg["id"], "invalid_format", "Kandidat oder Website ist erforderlich."
+        )
+        return
+
+    kandidat = (
+        discovery_overpass.kandidat_aus_dict(msg["kandidat"]) if msg.get("kandidat") else None
+    )
+    msg_id = msg["id"]
+    connection.subscriptions[msg_id] = lambda: None  # Abmelden ist ein No-op
+    connection.send_result(msg_id)
+
+    def melde(ereignis: dict) -> None:
+        connection.send_message(websocket_api.event_message(msg_id, ereignis))
+
+    await discovery_enrich.async_anreichern(
+        hass,
+        kandidat,
+        website_url=msg.get("website"),
+        fortschritt=melde,
+        ki_angefordert=bool(msg.get("ki")),
+        ki_entitaet=_ki_entitaet(coordinator),
+    )
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): WS_UPLOAD_IMAGE,
         vol.Optional("filename", default="foto.jpg"): vol.All(
             str, vol.Length(max=255)
@@ -794,5 +995,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_import_commit)
     websocket_api.async_register_command(hass, ws_webseite_info)
     websocket_api.async_register_command(hass, ws_osm_info)
+    websocket_api.async_register_command(hass, ws_discover)
+    websocket_api.async_register_command(hass, ws_enrich)
     websocket_api.async_register_command(hass, ws_settings)
     websocket_api.async_register_command(hass, ws_upload_image)

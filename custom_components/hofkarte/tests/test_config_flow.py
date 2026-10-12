@@ -106,7 +106,8 @@ async def test_options_flow_shows_defaults(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "init"
     schema = result["data_schema"].schema
-    werte = {key: key.default() for key in schema}
+    # ``ki_entitaet`` ist optional und hat bewusst keinen Vorgabewert (leer = aus).
+    werte = {key: key.default() for key in schema if key.default is not vol.UNDEFINED}
     assert werte[CONF_LISTEN_SORT_SPALTE] == DEFAULT_LISTEN_SORT_SPALTE
     assert werte[CONF_LISTEN_SORT_RICHTUNG] == DEFAULT_LISTEN_SORT_RICHTUNG
     assert werte[CONF_OSM_RADIUS_METER] == DEFAULT_OSM_RADIUS_METER

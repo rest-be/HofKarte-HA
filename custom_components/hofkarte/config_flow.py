@@ -28,6 +28,8 @@ from homeassistant.config_entries import (
 from homeassistant.core import callback
 from homeassistant.const import CONF_NAME
 from homeassistant.helpers.selector import (
+    EntitySelector,
+    EntitySelectorConfig,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -36,6 +38,7 @@ from homeassistant.helpers.selector import (
 from .const import (
     CONF_LISTEN_SORT_RICHTUNG,
     CONF_LISTEN_SORT_SPALTE,
+    CONF_KI_ENTITAET,
     CONF_OSM_RADIUS_METER,
     DEFAULT_LISTEN_SORT_RICHTUNG,
     DEFAULT_LISTEN_SORT_SPALTE,
@@ -178,6 +181,13 @@ class HofKarteOptionsFlow(OptionsFlow):
                     vol.Coerce(int),
                     vol.Range(min=MIN_RADIUS_METER, max=MAX_RADIUS_METER),
                 ),
+                # Optional: ohne Auswahl ist die KI-Auswertung in "Hofladen
+                # finden" aus. Die Entität gehört zu Home Assistants "AI
+                # Task"; HofKarte speichert keine Zugangsdaten.
+                vol.Optional(
+                    CONF_KI_ENTITAET,
+                    description={"suggested_value": optionen.get(CONF_KI_ENTITAET)},
+                ): EntitySelector(EntitySelectorConfig(domain="ai_task")),
             }
         )
 

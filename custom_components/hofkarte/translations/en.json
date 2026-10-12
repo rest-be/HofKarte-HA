@@ -24,7 +24,11 @@
         "data": {
           "listen_sort_spalte": "Default sort column",
           "listen_sort_richtung": "Sort direction",
-          "osm_radius_meter": "OpenStreetMap search radius (meters)"
+          "osm_radius_meter": "OpenStreetMap search radius (meters)",
+          "ki_entitaet": "AI task entity for \"Find farm shop\" (optional; empty = off)"
+        },
+        "data_description": {
+          "ki_entitaet": "If set, \"Find farm shop\" can optionally send the text of a farm shop website to this AI entity to find offers, payment methods and opening hours. Depending on the provider the text leaves your network."
         }
       }
     }

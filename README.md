@@ -4,7 +4,7 @@ Private, lokal betriebene Home-Assistant-Custom-Integration zur Verwaltung
 und Darstellung von Hofläden (Direktvermarkter, Selbstbedienungsläden,
 Hofläden mit und ohne Personal).
 
-> **Status:** Stabiles Release. Die Integration ist funktional
+> **Status:** Release `2026.10.1`. Die Integration ist funktional
 > vollständig und durchgehend getestet (siehe `CHANGELOG.md` für den
 > aktuellen Versionsstand). Home Assistant ist sowohl Laufzeit- als
 > auch Verwaltungsoberfläche für HofKarte – die vom Benutzer gepflegten
@@ -133,16 +133,15 @@ Nach der Einrichtung steht im Home-Assistant-Seitenmenü die
 Verwaltungsseite **HofKarte** zur Verfügung (nur für Administratoren
 sichtbar).
 
-**Übersicht (Kacheln, Liste oder Karte):** Ein Umschalter oberhalb der
-Übersicht wechselt zwischen einer **Kachel-Ansicht** (Hauptbild oder
-Platzhalter, Name, Adresse, anklickbare Webseite, Öffnungsstatus,
-Routing-Auswahl), einer **sortierbaren Listen-/Tabellenansicht** (Name,
-Adresse, Status – jede Spalte einzeln sortierbar, inkl. Freitextfilter
-und Routing-Auswahl je Zeile) und einer **eingebetteten Kartenansicht**
-mit einer Stecknadel je Hofladen mit hinterlegten Koordinaten (Klick
-öffnet ein Popup mit Namen und Button „Zur Detailansicht“; optionale
-Checkbox „Nur aktuell geöffnete Hofläden anzeigen“). In Kacheln und
-Liste öffnet ein Klick auf den Namen direkt die Detailansicht. Der
+**Übersicht (Kacheln, Liste oder Karte):** Eine gemeinsame Steuerleiste
+(Suche, „Nur geöffnet“, Sortierung, Umschalter) gilt für alle drei
+Ansichten. **Kacheln:** ganze Kachel anklickbar (Details), ⋮-Menü mit
+Route, Bearbeiten und Löschen; Auswahl-Checkboxen im Auswahlmodus (⋮-Menü oben rechts).
+**Liste:** sortierbare Spalten (Name & Adresse, Ort, Status, Bewertung),
+Kopf-Checkbox, ⋮-Menü je Zeile. **Karte:** Seitenliste neben der
+eingebetteten Karte, abgeglichen mit den Stecknadeln, Info-Karte im Popup
+und Legende der Statusfarben. Ausführlich im Handbuch
+(`docs/handbuch.md`, „Übersicht“). Der
 Öffnungsstatus wird serverseitig über dieselbe Funktion berechnet, die
 auch die Entity „Geöffnet“ verwendet (`opening_hours.is_open`, siehe
 `management.py`) – keine abweichende Berechnung im Browser. Details
@@ -183,14 +182,14 @@ Dort können Administratoren:
 - Hofläden kontrolliert löschen.
 
 Zusätzlich gibt es eine **read-only Detailansicht** je Hofladen
-(„Details“-Button in der Liste): zeigt alle Stammdaten, Adresse,
-Standort/Koordinaten (inkl. Routing-Auswahl), Öffnungszeiten, Sortiment
-und Bilder kompakt und übersichtlich an, **ohne** editierbare Felder –
-gedacht für den schnellen Überblick, getrennt von der Bearbeitung. Die
-Gruppierung der Informationen (Allgemeines, Adresse, Standort, Kontakt,
-Öffnungszeiten, ...) ist bewusst konsistent mit der Bearbeitungsansicht
-gehalten, damit dieselben Informationen in beiden Ansichten
-wiedererkennbar sind.
+(Klick auf die Kachel bzw. Zeile): ein Block «Auf einen Blick» (Bild,
+Status, Sterne, Adresse, Schnellaktionen Route/Anrufen/E-Mail/Webseite) und
+sieben **aufklappbare Gruppen** (Grunddaten, Adresse, Kontakt,
+Öffnungszeiten, Angebote, Bilder, Herkunft) mit Kurzfassung und
+Vollständigkeitspunkt (✓ / ½ / leer). Die Bearbeitungsansicht verwendet
+dieselben Gruppen in derselben Reihenfolge, damit Informationen in beiden
+Ansichten wiedererkennbar sind. «Angaben ergänzen» gleicht fehlende Angaben
+ab; «Bearbeiten» öffnet das Formular.
 
 Änderungen werden direkt im integrationsinternen Home-Assistant-Storage
 persistiert und ohne Neustart an Coordinator, Devices und Entities
@@ -219,9 +218,10 @@ Button ist deaktiviert, solange keine gültigen Koordinaten hinterlegt
 sind. Öffnet nur eine externe, rein lesende Kartenansicht – verändert
 keine Daten.
 
-**Route zum Hofladen (Kacheln, Liste, Details):** In diesen drei
-Ansichten steht statt des Kartenlinks eine kompakte Routing-Auswahl
-mit zwei Icon-Buttons zur Verfügung: 🗺️ öffnet eine Wegbeschreibung
+**Route zum Hofladen (Kacheln, Liste, Details):** In Kacheln und Liste
+liegen beide Routen im ⋮-Menü des Hofladens, in der Detailansicht steht
+statt des Kartenlinks eine kompakte Routing-Auswahl mit zwei
+Icon-Buttons zur Verfügung: 🗺️ öffnet eine Wegbeschreibung
 (Route, nicht nur ein Pin) in Google Maps, 🧭 dieselbe Wegbeschreibung
 in Apple Maps – jeweils in einem neuen Browser-Tab, ausgehend vom
 aktuellen Standort. Ist eine Adresse hinterlegt, wird sie als
@@ -262,6 +262,61 @@ eigene Datenhaltung neben dem Coordinator. Die Detailansicht benötigt
 keinen eigenen Backend-Endpunkt: Sie zeigt read-only die über
 `hofkarte/management/list` bereits geladenen Daten des jeweiligen
 Hofladens an.
+
+## Hofladen erfassen und ergänzen
+
+In der Übersicht oben rechts auf **«Hofladen erfassen»** klicken. Die
+Einstiegsseite bietet drei Wege (vor dem Speichern wird immer geprüft, ob
+es den Hofladen schon gibt):
+
+1. **Ich stehe vor dem Hofladen (Schnellerfassung):** Der Standort des
+   Geräts wird auf Klick ermittelt (der Browser fragt um Freigabe;
+   Voraussetzung ist HTTPS). Hofläden aus OpenStreetMap in der Nähe
+   erscheinen mit Entfernung («Wahrscheinlich dieser», Warnung
+   «Möglicherweise schon erfasst»); der Umkreis lässt sich auf 100/250/500 m
+   stellen. Danach genügen Name, optional ein Foto (Kamera) und die
+   Webseite. Abschluss ist «Gespeichert» mit der Liste **«Noch offen»**
+   (Öffnungszeiten, Angebote, Zahlungsarten, Foto).
+2. **Ich habe eine Webseite:** Schrittanzeige *Webseite → Auslesen →
+   Prüfen*. Die Seite wird gelesen (nur wenn `robots.txt` es erlaubt,
+   höchstens 4 Seiten desselben Hosts, 1 s Pause). In der Prüfansicht
+   stehen die Angaben Feld für Feld mit Quelle und Abweichungswarnung,
+   daneben eine **Vorschau**. «In Formular übernehmen» öffnet das
+   Formular; gespeichert wird erst dort.
+3. **Von Hand erfassen:** leeres Formular.
+
+**Angaben ergänzen / aktualisieren** (Knopf im Detail, Hinweis «Noch
+unvollständig», «Noch offen»-Seite): Ein bestehender Hofladen wird mit
+Webseite und/oder OpenStreetMap verglichen. Die Tabelle zeigt
+**Angabe · Aktuell · Gefunden · Status** (Lücke, Abweichend, Ergänzung,
+Gleich). **Lücken sind vorgewählt, Abweichungen nie**; Angebote und
+Zahlungsarten werden ergänzt, nie ersetzt. «Auswahl übernehmen» öffnet das
+Formular mit den gewählten Werten, gespeichert wird erst dort.
+
+Die «Erweiterte Suche» (Koordinaten von Hand, grösserer Umkreis, mehr
+OpenStreetMap-Tags) bleibt über die Einstiegsseite erreichbar. Beschreibungstexte
+werden nie automatisch übernommen.
+
+**Optional: KI-Auswertung.** Wählst du in den HofKarte-Einstellungen eine
+Entität von Home Assistants „AI Task“ (z. B. lokal mit Ollama), erscheint
+bei den Abläufen mit Webseite die Option „Text der Webseite mit KI
+auswerten“ (nie vorangekreuzt, mit Datenschutzhinweis). Die KI ergänzt
+Angebote, Zahlungsarten und Öffnungszeiten, aber nur Begriffe, die
+**wörtlich im Text der Website stehen**, gelten als belegt; alles andere
+erscheint getrennt als „Vermutung“, nicht vorausgewählt. Die KI läuft
+nachträglich: das bereits Vorliegende lässt sich vorab prüfen («Vorliegendes
+prüfen»), spätere KI-Ergebnisse ändern die getroffene Auswahl nicht. Bei
+Cloud-Anbietern verlässt der Website-Text dein Netzwerk. Ohne Auswahl ist
+keine KI beteiligt; bei einem KI-Fehler bleibt das Ergebnis ohne KI. Die
+Herkunft der Werte steht danach in der Detailansicht unter „Quellen“.
+OpenStreetMap-Daten: © OpenStreetMap-Mitwirkende (ODbL). Technik:
+[`architecture.md`](docs/architecture.md), Sicherheit:
+[`SECURITY.md`](SECURITY.md).
+
+**Zugänglichkeit:** Bei jedem Schrittwechsel springt der Fokus auf die
+Überschrift, Schritte und Statusmeldungen sind für Screenreader
+beschriftet, alle Bedienelemente sind per Tastatur erreichbar, und
+Animationen respektieren «Bewegung reduzieren».
 
 ## Bereitgestellte Devices
 
@@ -876,6 +931,12 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
 
 ## Bekannte Einschränkungen
 
+- Die Suche in der Nähe ist auf in OpenStreetMap erfasste Hofläden
+  angewiesen (Kern-Tag `shop=farm`); nicht erfasste Läden finden sich nur
+  über den Weg «Ich habe eine Webseite» oder von Hand. Die KI-Auswertung ist nur
+  so gut wie das gewählte Modell (kleine lokale Modelle liefern oft wenig). Websites mit gesperrter
+  `robots.txt`, reinem JavaScript-Aufbau oder Bildern statt Text liefern
+  wenig. Die Standortübernahme benötigt HTTPS.
 - Nur eine Instanz pro Home-Assistant-Installation möglich (Single
   Instance).
 - Der Options Flow deckt nur die Übersicht-Sortiervorgabe und den
@@ -903,7 +964,7 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
 ## Datenschutz- und Standort-Hinweise
 
 - **Keine Cloud, kein externer Dienst:** HofKarte kommuniziert nicht mit
-  externen Servern – mit vier Ausnahmen: dem Laden von Hofladen-Bildern
+  externen Servern – mit sieben Ausnahmen (die drei neuen betreffen das Erfassen und Ergänzen, siehe unten): dem Laden von Hofladen-Bildern
   über die vom Benutzer hinterlegten Bild-URLs (siehe „Bilder“), dem
   Laden der Kartenkacheln von OpenStreetMap (die Kartenbibliothek
   Leaflet selbst liegt lokal im Repository, kein CDN), sobald die Übersichtsansicht „🗺️ Karte“ tatsächlich
@@ -957,7 +1018,16 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
   (rein lokale, deterministische Auswertung bzw. freie
   OpenStreetMap-Community-Dienste). Liefert eine Quelle keine Angaben
   oder schlägt fehl, wird dies in der Statusmeldung offen ausgewiesen.
-  Ausserhalb dieser vier Fälle findet keine Telemetrie und keine
+  Die Abläufe «Hofladen erfassen» und «Angaben ergänzen» (nur auf ausdrücklichen Klick, nur
+  Administratoren) sendet die gewählten Suchkoordinaten an die freien
+  OpenStreetMap-Overpass-Instanzen und liest – `robots.txt` beachtend,
+  höchstens 4 Seiten desselben Hosts, 1 s Pause – die Website des
+  gewählten Hofladens (Details: [`SECURITY.md`](SECURITY.md)). Dabei fragt
+  der **Browser** nach Freigabe den Gerätestandort ab; er wird nicht
+  gespeichert. Nur wenn du in den Einstellungen eine KI-Entität wählst
+  und die Option im Dialog ankreuzt, wird zusätzlich der Website-Text an
+  diese Entität gesendet (je nach Anbieter ausserhalb deines Netzwerks).
+  Ausserhalb dieser sieben Fälle findet keine Telemetrie und keine
   Datenübertragung an Dritte statt.
 - **Standort (Home-Assistant-Server):** Der Entfernungs-Sensor liest
   ausschliesslich die statische, in Home Assistant konfigurierte

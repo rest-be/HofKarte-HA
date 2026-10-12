@@ -273,14 +273,16 @@ def test_f10_auswahl_ohne_vollstaendigen_render_und_ohne_neue_listener() -> None
     const t = bauen({ n: 30 });
     await sleep(100);
     const main = t.sr.querySelector("main");
-    const erste = t.sr.querySelector("section.tile-card");
+    const erste = t.sr.querySelector(".tile-card");
+    await t.klick("[data-auswahlmodus]", 50); // Checkboxen gibt es nur im Auswahlmodus
+    const erste2 = t.sr.querySelector(".tile-card");
     const l0 = t.log.listener;
     const cb = t.sr.querySelector("[data-auswahl]");
     cb.checked = true; cb.dispatchEvent(new t.w.Event("change", { bubbles: true, composed: true }));
     console.log(JSON.stringify({
       text: t.sr.querySelector("[data-auswahl-anzahl]").textContent,
       exportAktiv: !t.sr.querySelector("[data-export]").disabled,
-      gleicheKarte: t.sr.querySelector("section.tile-card") === erste,
+      gleicheKarte: t.sr.querySelector(".tile-card") === erste2,
       neueListener: t.log.listener - l0,
     }));
     process.exit(0);
@@ -344,7 +346,7 @@ def test_f14_vorschau_in_karten_original_in_detail() -> None:
         r"""
     const t = bauen({ n: 3 });
     await sleep(100);
-    const img = t.sr.querySelector("section.tile-card img.tile-image");
+    const img = t.sr.querySelector(".tile-card img.tile-image");
     const id1 = "1".padStart(32, "0");
     const karte = { src: img.getAttribute("src"), original: img.dataset.original, decoding: img.getAttribute("decoding") };
     const id = "a".repeat(32);

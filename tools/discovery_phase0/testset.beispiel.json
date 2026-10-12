@@ -1,0 +1,16 @@
+{
+  "_hinweis": "VORLAGE. Die beiden Einträge sind PLATZHALTER mit erfundenen Koordinaten - ersetzen durch 30-50 echte Fälle (Datei als testset.json speichern).",
+  "_felder": {
+    "name": "Name wie ihn ein Nutzer eintippen würde (Pflicht)",
+    "latitude": "Position des Hofladens (Karte/GPS), Pflicht",
+    "longitude": "Pflicht",
+    "typ": "positiv = echter Hofladen (Standard); negativ = Ort, der KEIN Hofladen ist (z. B. Hof ohne Verkauf, Bäckerei)",
+    "osm_ref": "optional, z. B. 'way/123456'. Ohne Angabe wird per Name+Distanz zugeordnet",
+    "website": "optional",
+    "notiz": "optional, z. B. 'Selbstbedienung', 'Automat', 'nur Saison'"
+  },
+  "eintraege": [
+    {"name": "BEISPIEL Hofladen Müller", "latitude": 46.9500, "longitude": 7.4500, "typ": "positiv", "notiz": "Platzhalter"},
+    {"name": "BEISPIEL Bäckerei Dorfplatz", "latitude": 46.9600, "longitude": 7.4600, "typ": "negativ", "notiz": "Platzhalter: kein Hofladen"}
+  ]
+}
