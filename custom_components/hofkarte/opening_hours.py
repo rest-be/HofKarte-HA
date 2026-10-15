@@ -22,6 +22,11 @@ Für jedes Datum im Fenster gilt:
   Datum vollständig (auch wenn sie "geschlossen" bedeutet).
 - Andernfalls gelten die regulären wöchentlichen Öffnungszeiten
   (``Hofladen.oeffnungszeiten``) für den entsprechenden Wochentag.
+- Ist der Hofladen ein 24h-Automat (``Hofladen.automat_24h``), ist jedes
+  Datum ohne Sonderöffnungszeit ganztägig geöffnet; aneinanderstossende
+  Tage werden zu einem Intervall zusammengefasst. Es gibt dann keine
+  „nächste Schliessung“, solange keine Sonderschliessung (z. B.
+  Betriebsferien) im Suchfenster liegt.
 
 Ein Intervall, dessen Ende nicht nach dem Beginn liegt (``ende < beginn``,
 von ``parsing.py`` als gültig zugelassen), überschreitet die Mitternacht:
@@ -63,8 +68,14 @@ _DAYS_FORWARD = 14
 
 
 def _hat_keine_oeffnungsdaten(hofladen: Hofladen) -> bool:
-    """Ob für den Hofladen überhaupt keine Öffnungszeiten hinterlegt sind."""
-    return not hofladen.oeffnungszeiten and not hofladen.sonderoeffnungszeiten
+    """Ob für den Hofladen überhaupt keine Öffnungszeiten hinterlegt sind.
+
+    Ein 24h-Automat hat immer Öffnungsdaten (rund um die Uhr)."""
+    return (
+        not hofladen.automat_24h
+        and not hofladen.oeffnungszeiten
+        and not hofladen.sonderoeffnungszeiten
+    )
 
 
 def _finde_sonderoeffnungszeit(
@@ -116,6 +127,14 @@ def _intervalle_fuer_datum(
         assert sonder.ende is not None
         return [_baue_intervall(datum, sonder.beginn, sonder.ende, tzinfo)]
 
+    if hofladen.automat_24h:
+        return [
+            (
+                datetime.combine(datum, time.min, tzinfo=tzinfo),
+                datetime.combine(datum + timedelta(days=1), time.min, tzinfo=tzinfo),
+            )
+        ]
+
     wochentag = datum.isoweekday()  # 1 = Montag ... 7 = Sonntag
     return [
         _baue_intervall(datum, oeffnungszeit.beginn, oeffnungszeit.ende, tzinfo)
@@ -140,7 +159,34 @@ def _alle_intervalle(
         intervalle.extend(_intervalle_fuer_datum(hofladen, datum, now.tzinfo))
 
     intervalle.sort(key=lambda intervall: intervall[0])
+    if hofladen.automat_24h:
+        intervalle = _verschmelze_beruehrende(intervalle)
     return intervalle
+
+
+def _verschmelze_beruehrende(
+    intervalle: list[tuple[datetime, datetime]],
+) -> list[tuple[datetime, datetime]]:
+    """Aneinanderstossende Intervalle (Ende == nächster Beginn) vereinen.
+
+    Nur für 24h-Automaten: die ganztägigen Tagesintervalle sollen keine
+    künstlichen „Schliessungen“ um Mitternacht erzeugen.
+    """
+    verschmolzen: list[tuple[datetime, datetime]] = []
+    for start, ende in intervalle:
+        if verschmolzen and start <= verschmolzen[-1][1]:
+            verschmolzen[-1] = (verschmolzen[-1][0], max(verschmolzen[-1][1], ende))
+        else:
+            verschmolzen.append((start, ende))
+    return verschmolzen
+
+
+def _fenster_ende(now: datetime) -> datetime:
+    """Ende des Suchfensters (für „offen ohne absehbares Ende“)."""
+    letzter_tag = now.date() - timedelta(days=_DAYS_BACK) + timedelta(
+        days=_DAYS_BACK + _DAYS_FORWARD + 1
+    )
+    return datetime.combine(letzter_tag, time.min, tzinfo=now.tzinfo)
 
 
 def is_open(hofladen: Hofladen, now: datetime) -> bool | None:
@@ -194,13 +240,21 @@ def get_next_closing(hofladen: Hofladen, now: datetime) -> datetime | None:
         (ende for start, ende in intervalle if start <= now < ende), None
     )
     if laufendes_ende is not None:
+        # 24h-Automat: reicht die Öffnung bis zum Fensterende, schliesst er
+        # absehbar nie.
+        if hofladen.automat_24h and laufendes_ende >= _fenster_ende(now):
+            return None
         return laufendes_ende
 
     kuenftige = sorted(
         (intervall for intervall in intervalle if intervall[0] > now),
         key=lambda intervall: intervall[0],
     )
-    return kuenftige[0][1] if kuenftige else None
+    if not kuenftige:
+        return None
+    if hofladen.automat_24h and kuenftige[0][1] >= _fenster_ende(now):
+        return None
+    return kuenftige[0][1]
 
 
 def naechster_statuswechsel(hofladen: Hofladen, now: datetime) -> datetime | None:

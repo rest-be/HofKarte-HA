@@ -15,6 +15,15 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- **24h-Automat** (`2026.10.2-dev.1`): neues Feld `automat_24h` (Standard
+  `false`, abwärtskompatibel). Ein 24h-Automat gilt rund um die Uhr als
+  geöffnet (`opening_hours.is_open`), hat keine „nächste Schliessung“ und wird
+  nur durch eine Sonder-Schliessung (z. B. Betriebsferien) unterbrochen.
+  Verwaltungs-Panel: Checkbox bei den Öffnungszeiten, Anzeige in Detail und
+  Kurzinfo. Parser: `automat_24h` muss ein Wahrheitswert sein.
+
 ## [2026.10.1] - 2026-10-12
 
 Fasst die Entwicklungsversionen `2026.10.1-dev.1` bis `dev.24` und den
