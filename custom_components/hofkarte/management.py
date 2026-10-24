@@ -244,7 +244,9 @@ def _settings(coordinator: HofKarteUpdateCoordinator) -> dict[str, Any]:
     """Dauerhaft gespeicherte Einstellungen (Options Flow) mit Vorgabewerten
     für fehlende Schlüssel ermitteln (z. B. eine noch nie über den Options
     Flow bestätigte Config Entry - diese hat ``options == {}``)."""
-    optionen = (coordinator.config_entry.options if coordinator.config_entry else None) or {}
+    optionen: dict[str, Any] = dict(
+        (coordinator.config_entry.options if coordinator.config_entry else None) or {}
+    )
     return {
         CONF_LISTEN_SORT_SPALTE: optionen.get(
             CONF_LISTEN_SORT_SPALTE, DEFAULT_LISTEN_SORT_SPALTE
@@ -260,7 +262,9 @@ def _settings(coordinator: HofKarteUpdateCoordinator) -> dict[str, Any]:
 
 def _ki_entitaet(coordinator: HofKarteUpdateCoordinator) -> str | None:
     """Im Options Flow gewählte ``ai_task``-Entität (leer/ungültig = aus)."""
-    optionen = (coordinator.config_entry.options if coordinator.config_entry else None) or {}
+    optionen: dict[str, Any] = dict(
+        (coordinator.config_entry.options if coordinator.config_entry else None) or {}
+    )
     wert = optionen.get(CONF_KI_ENTITAET)
     if isinstance(wert, str) and wert.startswith("ai_task."):
         return wert

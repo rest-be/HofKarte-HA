@@ -9,6 +9,11 @@ Für eine technische Kurzübersicht siehe [`README.md`](../README.md),
 für die Entwickler-/Architekturdokumentation siehe
 [`architecture.md`](architecture.md).
 
+Für die **mobile App** (HofKarte-PWA) gibt es ein eigenes Benutzerhandbuch im
+Repository [`rest-be/HofKarte-PWA`](https://github.com/rest-be/HofKarte-PWA)
+(`docs/benutzerhandbuch.md`); welche App-Version zu welcher Integrationsversion
+passt, steht im [README](../README.md), Abschnitt «Mobile PWA».
+
 ## Inhalt
 
 1. [Installation über HACS](#1-installation-über-hacs)
@@ -498,6 +503,27 @@ reguläre Öffnungszeiten wählt man pro Wochentag einen von drei Modi:
 In der Detailansicht (Kapitel 4) werden die Wochentage stets in fester
 Reihenfolge Montag–Sonntag angezeigt, mit „Geschlossen“, „24 Stunden
 geöffnet“ oder den konkreten Zeiten je nach hinterlegtem Modus.
+
+### 24h-Automat
+
+Selbstbedienungs-Automaten, die rund um die Uhr zugänglich sind, werden mit
+der Checkbox **„24h-Automat (rund um die Uhr zugänglich)“** im Abschnitt
+„Öffnungszeiten“ des Formulars gekennzeichnet (Standard: aus). Dann gilt:
+
+- Der Hofladen gilt **immer als geöffnet** (Entität „Geöffnet“ = `An`).
+  Die Wochenzeiten werden nicht verwendet; sie bleiben im Formular
+  erhalten, falls die Checkbox wieder entfernt wird.
+- Es gibt **keine „Nächste Schliessung“** (der Sensor zeigt „Unbekannt“),
+  solange keine Sonder-Schliessung ansteht.
+- Eine **Sonderöffnungszeit** wirkt weiterhin: Als „geschlossen“ markiert
+  (z. B. Betriebsferien) unterbricht sie den Automaten für ihren Zeitraum;
+  danach ist er wieder rund um die Uhr geöffnet. „Nächste Öffnung“ zeigt in
+  diesem Fall das Ende der Schliessung.
+- In Detailansicht und Kurzinfo steht „24h-Automat – rund um die Uhr
+  zugänglich“. Ein 24h-Automat zählt in der Vollständigkeitsanzeige als
+  Öffnungszeiten erfasst.
+- Export und Import übernehmen das Feld; ältere Exportdateien ohne das
+  Feld werden als „kein Automat“ eingelesen.
 
 **Mitternachtsüberschreitung:** Ein Intervall, dessen Ende vor seinem
 Beginn liegt (z. B. „22:00–02:00“), wird korrekt als über Mitternacht

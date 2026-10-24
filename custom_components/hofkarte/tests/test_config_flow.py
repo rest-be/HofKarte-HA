@@ -137,7 +137,12 @@ async def test_options_flow_saves_values(hass: HomeAssistant) -> None:
 
 
 async def test_options_flow_rejects_radius_out_of_range(hass: HomeAssistant) -> None:
-    """Ein Suchradius ausserhalb 20-2000 m muss abgelehnt werden."""
+    """Ein Suchradius ausserhalb 20-2000 m muss abgelehnt werden.
+
+    Je nach Home-Assistant-Version wird ``vol.MultipleInvalid`` oder (ab
+    2025.1) ``data_entry_flow.InvalidData`` geworfen; beide sind
+    ``vol.Invalid``.
+    """
     entry = MockConfigEntry(
         domain=DOMAIN, title=DEFAULT_NAME, data={CONF_NAME: DEFAULT_NAME}
     )
@@ -145,7 +150,7 @@ async def test_options_flow_rejects_radius_out_of_range(hass: HomeAssistant) -> 
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    with pytest.raises(vol.MultipleInvalid):
+    with pytest.raises(vol.Invalid):
         await hass.config_entries.options.async_configure(
             result["flow_id"],
             {

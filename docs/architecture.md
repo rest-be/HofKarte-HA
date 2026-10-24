@@ -1088,7 +1088,45 @@ OSM-Öffnungszeiten. Ereignis `ki` mit Status `ok`, `keine_ergebnisse`,
 `nicht_konfiguriert`. Unbelegte Vermutungen, die übernommen werden, speichert
 das Panel als `quellen`-Eintrag `ki` mit Status `inferred`.
 
-**Offen:** PWA.
+**Schnittstelle zur PWA:** Die mobile Begleit-App (HofKarte-PWA, eigenes
+Repository) ist ein reiner Client ohne eigene Datenhaltung. Sie nutzt
+ausschliesslich die WebSocket-Befehle `hofkarte/management/*` (`list`, `save`,
+`delete`, `settings`, `discover`, `enrich`, `osm_info`, `webseite_info`,
+`upload_image`) und die Action `hoflaeden_in_naehe`; alle schreibenden
+Befehle erfordern Administratorrechte. Der Öffnungsstatus wird serverseitig
+berechnet (`geoeffnet`, `status_wechsel`, `hauptbild_url` in
+`_serialize_hofladen`), damit PWA und Panel dieselbe Fachlogik
+verwenden. Schreibzugriffe tragen eine Version (optimistische Sperre,
+`VersionskonfliktFehler` auf Seiten der PWA). Die Zuordnung der
+Versionsstände steht im README, Abschnitt «Mobile PWA».
+
+## 24h-Automat (`2026.10.2`)
+
+`models.Hofladen.automat_24h` (`bool`, Standard `False`) kennzeichnet
+Selbstbedienungs-Automaten ohne Öffnungszeiten. Das Feld ist
+abwärtskompatibel: fehlt es in gespeicherten Daten oder Importdateien, gilt
+`False`; `parsing._parse_automat_24h` akzeptiert nur Wahrheitswerte.
+
+Die Fachlogik liegt vollständig in `opening_hours.py` (reine Funktionen, kein
+`hass`-Zugriff):
+
+- `_intervalle_fuer_datum`: Eine Sonderöffnungszeit hat Vorrang (auch eine
+  Sonder-Schliessung). Ohne Sonderöffnungszeit liefert ein Automat für das
+  Datum ein ganztägiges Intervall (00:00 bis 00:00 des Folgetags).
+- `_verschmelze_beruehrende`: Aneinanderstossende Tagesintervalle werden zu
+  einem zusammengefasst, damit „Öffnet/Schliesst“ nicht an jeder Mitternacht
+  wechselt.
+- `get_next_closing`: Reicht die laufende Öffnung bis zum Ende des
+  Suchfensters, gibt es keine absehbare Schliessung (`None`, Sensor
+  „Unbekannt“). Eine Sonder-Schliessung im Fenster beendet sie.
+- `_hat_keine_oeffnungsdaten`: Ein Automat hat immer Öffnungsdaten, `is_open`
+  liefert daher nie „unbekannt“.
+
+Das Panel (`hofkarte-panel.js`) sendet `automat_24h` beim Speichern, blendet
+im Detail statt der Wochenzeiten den Hinweis „24h-Automat“ ein und zählt die
+Gruppe „Öffnungszeiten“ als vollständig. Die Wochenzeiten bleiben im
+Datensatz erhalten und werden nur ignoriert. Tests: `test_opening_hours.py`,
+`test_parsing.py`, `test_automat_24h_panel.py`.
 
 ## Erweiterungspunkte
 

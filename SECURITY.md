@@ -19,6 +19,19 @@ einer Fehlermeldung immer zuerst auf die neueste Version aktualisieren.
 | Neueste Release  | ✅                          |
 | Ältere Versionen | ❌ (bitte aktualisieren)    |
 
+Ein **Release Candidate** (`…-rc.N`) gilt bis zum produktiven Release als
+neueste Version und wird bei Sicherheitsproblemen direkt korrigiert; die
+aktuell produktive Version bleibt bis dahin ebenfalls unterstützt.
+
+## Mobile PWA
+
+Die Begleit-App [HofKarte-PWA](https://github.com/rest-be/HofKarte-PWA) greift
+ausschliesslich über die WebSocket-Befehle `hofkarte/management/*` zu, mit einem
+Long-Lived Access Token pro Gerät eines dedizierten Administrator-Benutzers.
+Die Integration erzwingt die Administratorrechte serverseitig; das Token lässt
+sich in Home Assistant jederzeit widerrufen. Sicherheitsprobleme der App selbst
+bitte im Repository der PWA melden (siehe dessen `SECURITY.md`).
+
 ## Meldeweg für Sicherheitsprobleme
 
 Sicherheitsrelevante Probleme (z. B. eine Möglichkeit, über eine

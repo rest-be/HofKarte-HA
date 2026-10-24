@@ -1278,7 +1278,10 @@ async def test_ws_osm_info_liefert_ermittelte_orte(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    fake.assert_called_once_with(hass, 46.948, 7.4474, radius_meter=50)
+    # Ohne ``radius`` gilt der Standard-Suchradius der Optionen (seit Issue #11).
+    fake.assert_called_once_with(
+        hass, 46.948, 7.4474, radius_meter=DEFAULT_OSM_RADIUS_METER
+    )
     assert len(connection.errors) == 0
     msg_id, ergebnis = connection.results[0]
     assert msg_id == 50
