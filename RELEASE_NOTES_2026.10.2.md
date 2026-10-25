@@ -1,12 +1,8 @@
-# HofKarte 2026.10.2 (Release Candidate `2026.10.2-rc.1`)
-
-> **Release Candidate.** Diese Version ist funktional abgeschlossen und wird
-> auf Stabilität geprüft. Sie ist noch nicht der produktive Release. Beim
-> produktiven Release `2026.10.2` ändert sich nur die Versionsnummer.
+# HofKarte 2026.10.2
 
 Kleines Funktions-Update: Selbstbedienungs-Automaten, die rund um die Uhr
 zugänglich sind, lassen sich jetzt als **24h-Automat** kennzeichnen. Dazu
-passend gibt es die neue **mobile App HofKarte-PWA 2.0**, die diese Version
+passend gibt es die neue **mobile App HofKarte-PWA 2.0.0**, die diese Version
 für den Schalter «24h-Automat» benötigt.
 
 ## Neu
@@ -29,9 +25,7 @@ für den Schalter «24h-Automat» benötigt.
 
 - Home Assistant nach dem Update **neu starten** (neuer Python-Code) und das
   Panel im Browser hart neu laden (neue Panel-Version).
-- Release Candidates sind kein Standard-Update: In HACS erscheinen sie nur,
-  wenn Vorabversionen angezeigt werden. Bei manueller Installation den Ordner
-  `custom_components/hofkarte/` ersetzen.
+- Bei manueller Installation den Ordner `custom_components/hofkarte/` ersetzen; über HACS wie gewohnt aktualisieren.
 - Nutzer der PWA: erst die Integration aktualisieren, dann die PWA.
 
 ## Bekannte Einschränkungen

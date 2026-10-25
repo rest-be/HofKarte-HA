@@ -15,21 +15,17 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
-Noch keine Änderungen seit dem Release Candidate `2026.10.2-rc.1`.
+Noch keine Änderungen seit `2026.10.2`.
 
-## [2026.10.2-rc.1] - 2026-10-24
+## [2026.10.2] - 2026-10-25
 
-> **Release Candidate – kein produktiver Release.** Diese Version ist
-> funktional abgeschlossen und wird auf Stabilität geprüft. Gegenüber
-> `2026.10.1` bringt sie den 24h-Automaten; ausserdem wurden Handbuch,
-> README, Architektur-Dokumentation und Release Notes nachgeführt (unter
-> anderem der Abschnitt zur mobilen PWA 2.0). Der produktive Release
-> `2026.10.2` folgt, sobald dieser Release Candidate als stabil bestätigt
-> ist; dabei ändert sich nur die Versionsnummer.
->
-> Zusammen mit dem Release Candidate der PWA (`2.0.0-rc.1`) prüfen: PWA 2.0
-> benötigt für den Schalter «24h-Automat» diese Version, alle übrigen
-> Funktionen laufen ab `2026.10.1` (siehe README, Abschnitt «Mobile PWA»).
+Fasst `2026.10.2-dev.1` und den Release Candidate `2026.10.2-rc.1` zusammen:
+den 24h-Automaten sowie nachgeführte Dokumentation (unter anderem der Abschnitt
+zur mobilen PWA 2.0). Gegenüber `rc.1` ändert sich nur die Versionsnummer.
+
+Zusammen mit der PWA `2.0.0`: Die PWA benötigt für den Schalter «24h-Automat»
+diese Version, alle übrigen Funktionen laufen ab `2026.10.1` (siehe README,
+Abschnitt «Mobile PWA»).
 
 ### Hinzugefügt
 
