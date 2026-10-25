@@ -164,6 +164,18 @@ def _parse_bewertung(raw: Mapping[str, Any]) -> int:
     return max(_BEWERTUNG_MIN, min(_BEWERTUNG_MAX, int(value)))
 
 
+def _parse_automat_24h(raw: Mapping[str, Any]) -> bool:
+    """Kennzeichen „24h-Automat“ einlesen (fehlend/``None`` → ``False``)."""
+    value = raw.get("automat_24h", False)
+    if value is None:
+        return False
+    if not isinstance(value, bool):
+        raise HofladenValidationError(
+            "Feld 'automat_24h' muss wahr oder falsch (true/false) sein."
+        )
+    return value
+
+
 def _parse_version(raw: Mapping[str, Any]) -> int:
     """Versionsnummer für optimistische Nebenläufigkeitskontrolle einlesen.
 
@@ -549,6 +561,7 @@ def parse_hofladen(
         )
     bewertung = _parse_bewertung(raw)
     version = _parse_version(raw)
+    automat_24h = _parse_automat_24h(raw)
 
     latitude = _optional_float(raw, "latitude", _LATITUDE_MIN, _LATITUDE_MAX)
     longitude = _optional_float(raw, "longitude", _LONGITUDE_MIN, _LONGITUDE_MAX)
@@ -602,4 +615,5 @@ def parse_hofladen(
         quellen=_parse_quellen(raw),
         bewertung=bewertung,
         version=version,
+        automat_24h=automat_24h,
     )

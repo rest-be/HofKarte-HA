@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.1";
+const PANEL_BUILD = "2026.10.2";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -483,7 +483,7 @@ class HofkartePanel extends HTMLElement {
   }
 
   empty() {
-    return { id: "", name: "", beschreibung: "", bemerkung: "", adresse: "", plz: "", ort: "", land: "", website: "", mobilnummer: "", email: "", latitude: "", longitude: "", oeffnungszeiten: [], sonderoeffnungszeiten: [], angebote: [], zahlungsarten: [], bilder: [], quellen: [], bewertung: 0 };
+    return { id: "", name: "", beschreibung: "", bemerkung: "", adresse: "", plz: "", ort: "", land: "", website: "", mobilnummer: "", email: "", latitude: "", longitude: "", oeffnungszeiten: [], sonderoeffnungszeiten: [], automat_24h: false, angebote: [], zahlungsarten: [], bilder: [], quellen: [], bewertung: 0 };
   }
 
   clone(item) { return JSON.parse(JSON.stringify(item)); }
@@ -1049,6 +1049,7 @@ class HofkartePanel extends HTMLElement {
     data.mobilnummer = value("mobilnummer") || null;
     data.email = value("email") || null;
     data.website = value("website") || null;
+    data.automat_24h = !!f.elements.automat_24h?.checked;
     data.oeffnungszeiten = this.readOpeningHours(f);
     data.sonderoeffnungszeiten = [...f.querySelectorAll("[data-special]")].map(row => ({ datum_von: row.querySelector("[name=datum_von]").value, datum_bis: row.querySelector("[name=datum_bis]").value, geschlossen: row.querySelector("[name=geschlossen]").checked, beginn: row.querySelector("[name=beginn]").value || null, ende: row.querySelector("[name=ende]").value || null }));
     for (const field of ["angebote", "zahlungsarten"]) data[field] = this.lines(f.elements[field]?.value);
@@ -2511,7 +2512,7 @@ class HofkartePanel extends HTMLElement {
 
   detailZeitenInhalt(d) {
     const sonder = d.sonderoeffnungszeiten || [];
-    return `${this.detailOpeningHours(d.oeffnungszeiten || [])}
+    return `${d.automat_24h ? '<div class="automat-24h"><strong>24h-Automat</strong> – rund um die Uhr zugänglich</div>' : this.detailOpeningHours(d.oeffnungszeiten || [])}
       <h3 class="sub">Sonderöffnungszeiten</h3>${sonder.length ? this.detailSpecialHours(sonder) : '<span class="muted">Keine hinterlegt</span>'}`;
   }
 
@@ -2682,7 +2683,7 @@ class HofkartePanel extends HTMLElement {
     gruppen.kontakt = stufe(kontaktVorhanden, 2);
     if (gruppen.kontakt === "ok") fehlend.kontakt = [];
     // Sonderöffnungszeiten sind freiwillig und zählen nicht mit.
-    pruefe("zeiten", [["Öffnungszeiten", liste(d.oeffnungszeiten)]]);
+    pruefe("zeiten", [["Öffnungszeiten", d.automat_24h === true || liste(d.oeffnungszeiten)]]);
     pruefe("angebote", [["Angebote", liste(d.angebote)], ["Zahlungsarten", liste(d.zahlungsarten)]]);
     pruefe("bilder", [["Bilder", liste(d.bilder)]]);
     gruppen.herkunft = null;
@@ -2719,7 +2720,7 @@ class HofkartePanel extends HTMLElement {
         if ((d.website || "").trim()) t.push(d.website.trim().replace(/^https?:\/\//i, "").replace(/\/$/, ""));
         return t.length ? t.join(" · ") : "Keine Kontaktangaben";
       }
-      case "zeiten": return this.zeitenKurz(d.oeffnungszeiten || []);
+      case "zeiten": return d.automat_24h ? "24h-Automat (rund um die Uhr)" : this.zeitenKurz(d.oeffnungszeiten || []);
       case "angebote": {
         const a = n(d.angebote), z = n(d.zahlungsarten);
         return `${a} ${a === 1 ? "Angebot" : "Angebote"} · ${z} ${z === 1 ? "Zahlungsart" : "Zahlungsarten"}`;
@@ -2856,7 +2857,9 @@ class HofkartePanel extends HTMLElement {
             <div class="field-row">${this.input("E-Mail", "email", d.email || "")}</div>
             <div class="field-row">${this.input("Webseite", "website", d.website || "")}</div>
           </div>`,
-      zeiten: `${this.openingHoursEditor(d.oeffnungszeiten || [])}
+      zeiten: `<label class="check"><input type=checkbox name=automat_24h ${d.automat_24h ? "checked" : ""}> 24h-Automat (rund um die Uhr zugänglich)</label>
+          <p class="muted">Bei einem 24h-Automaten gilt der Hofladen immer als geöffnet – ausser an Tagen mit einer Sonder-Schliessung. Die Wochenzeiten werden dann nicht verwendet.</p>
+          ${this.openingHoursEditor(d.oeffnungszeiten || [])}
           <h3 class="sub">Sonderöffnungszeiten</h3>
           <div id=specials>${specials}</div>
           <button type=button class=secondary data-add-special>+ Sonderzeit hinzufügen</button>`,

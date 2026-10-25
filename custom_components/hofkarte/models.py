@@ -178,3 +178,9 @@ class Hofladen:
     # abgelehnt statt die zwischenzeitliche Änderung stillschweigend zu
     # überschreiben (siehe ``coordinator.HofladenVersionConflictError``).
     version: int = 1
+    # 24h-Automat (ab 2026.10.2): ein Hofladen/Automat, der rund um die Uhr
+    # zugänglich ist (Selbstbedienung). Dann gelten keine wöchentlichen
+    # Öffnungszeiten: ``opening_hours.is_open`` liefert dauerhaft ``True`` -
+    # ausser eine Sonderöffnungszeit mit ``geschlossen=True`` deckt das Datum
+    # ab (z. B. Betriebsferien). Standard ``False`` (abwärtskompatibel).
+    automat_24h: bool = False

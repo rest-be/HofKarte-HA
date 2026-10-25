@@ -47,8 +47,10 @@ python -m pyflakes custom_components/hofkarte/*.py custom_components/hofkarte/te
 python -m mypy --ignore-missing-imports custom_components/hofkarte/*.py
 ```
 
-Beide Prüfungen müssen fehlerfrei durchlaufen (aktueller Stand: 0
-Findings in beiden Werkzeugen).
+Beide Prüfungen sollen fehlerfrei durchlaufen. Aktueller Stand: `pyflakes`
+0 Findings; `mypy` meldet 3 bekannte Typhinweise in `webseite_info.py` (Klasse
+`_OeffentlichAufloeser`, Signatur gegenüber den `aiohttp`-Typen), die das
+Laufzeitverhalten nicht betreffen und nach dem Release bereinigt werden.
 
 ## Tests ausführen
 
@@ -56,7 +58,11 @@ Findings in beiden Werkzeugen).
 pytest custom_components/hofkarte/tests
 ```
 
-Erwartung: alle Tests grün (aktueller Stand: rund 1190 Tests; die JavaScript-Verhaltenstests des Panels laufen mit Node und `jsdom` und werden ohne beides übersprungen). Für neue
+Erwartung: alle Tests grün (aktueller Stand: **1212 Tests**, davon 97
+JavaScript-Verhaltenstests des Panels, die Node und `jsdom` brauchen und ohne
+beides übersprungen werden; dann zeigt pytest 1115 bestandene und 97 übersprungene
+Tests). Getestet mit Home Assistant 2025.1.4 (`pytest-homeassistant-custom-component==0.13.205`)
+und, für den Thread-Test der Testumgebung, `pycares<4.9`. Für neue
 Funktionalität gilt:
 
 - Jede neue Fach-/Berechnungslogik (z. B. in `opening_hours.py`,

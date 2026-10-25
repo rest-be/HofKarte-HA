@@ -640,3 +640,20 @@ def test_gueltige_telefonnummern(nummer: str) -> None:
 def test_ungueltige_telefonnummern_werden_abgelehnt(nummer: str) -> None:
     with pytest.raises(HofladenValidationError, match="mobilnummer"):
         parse_hofladen(_basis(mobilnummer=nummer))
+
+
+def test_parse_automat_24h_default_ist_falsch() -> None:
+    assert parse_hofladen({"id": "hof-30", "name": "Hofladen"}).automat_24h is False
+    assert parse_hofladen({"id": "hof-30", "name": "Hofladen", "automat_24h": None}).automat_24h is False
+
+
+def test_parse_automat_24h_wird_uebernommen() -> None:
+    hofladen = parse_hofladen({"id": "hof-31", "name": "Automat", "automat_24h": True})
+
+    assert hofladen.automat_24h is True
+
+
+@pytest.mark.parametrize("eingabe", ["ja", 1, 0, "true", []])
+def test_parse_automat_24h_muss_wahrheitswert_sein(eingabe: object) -> None:
+    with pytest.raises(HofladenValidationError):
+        parse_hofladen({"id": "hof-32", "name": "Automat", "automat_24h": eingabe})

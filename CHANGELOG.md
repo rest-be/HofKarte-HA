@@ -15,6 +15,50 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
+Noch keine Änderungen seit `2026.10.2`.
+
+## [2026.10.2] - 2026-10-25
+
+Fasst `2026.10.2-dev.1` und den Release Candidate `2026.10.2-rc.1` zusammen:
+den 24h-Automaten sowie nachgeführte Dokumentation (unter anderem der Abschnitt
+zur mobilen PWA 2.0). Gegenüber `rc.1` ändert sich nur die Versionsnummer.
+
+Zusammen mit der PWA `2.0.0`: Die PWA benötigt für den Schalter «24h-Automat»
+diese Version, alle übrigen Funktionen laufen ab `2026.10.1` (siehe README,
+Abschnitt «Mobile PWA»).
+
+### Hinzugefügt
+
+- **24h-Automat** (`2026.10.2-dev.1`): neues Feld `automat_24h` (Standard
+  `false`, abwärtskompatibel). Ein 24h-Automat gilt rund um die Uhr als
+  geöffnet (`opening_hours.is_open`), hat keine „nächste Schliessung“ und wird
+  nur durch eine Sonder-Schliessung (z. B. Betriebsferien) unterbrochen.
+  Verwaltungs-Panel: Checkbox bei den Öffnungszeiten, Anzeige in Detail und
+  Kurzinfo. Parser: `automat_24h` muss ein Wahrheitswert sein.
+
+### Intern
+
+- Tests: Zwei Tests an den tatsächlichen Stand angepasst (Standard-Suchradius
+  der Optionen statt festem Wert; `vol.Invalid` statt `vol.MultipleInvalid`,
+  weil Home Assistant ab 2025.1 `InvalidData` wirft). Kein Einfluss auf das
+  Verhalten der Integration.
+- `management.py`: Typannotation für gelesene Optionen (`mypy`), keine
+  Verhaltensänderung.
+- Teststand: 1212 Tests grün (inklusive 97 JavaScript-Verhaltenstests des
+  Panels).
+
+### Dokumentation
+
+- `README.md`: Status auf Release Candidate gesetzt, 24h-Automat in der
+  Funktionsübersicht, Abschnitt «Mobile PWA» auf den Stand der PWA 2.0
+  (Voraussetzungen, Versionszuordnung HofKarte-HA ↔ PWA) gebracht.
+- `docs/handbuch.md`: Abschnitt «Öffnungszeiten» um den 24h-Automaten
+  ergänzt (Verhalten, Sonder-Schliessung, Sensoren).
+- `docs/architecture.md`: Abschnitt «24h-Automat» ergänzt, veralteten Vermerk
+  «Offen: PWA» durch die tatsächliche Schnittstelle zur PWA ersetzt.
+- `CONTRIBUTING.md`: Testanzahl auf den tatsächlichen Stand aktualisiert.
+- Neu: `RELEASE_NOTES_2026.10.2.md`.
+
 ## [2026.10.1] - 2026-10-12
 
 Fasst die Entwicklungsversionen `2026.10.1-dev.1` bis `dev.24` und den

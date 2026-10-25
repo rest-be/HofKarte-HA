@@ -8,7 +8,7 @@ Sonder-Schliessung, Wochenwechsel sowie ein Zeitzonen-/DST-Grenzfall.
 
 from __future__ import annotations
 
-from datetime import datetime, time, timezone
+from datetime import date, datetime, time, timezone
 from zoneinfo import ZoneInfo
 
 from custom_components.hofkarte.models import Hofladen, Oeffnungszeit, Sonderoeffnungszeit
@@ -338,3 +338,68 @@ def test_sommerzeitumstellung_fruehjahr_keine_absturz_und_plausibel() -> None:
 
     naechste_schliessung = get_next_closing(hofladen, now)
     assert naechste_schliessung is None or naechste_schliessung.tzinfo is not None
+
+
+# ---------------------------------------------------------------------------
+# 24h-Automat (ab 2026.10.2)
+# ---------------------------------------------------------------------------
+
+
+def test_automat_24h_ist_immer_offen_ohne_oeffnungszeiten() -> None:
+    """Ohne Öffnungszeiten gilt ein 24h-Automat als geöffnet (nicht 'unbekannt')."""
+    hofladen = _hofladen(automat_24h=True)
+
+    for stunde in (0, 3, 12, 23):
+        assert is_open(hofladen, _dt(2026, 1, 5, stunde, 30, _ZUERICH)) is True
+
+
+def test_automat_24h_schliesst_nie_und_oeffnet_nicht_neu() -> None:
+    """Ohne Sonderschliessung gibt es weder nächste Schliessung noch Öffnung."""
+    hofladen = _hofladen(automat_24h=True)
+    now = _dt(2026, 1, 5, 23, 59, _ZUERICH)
+
+    assert get_next_closing(hofladen, now) is None
+    assert get_next_opening(hofladen, now) is None
+
+
+def test_automat_24h_ueber_mitternacht_ohne_luecke() -> None:
+    """Der Tageswechsel erzeugt keine künstliche Schliessung."""
+    hofladen = _hofladen(automat_24h=True)
+
+    assert is_open(hofladen, _dt(2026, 1, 5, 23, 59, _ZUERICH)) is True
+    assert is_open(hofladen, _dt(2026, 1, 6, 0, 0, _ZUERICH)) is True
+
+
+def test_automat_24h_ignoriert_woechentliche_zeiten() -> None:
+    """Hinterlegte Wochenzeiten ändern bei einem Automaten nichts."""
+    hofladen = _hofladen(
+        automat_24h=True,
+        oeffnungszeiten=(Oeffnungszeit(wochentag=1, beginn=time(8, 0), ende=time(9, 0)),),
+    )
+
+    assert is_open(hofladen, _dt(2026, 1, 5, 22, 0, _ZUERICH)) is True
+
+
+def test_automat_24h_sonderschliessung_hat_vorrang() -> None:
+    """Betriebsferien (Sonderschliessung) schliessen auch einen Automaten."""
+    hofladen = _hofladen(
+        automat_24h=True,
+        sonderoeffnungszeiten=(
+            Sonderoeffnungszeit(
+                datum_von=date(2026, 1, 7), datum_bis=date(2026, 1, 8), geschlossen=True
+            ),
+        ),
+    )
+    heute = _dt(2026, 1, 5, 12, 0, _ZUERICH)
+
+    assert is_open(hofladen, heute) is True
+    assert is_open(hofladen, _dt(2026, 1, 7, 12, 0, _ZUERICH)) is False
+    assert get_next_closing(hofladen, heute) == _dt(2026, 1, 7, 0, 0, _ZUERICH)
+    assert get_next_opening(hofladen, _dt(2026, 1, 7, 12, 0, _ZUERICH)) == _dt(
+        2026, 1, 9, 0, 0, _ZUERICH
+    )
+
+
+def test_ohne_automat_bleibt_verhalten_unveraendert() -> None:
+    """Standard ``automat_24h=False``: unbekannt ohne Daten."""
+    assert is_open(_hofladen(), _dt(2026, 1, 5, 12, 0)) is None

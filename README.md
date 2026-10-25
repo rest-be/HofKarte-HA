@@ -4,7 +4,7 @@ Private, lokal betriebene Home-Assistant-Custom-Integration zur Verwaltung
 und Darstellung von Hofläden (Direktvermarkter, Selbstbedienungsläden,
 Hofläden mit und ohne Personal).
 
-> **Status:** Release `2026.10.1`. Die Integration ist funktional
+> **Status:** Release `2026.10.2`. Die Integration ist funktional
 > vollständig und durchgehend getestet (siehe `CHANGELOG.md` für den
 > aktuellen Versionsstand). Home Assistant ist sowohl Laufzeit- als
 > auch Verwaltungsoberfläche für HofKarte – die vom Benutzer gepflegten
@@ -12,7 +12,8 @@ Hofläden mit und ohne Personal).
 > gehalten (keine externe Datenbank, kein externer Dienst).
 > Zusätzlich zu den regulären Home-Assistant-Entities bietet HofKarte
 > eine **eigene grafische Verwaltungsoberfläche** (Sidebar-Panel) für
-> Administrator:innen.
+> Administrator:innen sowie die **mobile Begleit-App HofKarte-PWA**
+> (siehe Abschnitt „Mobile PWA“).
 
 **📖 Für die vollständige Anleitung als Endanwender:in siehe das
 [Anwendungshandbuch](docs/handbuch.md)** – Installation, Ersteinrichtung,
@@ -169,6 +170,9 @@ Dort können Administratoren:
 - reguläre und Sonderöffnungszeiten bearbeiten (pro Wochentag:
   Geschlossen / 24 Stunden geöffnet / Zeiten festlegen, mit beliebig
   vielen Intervallen),
+- einen Hofladen als **24h-Automat** kennzeichnen (Checkbox bei den
+  Öffnungszeiten: rund um die Uhr geöffnet, die Wochenzeiten entfallen;
+  nur eine Sonder-Schliessung wie Betriebsferien unterbricht ihn),
 - Angebote (vormals getrennt: Kategorien/Produkte, seither zusätzlich
   auf eine schlichte Namensliste ohne Gruppierung vereinfacht) und
   Zahlungsarten bearbeiten,
@@ -674,15 +678,33 @@ Unabhängig von dieser Integration wird unter
 Progressive Web App entwickelt, die HofKarte als dünner Client dieser
 Integration nutzt – **ohne eigene Datenhaltung**: Sämtliche Hofladen-
 Daten bleiben in dieser Integration, die PWA liest und schreibt
-ausschliesslich über die bestehende Home-Assistant-WebSocket-API.
+ausschliesslich über die bestehende Home-Assistant-WebSocket-API
+(`hofkarte/management/*`). Die PWA ist auf Deutsch, Französisch, Italienisch
+und Englisch verfügbar und lässt sich auf dem Smartphone wie eine App
+installieren.
 
-Für den Betrieb der PWA sind auf Seiten dieser Integration folgende,
-unabhängig von der PWA selbst sinnvolle Voraussetzungen zu schaffen:
+### Welche PWA-Version passt zu welcher Integrationsversion?
+
+| HofKarte-PWA | benötigt HofKarte (HA) | Hinweis |
+|---|---|---|
+| 2.0.0 | ab `2026.10.1` | alle Funktionen ausser dem Schalter «24h-Automat» |
+| 2.0.0 | ab `2026.10.2` | zusätzlich Schalter «24h-Automat» |
+| 1.12.x | ab `2026.10.1` | „Hofladen finden“ (ab 1.12.0) |
+| 1.11.x | ab `2026.10.0` | Foto-Upload über WebSocket (ab 1.11.0) |
+
+Ist die Integration älter als von der PWA benötigt, bleiben die übrigen
+Funktionen nutzbar; die betroffene Funktion meldet dann einen Fehler beim
+Speichern bzw. steht nicht zur Verfügung. Bitte zuerst die Integration
+aktualisieren.
+
+### Voraussetzungen auf Seiten dieser Integration
 
 - **Eigener Admin-Benutzer** (z. B. „HofKarte“) als technisches
   Service-Konto für die PWA, mit einem eigenen Long-Lived Access Token
   pro Gerät (granulare Widerrufbarkeit bei Geräteverlust) statt eines
-  persönlichen Kontos oder eines gemeinsamen Passworts.
+  persönlichen Kontos oder eines gemeinsamen Passworts. Alle schreibenden
+  Befehle sowie „Hofladen finden“ und die KI-Auswertung erfordern
+  Administratorrechte.
 - **`cors_allowed_origins`** in `configuration.yaml`, damit der Browser
   Anfragen von der die PWA ausliefernden Origin (z. B. GitHub Pages)
   akzeptiert – siehe Home-Assistant-Dokumentation zu `http:`. Für den
@@ -703,8 +725,17 @@ unabhängig von der PWA selbst sinnvolle Voraussetzungen zu schaffen:
   ausgelöst über die Standort-Entities der offiziellen Home Assistant
   Companion App.
 
-Detailplanung und Umsetzungsschritte für dieses Zusammenspiel werden
-unabhängig von diesem Repository dokumentiert.
+### Was die PWA kann (Stand 2.0.0)
+
+Übersicht als Liste oder Karte mit Suche, Filtern und Sortierung nach
+Entfernung; Detailansicht mit Öffnungsstatus, Teilen und Route (Google Maps
+oder Apple Karten, einstellbar); Erfassen und Bearbeiten inklusive
+24h-Automat und Fotos; „Hofladen finden“ und „Angaben ergänzen“ (Website und
+OpenStreetMap, optional KI); Offline-Betrieb mit Warteschlange und
+Konfliktbehandlung bei gleichzeitiger Bearbeitung. Der **Standort** wird nur
+auf ausdrücklichen Tipp abgefragt und nie gespeichert. Die Anleitung für
+Endanwender:innen steht im Repository der PWA
+(`docs/benutzerhandbuch.md`).
 
 ## Unter der Haube (technische Referenz)
 
