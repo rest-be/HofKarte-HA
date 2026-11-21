@@ -4,7 +4,7 @@ Private, lokal betriebene Home-Assistant-Custom-Integration zur Verwaltung
 und Darstellung von Hofläden (Direktvermarkter, Selbstbedienungsläden,
 Hofläden mit und ohne Personal).
 
-> **Status:** Release `2026.10.2`. Die Integration ist funktional
+> **Status:** Release `2026.11.0`. Die Integration ist funktional
 > vollständig und durchgehend getestet (siehe `CHANGELOG.md` für den
 > aktuellen Versionsstand). Home Assistant ist sowohl Laufzeit- als
 > auch Verwaltungsoberfläche für HofKarte – die vom Benutzer gepflegten
@@ -112,7 +112,9 @@ HofKarte unterscheidet zwei Arten von „Konfiguration“:
   zur Verfügung: Standard-Sortierfeld/-richtung für die
   Hofladen-Übersicht sowie ein dauerhaft gespeicherter Standard-
   Suchradius für „🔍 Angaben automatisch ermitteln“ (20–2000 m,
-  voreingestellt 200 m). Der Abruf-Timeout des Coordinators ist davon
+  voreingestellt 200 m). Neu in `2026.11.0`: Schalter und Namen für die
+  automatische Zuordnung von **Bereich und Label «HofKarte»** (siehe
+  „Bereich und Label «HofKarte»“). Der Abruf-Timeout des Coordinators ist davon
   unabhängig und weiterhin nur auf Code-Ebene änderbar (ein
   Update-Intervall gibt es seit `2026.10.0-dev.7` nicht mehr) (siehe „Bekannte Einschränkungen“).
 - **Die Hofladen-Daten:** Hofläden, ihre Stammdaten, Öffnungszeiten und
@@ -338,6 +340,30 @@ Home-Assistant-Geräteverwaltung abgebildet
   Synchronisationen (z. B. bei einem Reload) erzeugen keine Duplikate.
 - Mehrere Hofläden sind durch ihre eindeutigen Identifiers sauber
   voneinander getrennt.
+
+### Bereich und Label «HofKarte» (ab `2026.11.0`)
+
+Jeder Hofladen wird automatisch dem Bereich **«HofKarte»** zugeordnet
+(am Device; die Entities erben den Bereich) und erhält das Label
+**«HofKarte»** (am Device **und** an allen zugehörigen Entities). So lassen
+sich Hofläden in Dashboards, Automationen und Filtern leicht ansprechen.
+
+- Bereich und Label werden beim ersten Bedarf angelegt; gibt es bereits
+  einen Bereich bzw. ein Label mit diesem Namen, wird es wiederverwendet.
+- Hat ein Device schon einen **anderen Bereich**, bleibt dieser erhalten;
+  das Label wird trotzdem gesetzt.
+- Jedes Device und jede Entity wird nur **einmal** behandelt. Entfernst du
+  das Label oder den Bereich von Hand, setzt HofKarte ihn nicht ungefragt
+  neu.
+- Bestehende Hofläden werden beim ersten Start nach dem Update einmalig
+  nachgezogen.
+- In den Einstellungen (**Konfigurieren**) lässt sich die Zuordnung
+  **abschalten** (es wird nichts entfernt, nur nichts Neues zugeordnet) und
+  der **Name** von Bereich und Label ändern (Standard «HofKarte»). Eine
+  Umbenennung benennt den von HofKarte verwalteten Bereich bzw. das Label
+  um, sodass bestehende Zuordnungen mitziehen; hast du den Namen selbst von
+  Hand geändert, bleibt er unangetastet und es wird ein Bereich/Label mit dem
+  neuen Namen verwendet oder angelegt.
 
 ## Bereitgestellte Entities
 
@@ -687,6 +713,8 @@ installieren.
 
 | HofKarte-PWA | benötigt HofKarte (HA) | Hinweis |
 |---|---|---|
+| 2.1.0 | ab `2026.10.1` | alle Funktionen ausser dem Schalter «24h-Automat» |
+| 2.1.0 | ab `2026.10.2` | zusätzlich Schalter «24h-Automat» |
 | 2.0.0 | ab `2026.10.1` | alle Funktionen ausser dem Schalter «24h-Automat» |
 | 2.0.0 | ab `2026.10.2` | zusätzlich Schalter «24h-Automat» |
 | 1.12.x | ab `2026.10.1` | „Hofladen finden“ (ab 1.12.0) |
@@ -725,13 +753,15 @@ aktualisieren.
   ausgelöst über die Standort-Entities der offiziellen Home Assistant
   Companion App.
 
-### Was die PWA kann (Stand 2.0.0)
+### Was die PWA kann (Stand 2.1.0)
 
 Übersicht als Liste oder Karte mit Suche, Filtern und Sortierung nach
 Entfernung; Detailansicht mit Öffnungsstatus, Teilen und Route (Google Maps
 oder Apple Karten, einstellbar); Erfassen und Bearbeiten inklusive
-24h-Automat und Fotos; „Hofladen finden“ und „Angaben ergänzen“ (Website und
-OpenStreetMap, optional KI); Offline-Betrieb mit Warteschlange und
+24h-Automat und Fotos; Sonderöffnungszeiten bearbeiten sowie Öffnungszeiten
+schneller erfassen (Vorlagen, Tage kopieren, Zeittext); „Schild lesen“
+(Foto eines Hofladen-Schilds, Texterkennung auf dem Gerät); „Hofladen finden“
+und „Angaben ergänzen“ (Website und OpenStreetMap, optional KI); Offline-Betrieb mit Warteschlange und
 Konfliktbehandlung bei gleichzeitiger Bearbeitung. Der **Standort** wird nur
 auf ausdrücklichen Tipp abgefragt und nie gespeichert. Die Anleitung für
 Endanwender:innen steht im Repository der PWA
@@ -970,8 +1000,8 @@ Verfügung (siehe oben). Für tiefergehende Logs das Logging für
   wenig. Die Standortübernahme benötigt HTTPS.
 - Nur eine Instanz pro Home-Assistant-Installation möglich (Single
   Instance).
-- Der Options Flow deckt nur die Übersicht-Sortiervorgabe und den
-  Standard-Suchradius ab; der Timeout des Coordinators ist weiterhin nur
+- Der Options Flow deckt die Übersicht-Sortiervorgabe, den
+  Standard-Suchradius, die KI-Entität und die Zuordnung von Bereich und Label ab; der Timeout des Coordinators ist weiterhin nur
   auf Code-Ebene konfigurierbar.
 - Bei Uhrzeiten in einer Sommerzeit-Umstellungslücke bzw. im doppelt
   vorkommenden Bereich beim Zurückstellen wird die von `zoneinfo`

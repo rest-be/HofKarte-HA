@@ -1100,6 +1100,37 @@ verwenden. Schreibzugriffe tragen eine Version (optimistische Sperre,
 `VersionskonfliktFehler` auf Seiten der PWA). Die Zuordnung der
 Versionsstände steht im README, Abschnitt «Mobile PWA».
 
+## Bereich und Label «HofKarte» (`2026.11.0`)
+
+`zuordnung.py` (`ZuordnungsManager`) ordnet Hofladen-Devices dem Bereich und
+Entities/Devices dem Label «HofKarte» zu. Konfiguration über die Optionen
+(`zuordnung_aktiv`, `bereich_name`, `label_name`; Standard an/«HofKarte»/
+«HofKarte»). Gestartet wird der Manager in `async_setup_entry` nach dem
+Einrichten der Plattformen; danach reagiert er auf neu angelegte Devices und
+Entities (Registry-Ereignisse `create`) sowie auf Optionsänderungen
+(Update-Listener).
+
+- Idempotenz: Welche Devices und Entities schon behandelt wurden, hält ein
+  eigener Store (`hofkarte.zuordnung`, Schlüssel `device:<id>`/`entity:<id>`
+  der Registry). Dadurch kommt ein von Hand entferntes Label oder ein
+  geänderter Bereich nicht ungefragt zurück, und bestehende Hofläden werden
+  nach dem Update genau einmal nachgezogen.
+- Ein Device mit gesetztem Bereich behält ihn (nur das Label kommt dazu).
+- Umbenennung: Der Store merkt sich Bereichs-/Label-ID und den zuletzt
+  gesetzten Namen. Stimmt der Registry-Name noch damit überein, wird der
+  Eintrag umbenannt (Zuordnungen ziehen mit); wurde er von Hand geändert, bleibt
+  er bestehen und ein Eintrag mit dem neuen Namen wird verwendet bzw. angelegt.
+- Abschalten entfernt nichts.
+
+## Menü-Knopf im Panel (`2026.11.0`)
+
+Home Assistant zeigt für eigene Panels keine Kopfzeile. Auf schmalen
+Bildschirmen (`narrow`, vom Frontend gesetzt) rendert `hofkarte-panel.js`
+deshalb eine eigene Menüleiste ausserhalb von `<main>` (bleibt bei `render()`
+unberührt). Der Knopf (44 × 44 px, `aria-label` «Menü») sendet das Ereignis
+`hass-toggle-menu` (`bubbles`, `composed`) wie `ha-menu-button`. Sicherer
+Bereich oben und seitlich via `env(safe-area-inset-*)`.
+
 ## 24h-Automat (`2026.10.2`)
 
 `models.Hofladen.automat_24h` (`bool`, Standard `False`) kennzeichnet

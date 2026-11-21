@@ -28,6 +28,7 @@ from homeassistant.config_entries import (
 from homeassistant.core import callback
 from homeassistant.const import CONF_NAME
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     EntitySelector,
     EntitySelectorConfig,
     SelectSelector,
@@ -36,6 +37,13 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    CONF_BEREICH_NAME,
+    CONF_LABEL_NAME,
+    CONF_ZUORDNUNG_AKTIV,
+    DEFAULT_BEREICH_NAME,
+    DEFAULT_LABEL_NAME,
+    DEFAULT_ZUORDNUNG_AKTIV,
+    MAX_LAENGE_REGISTERNAME,
     CONF_LISTEN_SORT_RICHTUNG,
     CONF_LISTEN_SORT_SPALTE,
     CONF_KI_ENTITAET,
@@ -188,6 +196,25 @@ class HofKarteOptionsFlow(OptionsFlow):
                     CONF_KI_ENTITAET,
                     description={"suggested_value": optionen.get(CONF_KI_ENTITAET)},
                 ): EntitySelector(EntitySelectorConfig(domain="ai_task")),
+                # A2: Bereich und Label "HofKarte" automatisch zuordnen.
+                vol.Required(
+                    CONF_ZUORDNUNG_AKTIV,
+                    default=optionen.get(
+                        CONF_ZUORDNUNG_AKTIV, DEFAULT_ZUORDNUNG_AKTIV
+                    ),
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_BEREICH_NAME,
+                    default=optionen.get(CONF_BEREICH_NAME, DEFAULT_BEREICH_NAME),
+                ): vol.All(
+                    str, vol.Length(min=1, max=MAX_LAENGE_REGISTERNAME)
+                ),
+                vol.Required(
+                    CONF_LABEL_NAME,
+                    default=optionen.get(CONF_LABEL_NAME, DEFAULT_LABEL_NAME),
+                ): vol.All(
+                    str, vol.Length(min=1, max=MAX_LAENGE_REGISTERNAME)
+                ),
             }
         )
 
