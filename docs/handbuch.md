@@ -86,6 +86,9 @@ steht eine „Einstellungen“-Maske (Options Flow) zur Verfügung:
   (20–2000 m, voreingestellt 200 m) – wird beim Öffnen des
   Bearbeitungsformulars als Vorschlag übernommen, im Formular selbst
   aber weiterhin pro Aufruf überschreibbar.
+- **Bereich und Label «HofKarte» automatisch zuordnen** (ab `2026.11.0`):
+  Schalter (standardmässig an) sowie die Namen von Bereich und Label
+  (Standard «HofKarte»). Siehe Kapitel 4.
 
 Davon unabhängig, weiterhin nur auf Code-Ebene änderbar:
 
@@ -108,6 +111,28 @@ Bewertung, ...) – das geschieht nicht über „Konfigurieren“, sondern
 Nach der Einrichtung erscheint im Home-Assistant-Seitenmenü ein neuer
 Eintrag **HofKarte** (nur für Administrator:innen-Konten sichtbar). Dort
 können Hofläden verwaltet werden:
+
+### Bereich und Label «HofKarte»
+
+Seit `2026.11.0` ordnet HofKarte jeden Hofladen automatisch dem Bereich
+**«HofKarte»** zu (am Device; die Entities erben den Bereich) und setzt das
+Label **«HofKarte»** am Device und an allen seinen Entities. Hat ein Device
+bereits einen anderen Bereich, bleibt dieser. Von Hand entfernte Zuordnungen
+werden nicht ungefragt wiederhergestellt. Bestehende Hofläden werden beim
+ersten Start nach dem Update einmalig nachgezogen.
+
+Unter **Konfigurieren** kannst du die Zuordnung abschalten (es wird nichts
+entfernt) und die Namen von Bereich und Label ändern. Bei einer Umbenennung
+ziehen die bestehenden Zuordnungen mit, solange du den Namen nicht selbst von
+Hand geändert hast.
+
+### Menü auf dem Smartphone
+
+Auf schmalen Bildschirmen (z. B. iPhone, HA-Companion-App) zeigt das Panel
+oben links einen **Menü-Knopf** (drei Striche). Er öffnet die
+Home-Assistant-Seitenleiste, damit du aus HofKarte wieder in das Menü
+zurückfindest. Auf breiten Bildschirmen mit sichtbarer Seitenleiste erscheint
+er nicht.
 
 ### Übersicht: Kacheln, Liste oder Karte
 

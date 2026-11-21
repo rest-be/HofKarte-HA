@@ -44,6 +44,15 @@ CONF_OSM_RADIUS_METER = "osm_radius_meter"
 # Optionale KI-Entität (Domain ``ai_task``) für "Hofladen finden"; leer = aus.
 CONF_KI_ENTITAET = "ki_entitaet"
 
+# A2: Bereich und Label "HofKarte" für jeden Hofladen (siehe zuordnung.py).
+CONF_ZUORDNUNG_AKTIV = "zuordnung_aktiv"
+CONF_BEREICH_NAME = "bereich_name"
+CONF_LABEL_NAME = "label_name"
+DEFAULT_ZUORDNUNG_AKTIV = True
+DEFAULT_BEREICH_NAME = "HofKarte"
+DEFAULT_LABEL_NAME = "HofKarte"
+MAX_LAENGE_REGISTERNAME = 100
+
 DEFAULT_LISTEN_SORT_SPALTE = "name"
 DEFAULT_LISTEN_SORT_RICHTUNG = "asc"
 # An die iOS-App angeglichener Standardwert (siehe Options Flow) - weicht

@@ -25,10 +25,14 @@
           "listen_sort_spalte": "Standard-Sortierfeld",
           "listen_sort_richtung": "Sortierrichtung",
           "osm_radius_meter": "Suchradius OpenStreetMap (Meter)",
-          "ki_entitaet": "KI-Entität (AI Task) für „Hofladen finden“ (optional; leer = aus)"
+          "ki_entitaet": "KI-Entität (AI Task) für „Hofladen finden“ (optional; leer = aus)",
+          "zuordnung_aktiv": "Bereich und Label automatisch zuordnen",
+          "bereich_name": "Name des Bereichs",
+          "label_name": "Name des Labels"
         },
         "data_description": {
-          "ki_entitaet": "Wenn gesetzt, kann „Hofladen finden“ den Text der Website eines Hofladens optional an diese KI-Entität senden, um Angebote, Zahlungsarten und Öffnungszeiten zu finden. Je nach Anbieter verlässt der Text dein Netzwerk."
+          "ki_entitaet": "Wenn gesetzt, kann „Hofladen finden“ den Text der Website eines Hofladens optional an diese KI-Entität senden, um Angebote, Zahlungsarten und Öffnungszeiten zu finden. Je nach Anbieter verlässt der Text dein Netzwerk.",
+          "zuordnung_aktiv": "Wenn aktiv, wird jedes Hofladen-Gerät diesem Bereich zugeordnet (sofern es noch keinen Bereich hat) und das Label am Gerät und an seinen Entitäten gesetzt. Abschalten entfernt nichts. Eine Umbenennung benennt den von HofKarte verwalteten Bereich bzw. das Label um, ausser du hast den Namen selbst geändert."
         }
       }
     }

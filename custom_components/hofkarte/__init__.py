@@ -25,6 +25,7 @@ from .device import async_sync_devices
 from .frontend import async_register_frontend, async_remove_frontend, async_setup_frontend_assets
 from .management import async_register_websocket_commands
 from .services import async_register_services
+from .zuordnung import async_zuordnung_einrichten
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -101,6 +102,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if PLATFORMS:
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # A2: Bereich und Label "HofKarte" für Devices und Entities (abschaltbar
+    # und umbenennbar in den Optionen, siehe zuordnung.py).
+    await async_zuordnung_einrichten(hass, entry)
 
     _LOGGER.debug("HofKarte-Config-Entry eingerichtet: %s", entry.entry_id)
     return True

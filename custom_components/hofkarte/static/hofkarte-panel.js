@@ -40,7 +40,7 @@ const OSM_MAX_RADIUS_METER = 2000;
 // Build-Kennung des Panels, in der Kopfzeile sichtbar: zeigt ohne
 // Entwicklerwerkzeuge, welche Panel-Fassung der Browser tatsaechlich geladen
 // hat (muss mit manifest.json uebereinstimmen, siehe Test).
-const PANEL_BUILD = "2026.10.2";
+const PANEL_BUILD = "2026.11.0";
 const FINDEN_STANDARD_RADIUS_METER = 2000;
 const FINDEN_MIN_RADIUS_METER = 50;
 const FINDEN_MAX_RADIUS_METER = 5000;
@@ -378,8 +378,32 @@ class HofkartePanel extends HTMLElement {
     this._styleEl = document.createElement("style");
     this._styleEl.textContent = this.styles();
     this._mainEl = document.createElement("main");
-    this.shadowRoot.append(this._styleEl, this._mainEl);
+    // A1: Menüleiste für schmale Bildschirme (Smartphone). Home Assistant
+    // blendet dort die Seitenleiste aus und zeigt für eigene Panels keine
+    // Kopfzeile - das Panel braucht daher einen eigenen Menü-Knopf. Die
+    // Leiste liegt ausserhalb von <main> und bleibt bei render() unberührt.
+    this._narrow = false;
+    this._menueleisteEl = document.createElement("div");
+    this._menueleisteEl.className = "menueleiste";
+    this._menueleisteEl.hidden = true;
+    this._menueleisteEl.innerHTML = `<button type="button" class="icon-btn" data-ha-menue aria-label="Menü">${this.icon("menue")}</button><span class="menueleiste-titel">HofKarte</span>`;
+    this._menueleisteEl.querySelector("[data-ha-menue]").addEventListener("click", () => this.haMenueUmschalten());
+    this.shadowRoot.append(this._styleEl, this._menueleisteEl, this._mainEl);
     this.bindDelegiert();
+  }
+
+  /** A1: von Home Assistant gesetzt; ``true`` auf schmalen Bildschirmen
+   * (Seitenleiste ausgeblendet). Nur die Menüleiste wird umgeschaltet,
+   * der Inhalt (und damit Eingaben im Editor) bleibt unberührt. */
+  set narrow(value) {
+    this._narrow = !!value;
+    if (this._menueleisteEl) this._menueleisteEl.hidden = !this._narrow;
+  }
+  get narrow() { return this._narrow; }
+
+  /** Öffnet/schliesst die Home-Assistant-Seitenleiste (wie ``ha-menu-button``). */
+  haMenueUmschalten() {
+    this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
   }
 
   set hass(value) {
@@ -1420,6 +1444,10 @@ class HofkartePanel extends HTMLElement {
     return `
       :host{display:block;color:var(--primary-text-color);background:var(--primary-background-color);min-height:100%;font-family:var(--paper-font-body1_-_font-family,Roboto,sans-serif)}
       main{max-width:1200px;margin:0 auto;padding:24px}
+      .menueleiste{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:8px;min-height:56px;box-sizing:border-box;padding:env(safe-area-inset-top,0px) max(8px,env(safe-area-inset-right,0px)) 0 max(8px,env(safe-area-inset-left,0px));background:var(--app-header-background-color,var(--primary-background-color));color:var(--app-header-text-color,var(--primary-text-color));border-bottom:1px solid var(--divider-color,rgba(127,127,127,.3))}
+      .menueleiste[hidden]{display:none}
+      .menueleiste .icon-btn{color:inherit;flex:0 0 auto}
+      .menueleiste-titel{font-size:20px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       .top{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
       .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-top:12px}
       .view-toggle{display:flex;gap:8px;margin-top:16px}
@@ -1819,6 +1847,7 @@ class HofkartePanel extends HTMLElement {
 
   /** Schlichte Linien-Icons (24x24, currentColor) für die Übersicht. */
   static ICONS = {
+    menue: '<path d="M3 6h18M3 12h18M3 18h18"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     standort: '<path d="M12 21s-7-6.2-7-11a7 7 0 0114 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>',

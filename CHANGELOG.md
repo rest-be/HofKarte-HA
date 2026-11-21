@@ -15,7 +15,39 @@ unten als historische Entwicklungsdokumentation erhalten.
 
 ## [Unreleased]
 
-Noch keine Änderungen seit `2026.10.2`.
+Noch keine Änderungen seit `2026.11.0`.
+
+## [2026.11.0] - 2026-11-21
+
+Kleines Funktions- und Fehlerbehebungs-Update: Menü-Knopf im Panel auf dem
+Smartphone sowie automatische Zuordnung von Bereich und Label «HofKarte».
+Passt zur PWA `2.1.0` (siehe README, «Welche PWA-Version passt zu welcher
+Integrationsversion?»).
+
+### Hinzugefügt
+
+- **Bereich und Label «HofKarte»** (A2): Jeder Hofladen wird automatisch dem
+  Bereich «HofKarte» zugeordnet (Device) und erhält das Label «HofKarte» (Device
+  und Entities). Abschaltbar und umbenennbar in den Optionen der Integration
+  (`zuordnung_aktiv`, `bereich_name`, `label_name`). Vorhandene Bereiche/Labels
+  gleichen Namens werden wiederverwendet; ein bereits gesetzter anderer Bereich
+  und von Hand entfernte Zuordnungen bleiben unangetastet; bestehende Hofläden
+  werden einmalig nachgezogen; eine Umbenennung zieht mit, ausser der Name wurde
+  von Hand geändert. Neues Modul `zuordnung.py`, neue Tests `test_zuordnung.py`.
+
+### Behoben
+
+- **Menü auf dem iPhone** (A1): Auf schmalen Bildschirmen zeigt das Panel jetzt
+  oben links einen Menü-Knopf (44 × 44 px, «Menü»), der die Home-Assistant-
+  Seitenleiste öffnet (Ereignis `hass-toggle-menu`). Zuvor fehlte auf dem
+  Smartphone der Zugang zurück ins Menü. Berücksichtigt den sicheren Bereich
+  (Notch) und bleibt beim Neuzeichnen erhalten.
+
+### Dokumentation
+
+- README: Status, PWA-Versionstabelle um PWA `2.1.0` ergänzt, «Was die PWA kann
+  (Stand 2.1.0)», neuer Abschnitt «Bereich und Label «HofKarte»». Handbuch und
+  Architektur nachgeführt.
 
 ## [2026.10.2] - 2026-10-25
 
